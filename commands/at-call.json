@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "name": "Call",
+  "commands": [
+    { "command": "ATD", "category": "call", "description": "Make a call", "example": "ATD10086;" },
+    { "command": "ATA", "category": "call", "description": "Answer incoming call" },
+    { "command": "ATH", "category": "call", "description": "Hang up call" },
+    { "command": "AT+CLCC", "category": "call", "description": "List current calls" }
+  ]
+}

@@ -1,0 +1,153 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+type Language = 'zh-CN' | 'en-US';
+type ThemeMode = 'light' | 'dark' | 'system';
+
+interface SettingsStore {
+  // 通用设置
+  language: Language;
+
+  // 主题设置
+  themeMode: ThemeMode;
+  terminalBgColor: string; // HSL 格式：如 "0 0% 12%"
+  terminalTextColor: string; // HSL 格式：如 "0 0% 88%"
+  terminalOpacity: number; // 终端背景不透明度 0-100（背景图模式下生效）
+  backgroundImage: string; // 背景图路径（空字符串表示无背景图）
+  backgroundOpacity: number; // 背景图不透明度 0-100
+
+  // 文件分包配置
+  filePacketSize: number; // 单包字节数上限，0 表示不分包
+  filePacketInterval: number; // 包间隔毫秒数
+
+  // 接收组包配置
+  serialFrameTimeout: number; // 字符间超时(ms)，相邻字节间隔超过该值视为一包结束
+
+  // 终端显示配置
+  terminalFontSize: number; // 字号（px），范围 10-20
+  terminalLineHeight: number; // 行高（倍数），范围 1.0-2.0
+  terminalMaxMessages: number; // 日志上限，范围 100-50000
+  terminalLogPath: string; // 日志保存路径，超限时自动保存
+
+  // 测试用例配置
+  testCaseAutoSave: boolean; // 用例改动自动保存（默认 false）
+
+  // Actions
+  setLanguage: (lang: Language) => void;
+  setThemeMode: (mode: ThemeMode) => void;
+  setTerminalBgColor: (color: string) => void;
+  setTerminalTextColor: (color: string) => void;
+  setTerminalOpacity: (opacity: number) => void;
+  setBackgroundImage: (path: string) => void;
+  setBackgroundOpacity: (opacity: number) => void;
+  setFilePacketSize: (size: number) => void;
+  setFilePacketInterval: (interval: number) => void;
+  setSerialFrameTimeout: (timeout: number) => void;
+  setTerminalFontSize: (size: number) => void;
+  setTerminalLineHeight: (height: number) => void;
+  setTerminalMaxMessages: (max: number) => void;
+  setTerminalLogPath: (path: string) => void;
+  setTestCaseAutoSave: (enabled: boolean) => void;
+}
+
+export const useSettingsStore = create<SettingsStore>()(
+  persist(
+    (set) => ({
+      // 通用默认值（对外发布默认英文，客户可自行切换中文）
+      language: 'en-US',
+
+      // 主题默认值
+      themeMode: 'system',
+      terminalBgColor: '0 0% 12%', // 默认深黑
+      terminalTextColor: '0 0% 88%', // 默认浅色文字
+      terminalOpacity: 80, // 终端背景默认不透明度 80%（背景图模式下微透）
+      backgroundImage: '', // 默认无背景图
+      backgroundOpacity: 15, // 默认不透明度 15%（淡背景，不干扰阅读）
+
+      // 默认值：每包 256 字节，包间隔 1ms
+      filePacketSize: 256,
+      filePacketInterval: 1,
+      // 默认帧超时 20ms：串口逐字节回传时，静默超过 20ms 判定为一包
+      serialFrameTimeout: 20,
+      // 终端显示默认值
+      terminalFontSize: 12,
+      terminalLineHeight: 1.2, // 行距默认 1.2（更紧凑，显示更多日志）
+      terminalMaxMessages: 10000,
+      // 空字符串表示使用默认路径（软件执行路径下的 logs/）
+      terminalLogPath: "",
+      // 测试用例默认不自动保存
+      testCaseAutoSave: false,
+
+      setLanguage: (lang) => set({ language: lang }),
+      setThemeMode: (mode) => set({ themeMode: mode }),
+      setTerminalBgColor: (color) => set({ terminalBgColor: color }),
+      setTerminalTextColor: (color) => set({ terminalTextColor: color }),
+      setTerminalOpacity: (opacity) => set({ terminalOpacity: opacity }),
+      setBackgroundImage: (path) => set({ backgroundImage: path }),
+      setBackgroundOpacity: (opacity) => set({ backgroundOpacity: opacity }),
+      setFilePacketSize: (size) => set({ filePacketSize: size }),
+      setFilePacketInterval: (interval) => set({ filePacketInterval: interval }),
+      setSerialFrameTimeout: (timeout) => set({ serialFrameTimeout: timeout }),
+      setTerminalFontSize: (size) => set({ terminalFontSize: size }),
+      setTerminalLineHeight: (height) => set({ terminalLineHeight: height }),
+      setTerminalMaxMessages: (max) => set({ terminalMaxMessages: max }),
+      setTerminalLogPath: (path) => set({ terminalLogPath: path }),
+      setTestCaseAutoSave: (enabled) => set({ testCaseAutoSave: enabled }),
+    }),
+    {
+      name: 'serial-pilot-settings', // localStorage key
+      // 自定义 storage，捕获 localStorage 异常（背景图 base64 过大导致超限）
+      storage: {
+        getItem: (name) => {
+          try {
+            const str = localStorage.getItem(name);
+            return str ? JSON.parse(str) : null;
+          } catch (err) {
+            console.error('Failed to load settings from localStorage:', err);
+            // 超限时清空配置，使用默认值
+            localStorage.removeItem(name);
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch (err) {
+            console.error('Failed to save settings to localStorage:', err);
+            // QuotaExceededError：提示用户背景图过大
+            if (err instanceof Error && err.name === 'QuotaExceededError') {
+              console.warn('localStorage quota exceeded, likely due to large background image');
+            }
+          }
+        },
+        removeItem: (name) => {
+          localStorage.removeItem(name);
+        },
+      },
+    }
+  )
+);
+
+// 终端整体配色预设（一键切换背景+文字）
+export const TERMINAL_THEME_PRESETS = [
+  { name: 'Classic Dark', bg: '0 0% 12%', text: '0 0% 88%' },
+  { name: 'White Terminal', bg: '0 0% 98%', text: '0 0% 15%' },
+  { name: 'Deep Blue', bg: '220 13% 18%', text: '120 60% 70%' },
+] as const;
+
+// 终端背景色预设（不带name，纯色块）
+export const TERMINAL_BG_PRESETS = [
+  '0 0% 12%',    // 深黑
+  '220 13% 18%', // 深蓝
+  '240 2% 20%',  // 暗灰
+  '0 0% 8%',     // 炭黑
+  '150 10% 15%', // 墨绿
+] as const;
+
+// 终端文字色预设
+export const TERMINAL_TEXT_PRESETS = [
+  '0 0% 88%',    // 浅白
+  '0 0% 15%',    // 深黑（白色终端用）
+  '120 60% 70%', // 浅绿
+  '50 100% 70%', // 金黄
+] as const;

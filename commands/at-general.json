@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "name": "General Commands",
+  "commands": [
+    { "command": "AT", "category": "general", "description": "Test AT communication" },
+    { "command": "ATE0", "category": "general", "description": "Disable command echo" },
+    { "command": "ATE1", "category": "general", "description": "Enable command echo" },
+    { "command": "AT&F", "category": "general", "description": "Restore factory settings" },
+    { "command": "AT&W", "category": "general", "description": "Save current configuration" },
+    { "command": "ATI", "category": "general", "description": "Display product identification" },
+    { "command": "AT+CFUN", "category": "general", "description": "Set phone functionality level", "example": "AT+CFUN=1" },
+    { "command": "AT+CRESET", "category": "general", "description": "Reset module" }
+  ]
+}
