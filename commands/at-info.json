@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "name": "Information Query",
+  "commands": [
+    { "command": "AT+CGMI", "category": "info", "description": "Query manufacturer identification" },
+    { "command": "AT+CGMM", "category": "info", "description": "Query model identification" },
+    { "command": "AT+CGMR", "category": "info", "description": "Query firmware version" },
+    { "command": "AT+CGSN", "category": "info", "description": "Query IMEI number" },
+    { "command": "AT+GMR", "category": "info", "description": "Query software version" },
+    { "command": "AT+CSQ", "category": "info", "description": "Query signal strength" },
+    { "command": "AT+CCLK", "category": "info", "description": "Query/set clock", "example": "AT+CCLK=\"24/01/01,12:00:00+08\"" }
+  ]
+}

@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: npm run tauri build
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.zip
+            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+          generate_release_notes: true
+          body: |
+            ## 下载与安装 / Download & Install
+
+            Windows 用户请下载 `.msi` 安装包。
+
+            **注意**: 当前版本未配置代码签名证书，首次安装时 Windows SmartScreen 会弹出警告。请点击「更多信息」→「仍要运行」继续安装。
+
+            ---
+
+            Download the `.msi` installer for Windows.
+
+            **Note**: This release is not code-signed yet. Windows SmartScreen will show a warning on first install. Click "More info" → "Run anyway" to proceed.
+
+      - name: Generate and upload latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 获取最新 release 信息生成 latest.json
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v',''
+
+          # 查找 .msi.zip 和 .sig 文件
+          $msiZip = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi.zip" | Select-Object -First 1
+          $sig = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi.zip.sig" | Select-Object -First 1
+
+          if (-not $msiZip -or -not $sig) {
+            Write-Error "未找到 .msi.zip 或 .sig 文件"
+            exit 1
+          }
+
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$($msiZip.Name)"
+          $sigContent = Get-Content $sig.FullName -Raw
+
+          # 获取 release notes
+          $releaseInfo = gh release view $tag --json body --jq .body
+
+          # 生成 latest.json
+          $latestJson = @{
+            version = $version
+            notes = $releaseInfo
+            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $sigContent.Trim()
+                url = $downloadUrl
+              }
+            }
+          } | ConvertTo-Json -Depth 10
+
+          $latestJson | Out-File -FilePath "latest.json" -Encoding utf8
+
+          # 上传 latest.json 到当前 release
+          gh release upload $tag latest.json --clobber

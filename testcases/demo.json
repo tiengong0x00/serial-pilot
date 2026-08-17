@@ -1,0 +1,152 @@
+{
+  "version": "2.0",
+  "createdAt": "2026-08-13T00:00:00.000Z",
+  "rootCase": {
+    "id": "case_demo_root",
+    "name": "Module Power-On Self-Test Example",
+    "description": "Reference case: demonstrates standard commands, variable extraction, URC guard, URC wait and nested sub-cases",
+    "targetPort": "P1",
+    "runCount": 1,
+    "onFailure": "abort",
+    "maxSelfRetries": 1,
+    "selected": true,
+    "isExpanded": true,
+    "status": "pending",
+    "children": [
+      {
+        "id": "cmd_demo_at",
+        "type": "command",
+        "name": "AT Handshake Test",
+        "description": "Send AT command with standard validation (pass if response contains OK)",
+        "content": "AT",
+        "dataFormat": "utf8",
+        "lineEnding": "crlf",
+        "preDelay": 0,
+        "postDelay": 100,
+        "selected": true,
+        "status": "pending",
+        "repeatCount": 3,
+        "successThreshold": 1,
+        "stopWhenReached": true,
+        "attemptInterval": 500,
+        "timeout": 2000,
+        "validation": "standard",
+        "validationPattern": "",
+        "validationMode": "contains",
+        "onFailure": "abort"
+      },
+      {
+        "id": "cmd_demo_cgmr",
+        "type": "command",
+        "name": "Query Firmware Version",
+        "description": "Custom regex validation and extract version to variable fwVersion",
+        "content": "AT+CGMR",
+        "dataFormat": "utf8",
+        "lineEnding": "crlf",
+        "preDelay": 0,
+        "postDelay": 0,
+        "selected": true,
+        "status": "pending",
+        "repeatCount": 1,
+        "successThreshold": 1,
+        "stopWhenReached": true,
+        "attemptInterval": 1000,
+        "timeout": 3000,
+        "validation": "custom",
+        "validationPattern": "\\+CGMR:",
+        "validationMode": "regex",
+        "extractConfig": {
+          "enabled": true,
+          "parseType": "regex",
+          "parsePattern": "\\+CGMR:\\s*(\\S+)",
+          "parameterMap": {
+            "fwVersion": "1"
+          }
+        },
+        "onFailure": "continue"
+      },
+      {
+        "id": "case_demo_network",
+        "name": "Network Registration Flow",
+        "description": "Sub-case: attach background guard to monitor disconnection, then query signal and wait for registration URC",
+        "runCount": 1,
+        "onFailure": "end-round",
+        "maxSelfRetries": 2,
+        "selected": true,
+        "isExpanded": true,
+        "status": "pending",
+        "children": [
+          {
+            "id": "cmd_demo_guard_dereg",
+            "type": "urc-guard",
+            "name": "Disconnection Guard",
+            "description": "Background monitor for +CREG: 0, restart round on match; scoped to this sub-case, continuous monitoring",
+            "content": "",
+            "dataFormat": "utf8",
+            "lineEnding": "none",
+            "preDelay": 0,
+            "postDelay": 0,
+            "selected": true,
+            "status": "pending",
+            "pattern": "+CREG: 0",
+            "matchMode": "contains",
+            "scope": "case",
+            "action": "restart-round",
+            "rearm": "continuous"
+          },
+          {
+            "id": "cmd_demo_csq",
+            "type": "command",
+            "name": "Query Signal Quality",
+            "content": "AT+CSQ",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "preDelay": 200,
+            "postDelay": 0,
+            "selected": true,
+            "status": "pending",
+            "repeatCount": 1,
+            "successThreshold": 1,
+            "stopWhenReached": true,
+            "attemptInterval": 1000,
+            "timeout": 2000,
+            "validation": "custom",
+            "validationPattern": "\\+CSQ:\\s*([0-9]+)",
+            "validationMode": "regex",
+            "extractConfig": {
+              "enabled": true,
+              "parseType": "regex",
+              "parsePattern": "\\+CSQ:\\s*([0-9]+),",
+              "parameterMap": {
+                "rssi": "1"
+              }
+            },
+            "onFailure": "continue"
+          },
+          {
+            "id": "cmd_demo_wait_creg",
+            "type": "command",
+            "name": "Wait for Network Registration",
+            "description": "Wait for async response +CREG: 1 or 5 (registered)",
+            "content": "AT+CREG=1",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "preDelay": 0,
+            "postDelay": 0,
+            "selected": true,
+            "status": "pending",
+            "repeatCount": 1,
+            "successThreshold": 1,
+            "stopWhenReached": true,
+            "attemptInterval": 1000,
+            "timeout": 15000,
+            "validation": "custom",
+            "validationPattern": "\\+CREG:\\s*[15]",
+            "validationMode": "regex",
+            "onFailure": "end-round"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,415 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Enhanced Serial Tool Design System - Modern professional interface */
+
+@layer base {
+  :root {
+    /* Modern light theme with enhanced contrast */
+    --background: 0 0% 100%;
+    --foreground: 224 71% 4%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+
+    /* Professional blue accent system */
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --primary-glow: 221 83% 63%;
+    --primary-soft: 221 83% 53%;
+
+    /* Enhanced panel colors */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 84% 5%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 84% 5%;
+
+    /* Enhanced status colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* VS Code terminal theme */
+    --terminal-bg: 0 0% 12%;        /* Match main background */
+    --terminal-text: 0 0% 88%;      /* Clean white text */
+    --terminal-sent: 142 69% 58%;   /* Green for sent data */
+    --terminal-error: 0 73% 67%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.5rem;
+
+    /* Simplified gradients - VS Code style clean backgrounds */
+    --gradient-primary: hsl(var(--primary));
+    --gradient-secondary: hsl(var(--secondary));
+    --gradient-terminal: hsl(var(--terminal-bg));
+    --gradient-panel: hsl(var(--card));
+
+    /* Enhanced shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(220 43% 11% / 0.05);
+    --shadow: 0 1px 3px 0 hsl(220 43% 11% / 0.1), 0 1px 2px -1px hsl(220 43% 11% / 0.1);
+    --shadow-md: 0 4px 6px -1px hsl(220 43% 11% / 0.1), 0 2px 4px -2px hsl(220 43% 11% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(220 43% 11% / 0.1), 0 4px 6px -4px hsl(220 43% 11% / 0.1);
+    --shadow-primary: 0 10px 25px -5px hsl(var(--primary) / 0.25);
+    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.35);
+
+    /* Enhanced animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* VS Code inspired dark theme - clean and professional */
+    --background: 0 0% 12%;          /* #1e1e1e - main editor background */
+    --foreground: 0 0% 88%;          /* #e1e1e1 - main text */
+
+    --card: 240 3% 15%;              /* #252526 - panel backgrounds */
+    --card-foreground: 0 0% 88%;
+
+    --popover: 240 2% 20%;           /* #323233 - dropdown/modal backgrounds */
+    --popover-foreground: 0 0% 88%;
+
+    --primary: 207 100% 54%;         /* #0078d4 - VS Code blue accent */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 207 100% 64%;
+
+    --secondary: 240 3% 18%;         /* #2d2d30 - secondary panels */
+    --secondary-foreground: 0 0% 88%;
+
+    --muted: 240 2% 20%;             /* #323233 - muted backgrounds */
+    --muted-foreground: 0 0% 63%;    /* #a1a1a1 - muted text */
+
+    --accent: 240 3% 18%;            /* #2d2d30 - accent backgrounds */
+    --accent-foreground: 0 0% 88%;
+
+    --success: 142 69% 48%;          /* #4caf50 - success green */
+    --success-foreground: 0 0% 100%;
+    --warning: 45 100% 51%;          /* #ffab00 - warning amber */
+    --warning-foreground: 0 0% 0%;
+    --destructive: 0 73% 57%;        /* #e53e3e - error red */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 3% 25%;            /* #3e3e42 - borders */
+    --input: 240 3% 25%;             /* #3e3e42 - input backgrounds */
+    --ring: 207 100% 54%;            /* #0078d4 - focus ring */
+    
+    /* Sidebar colors matching VS Code file explorer */
+    --sidebar-background: 240 3% 15%; /* #252526 - sidebar background */
+    --sidebar-foreground: 0 0% 80%;   /* #cccccc - sidebar text */
+    --sidebar-primary: 207 100% 54%;  /* #0078d4 - active items */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3% 20%;     /* #323233 - hover states */
+    --sidebar-accent-foreground: 0 0% 88%;
+    --sidebar-border: 240 3% 25%;     /* #3e3e42 - sidebar borders */
+    --sidebar-ring: 207 100% 54%;
+  }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: var(--app-font-size, 14px);
+    overflow: hidden;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Enhanced dark mode */
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  /* Enhanced status indicators */
+  .status-connected {
+    @apply text-success;
+    animation: pulse-success 2s infinite;
+  }
+
+  .status-disconnected {
+    @apply text-muted-foreground;
+  }
+
+  .status-connecting {
+    @apply text-warning;
+    animation: pulse-warning 1.5s infinite;
+  }
+
+  /* Enhanced terminal styles - VS Code inspired clean look */
+  .terminal-output {
+    @apply font-mono text-sm;
+    background: hsl(var(--terminal-bg));
+    color: hsl(var(--terminal-text));
+    border-radius: 0.25rem;
+    border: 1px solid hsl(var(--border));
+  }
+
+  .terminal-sent {
+    color: hsl(var(--terminal-sent));
+    font-weight: 500;
+  }
+
+  .terminal-error {
+    color: hsl(var(--terminal-error));
+    font-weight: 500;
+  }
+
+  /* Clean button variants - VS Code inspired */
+  .btn-connect {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    transition: var(--transition-fast);
+    border: 0;
+    border-radius: 0.25rem;
+  }
+
+  .btn-connect:hover {
+    background: hsl(var(--primary-glow));
+  }
+
+  .btn-connect:active {
+    background: hsl(var(--primary));
+    transition: var(--transition-fast);
+  }
+
+  .btn-secondary {
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    transition: var(--transition-fast);
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.25rem;
+  }
+
+  .btn-secondary:hover {
+    background: hsl(var(--secondary) / 0.8);
+  }
+
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Clean panel styles - VS Code inspired */
+  .control-panel {
+    background: hsl(var(--card));
+    border-right: 1px solid hsl(var(--border));
+    border-radius: 0;
+  }
+
+  .panel-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    transition: var(--transition-fast);
+    border-radius: 0.25rem;
+  }
+
+  .panel-card:hover {
+    background: hsl(var(--accent));
+  }
+
+  /* Data flow indicator */
+  .data-flow {
+    @apply inline-block w-2 h-2 rounded-full;
+    animation: pulse-data 0.8s infinite;
+  }
+
+  .data-flow.tx {
+    background: hsl(var(--terminal-sent));
+  }
+
+  .data-flow.rx {
+    background: hsl(var(--primary));
+  }
+
+  /* Enhanced scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.4);
+    border-radius: 3px;
+    transition: var(--transition-fast);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.7);
+  }
+
+  /* Clean header style - VS Code inspired */
+  .app-header {
+    background: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  /* 背景图激活时让容器透明，显示底层背景 */
+  .bg-image-active .app-header,
+  .bg-image-active .control-panel {
+    background: transparent;
+  }
+
+  /* 背景图激活时让表单控件和语义背景默认完全透明，悬浮时显示半透明背景 */
+  /* 用属性选择器匹配 Tailwind 透明度修饰符变体（如 bg-secondary/50、bg-muted/30） */
+  .bg-image-active input[type="text"],
+  .bg-image-active input[type="number"],
+  .bg-image-active input[type="file"],
+  .bg-image-active textarea,
+  .bg-image-active select,
+  .bg-image-active [class*="bg-background"],
+  .bg-image-active [class*="bg-secondary"],
+  .bg-image-active [class*="bg-muted"] {
+    background-color: transparent !important;
+  }
+
+  /* 悬浮或聚焦时显示半透明背景，提升可识别性 */
+  .bg-image-active input[type="text"]:hover,
+  .bg-image-active input[type="text"]:focus,
+  .bg-image-active input[type="number"]:hover,
+  .bg-image-active input[type="number"]:focus,
+  .bg-image-active textarea:hover,
+  .bg-image-active textarea:focus,
+  .bg-image-active select:hover,
+  .bg-image-active select:focus,
+  .bg-image-active [class*="bg-background"]:hover,
+  .bg-image-active [class*="bg-secondary"]:hover,
+  .bg-image-active [class*="bg-muted"]:hover {
+    background-color: hsl(var(--background) / 0.5) !important;
+  }
+
+  /* 遮罩层用单独类名，不受上述规则影响 */
+  .bg-mask-layer {
+    background: hsl(var(--background));
+  }
+
+  /* 按钮和高亮元素保持不透明（避免影响可读性） */
+  .bg-image-active button,
+  .bg-image-active .bg-primary,
+  .bg-image-active .bg-accent,
+  .bg-image-active .bg-destructive {
+    /* 继承原有背景，不覆盖 */
+  }
+
+  /* Clean tab styling - VS Code inspired */
+  .tab-trigger-enhanced {
+    transition: var(--transition-fast);
+    border-radius: 0.25rem;
+  }
+
+  .tab-trigger-enhanced:hover:not(.tab-active) {
+    background: hsl(var(--accent));
+  }
+
+  .tab-trigger-enhanced[data-state="active"] {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+}
+
+@layer utilities {
+  /* Enhanced animation keyframes */
+  @keyframes pulse-success {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  @keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  @keyframes pulse-data {
+    0% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.4; transform: scale(0.9); }
+  }
+
+  @keyframes slide-up {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Enhanced utility classes */
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+
+  .gradient-panel {
+    background: var(--gradient-panel);
+  }
+
+  .shadow-primary {
+    box-shadow: var(--shadow-primary);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+
+  .transition-fast {
+    transition: var(--transition-fast);
+  }
+
+  .transition-spring {
+    transition: var(--transition-spring);
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+}

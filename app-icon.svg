@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 图标用蓝色渐变 -->
+  <defs>
+    <linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角矩形背景：白色，带极淡边框 -->
+  <rect x="4" y="4" width="1016" height="1016" rx="180" fill="#ffffff" stroke="#e5e7eb" stroke-width="8"/>
+
+  <!-- Terminal 图标：提示符 > 和下划线 _（放大 1.6 倍并居中补偿） -->
+  <g transform="translate(480, 504) scale(1.6)">
+    <!-- 提示符 > -->
+    <path d="M -180 -100 L -80 0 L -180 100 L -140 100 L -20 0 L -140 -100 Z" fill="url(#fg)" stroke="url(#fg)" stroke-width="8" stroke-linejoin="round"/>
+
+    <!-- 下划线 _ -->
+    <rect x="20" y="70" width="200" height="40" rx="8" fill="url(#fg)"/>
+  </g>
+</svg>
