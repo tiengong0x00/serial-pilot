@@ -15,6 +15,12 @@ interface SettingsStore {
   terminalOpacity: number; // 终端背景不透明度 0-100（背景图模式下生效）
   backgroundImage: string; // 背景图路径（空字符串表示无背景图）
   backgroundOpacity: number; // 背景图不透明度 0-100
+  backgroundPositionX: number; // 背景图水平偏移百分比 -50~50（0 为居中）
+  backgroundPositionY: number; // 背景图垂直偏移百分比 -50~50（0 为居中）
+  backgroundScale: number; // 背景图缩放百分比 50~300（cover 模式下忽略）
+  backgroundCover: boolean; // true=填满容器(CSS cover)，false=按 backgroundScale 百分比缩放
+  backgroundMaxResolution: number; // 背景图压缩分辨率上限(宽度 px)，1920|2560|3840，超过按比例缩小
+  backgroundQuality: number; // 背景图 JPEG 压缩质量 0.5~1.0（0.8 为平衡点）
 
   // 文件分包配置
   filePacketSize: number; // 单包字节数上限，0 表示不分包
@@ -32,6 +38,9 @@ interface SettingsStore {
   // 测试用例配置
   testCaseAutoSave: boolean; // 用例改动自动保存（默认 false）
 
+  // 发送配置
+  enterToSend: boolean; // 手动发送框：回车键是否直接发送（默认 true）
+
   // Actions
   setLanguage: (lang: Language) => void;
   setThemeMode: (mode: ThemeMode) => void;
@@ -40,6 +49,12 @@ interface SettingsStore {
   setTerminalOpacity: (opacity: number) => void;
   setBackgroundImage: (path: string) => void;
   setBackgroundOpacity: (opacity: number) => void;
+  setBackgroundPosition: (x: number, y: number) => void;
+  setBackgroundScale: (scale: number) => void;
+  setBackgroundCover: (enabled: boolean) => void;
+  setBackgroundMaxResolution: (px: number) => void;
+  setBackgroundQuality: (quality: number) => void;
+  resetBackgroundTransform: () => void;
   setFilePacketSize: (size: number) => void;
   setFilePacketInterval: (interval: number) => void;
   setSerialFrameTimeout: (timeout: number) => void;
@@ -48,6 +63,7 @@ interface SettingsStore {
   setTerminalMaxMessages: (max: number) => void;
   setTerminalLogPath: (path: string) => void;
   setTestCaseAutoSave: (enabled: boolean) => void;
+  setEnterToSend: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -63,6 +79,12 @@ export const useSettingsStore = create<SettingsStore>()(
       terminalOpacity: 80, // 终端背景默认不透明度 80%（背景图模式下微透）
       backgroundImage: '', // 默认无背景图
       backgroundOpacity: 15, // 默认不透明度 15%（淡背景，不干扰阅读）
+      backgroundPositionX: 0, // 默认水平居中
+      backgroundPositionY: 0, // 默认垂直居中
+      backgroundScale: 100, // 默认 100% 缩放
+      backgroundCover: true, // 默认填满容器
+      backgroundMaxResolution: 1920, // 默认 1920px 宽度上限（1080p，稳妥）
+      backgroundQuality: 0.8, // 默认质量 0.8（平衡清晰度与体积）
 
       // 默认值：每包 256 字节，包间隔 1ms
       filePacketSize: 256,
@@ -77,6 +99,8 @@ export const useSettingsStore = create<SettingsStore>()(
       terminalLogPath: "",
       // 测试用例默认不自动保存
       testCaseAutoSave: false,
+      // 手动发送框默认回车即发送
+      enterToSend: true,
 
       setLanguage: (lang) => set({ language: lang }),
       setThemeMode: (mode) => set({ themeMode: mode }),
@@ -85,6 +109,12 @@ export const useSettingsStore = create<SettingsStore>()(
       setTerminalOpacity: (opacity) => set({ terminalOpacity: opacity }),
       setBackgroundImage: (path) => set({ backgroundImage: path }),
       setBackgroundOpacity: (opacity) => set({ backgroundOpacity: opacity }),
+      setBackgroundPosition: (x, y) => set({ backgroundPositionX: x, backgroundPositionY: y }),
+      setBackgroundScale: (scale) => set({ backgroundScale: scale, backgroundCover: false }), // 手动缩放时退出 cover 模式
+      setBackgroundCover: (enabled) => set({ backgroundCover: enabled }),
+      setBackgroundMaxResolution: (px) => set({ backgroundMaxResolution: px }),
+      setBackgroundQuality: (quality) => set({ backgroundQuality: quality }),
+      resetBackgroundTransform: () => set({ backgroundPositionX: 0, backgroundPositionY: 0, backgroundScale: 100, backgroundCover: true }),
       setFilePacketSize: (size) => set({ filePacketSize: size }),
       setFilePacketInterval: (interval) => set({ filePacketInterval: interval }),
       setSerialFrameTimeout: (timeout) => set({ serialFrameTimeout: timeout }),
@@ -93,6 +123,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setTerminalMaxMessages: (max) => set({ terminalMaxMessages: max }),
       setTerminalLogPath: (path) => set({ terminalLogPath: path }),
       setTestCaseAutoSave: (enabled) => set({ testCaseAutoSave: enabled }),
+      setEnterToSend: (enabled) => set({ enterToSend: enabled }),
     }),
     {
       name: 'serial-pilot-settings', // localStorage key

@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Setup Rust
@@ -27,10 +27,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Tauri app
+      - name: Build Tauri app (Release only)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: npm run tauri build
+
+      - name: List build artifacts
+        run: |
+          Write-Host "=== Listing build artifacts ==="
+          Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -Recurse
+          Get-ChildItem -Path "src-tauri/target/release" -Filter "*.sig" -Recurse
+          Write-Host "=== End of artifacts ==="
+
+      - name: Sign portable executable
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          # 使用 tauri signer 手动签名绿色版
+          $portableExe = "src-tauri/target/release/serial-pilot.exe"
+          if (Test-Path $portableExe) {
+            Write-Host "Signing portable executable..."
+            npm run tauri signer sign $portableExe -- -k "$env:TAURI_SIGNING_PRIVATE_KEY" -p ""
+            Write-Host "✓ Portable executable signed"
+
+            # 验证签名文件生成
+            if (Test-Path "$portableExe.sig") {
+              Write-Host "✓ Signature file created: $portableExe.sig"
+              Get-Content "$portableExe.sig"
+            } else {
+              Write-Error "Failed to create signature file"
+              exit 1
+            }
+          } else {
+            Write-Error "Portable executable not found"
+            exit 1
+          }
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -38,60 +69,87 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
+            src-tauri/target/release/serial-pilot.exe
+            src-tauri/target/release/serial-pilot.exe.sig
           generate_release_notes: true
-          body: |
-            ## 下载与安装 / Download & Install
-
-            Windows 用户请下载 `.msi` 安装包。
-
-            **注意**: 当前版本未配置代码签名证书，首次安装时 Windows SmartScreen 会弹出警告。请点击「更多信息」→「仍要运行」继续安装。
-
-            ---
-
-            Download the `.msi` installer for Windows.
-
-            **Note**: This release is not code-signed yet. Windows SmartScreen will show a warning on first install. Click "More info" → "Run anyway" to proceed.
 
       - name: Generate and upload latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取最新 release 信息生成 latest.json
+          # 获取最新 release 信息生成 latest.json（仅绿色版）
           $tag = "${{ github.ref_name }}"
           $version = $tag -replace '^v',''
 
-          # 查找 .msi.zip 和 .sig 文件
-          $msiZip = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi.zip" | Select-Object -First 1
-          $sig = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi.zip.sig" | Select-Object -First 1
+          # 获取上一个标签
+          $tags = git tag --sort=-version:refname
+          $currentIndex = $tags.IndexOf($tag)
+          $prevTag = if ($currentIndex -lt ($tags.Count - 1)) { $tags[$currentIndex + 1] } else { "" }
 
-          if (-not $msiZip -or -not $sig) {
-            Write-Error "未找到 .msi.zip 或 .sig 文件"
+          # 生成变更日志
+          $releaseInfo = ""
+          if ($prevTag) {
+            Write-Host "生成从 $prevTag 到 $tag 的变更日志"
+            $commits = git log "$prevTag..$tag" --pretty=format:"- %s" --no-merges
+            if ($commits) {
+              $releaseInfo = "## 更新内容`n`n$commits"
+            } else {
+              $releaseInfo = "## 更新内容`n`n- 初始版本"
+            }
+          } else {
+            Write-Host "这是第一个版本"
+            $commits = git log $tag --pretty=format:"- %s" --no-merges
+            if ($commits) {
+              $releaseInfo = "## 更新内容`n`n$commits"
+            } else {
+              $releaseInfo = "## 更新内容`n`n- 初始版本"
+            }
+          }
+
+          if ([string]::IsNullOrWhiteSpace($releaseInfo)) {
+            $releaseInfo = "Version $version"
+          }
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
+          # 生成绿色版 latest.json
+          $portable = Get-ChildItem -Path "src-tauri/target/release" -Filter "serial-pilot.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if ($portable) {
+            $portableUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/serial-pilot.exe"
+
+            # 查找对应的 .sig 签名文件并读取为 Base64
+            $sigFile = Get-ChildItem -Path "src-tauri/target/release" -Filter "serial-pilot.exe.sig" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $signature = ""
+            if ($sigFile) {
+              # 读取签名文件内容（minisign 格式是文本）
+              $sigContent = Get-Content $sigFile.FullName -Raw -Encoding UTF8
+              $signature = $sigContent.Trim()
+              Write-Host "✓ Found signature file: $($sigFile.Name)"
+              Write-Host "Signature content length: $($signature.Length)"
+            } else {
+              Write-Host "⚠ Warning: No signature file found, update may not work"
+            }
+
+            $latestJson = @{
+              version = $version
+              notes = [string]$releaseInfo
+              pub_date = $pubDate
+              platforms = @{
+                "windows-x86_64" = @{
+                  signature = $signature
+                  url = $portableUrl
+                }
+              }
+            }
+
+            $json = $latestJson | ConvertTo-Json -Depth 10 -Compress:$false
+            [System.IO.File]::WriteAllLines("latest.json", $json, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "✓ Generated latest.json for portable version"
+
+            # 上传 latest.json 到 release
+            gh release upload $tag latest.json --clobber
+          } else {
+            Write-Error "未找到绿色版 serial-pilot.exe"
             exit 1
           }
 
-          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$($msiZip.Name)"
-          $sigContent = Get-Content $sig.FullName -Raw
-
-          # 获取 release notes
-          $releaseInfo = gh release view $tag --json body --jq .body
-
-          # 生成 latest.json
-          $latestJson = @{
-            version = $version
-            notes = $releaseInfo
-            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = $sigContent.Trim()
-                url = $downloadUrl
-              }
-            }
-          } | ConvertTo-Json -Depth 10
-
-          $latestJson | Out-File -FilePath "latest.json" -Encoding utf8
-
-          # 上传 latest.json 到当前 release
-          gh release upload $tag latest.json --clobber

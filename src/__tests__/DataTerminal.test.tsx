@@ -47,7 +47,7 @@ describe('DataTerminal 组件测试', () => {
   it('应渲染基本 UI 元素', () => {
     render(<DataTerminal />);
 
-    expect(screen.getByPlaceholderText('输入命令')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /发送/ })).toBeInTheDocument();
     expect(screen.getByText('文本')).toBeInTheDocument();
     expect(screen.getByText('HEX')).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe('DataTerminal 组件测试', () => {
     render(<DataTerminal />);
 
     const sendBtn = screen.getByRole('button', { name: /发送/ });
-    const input = screen.getByPlaceholderText('输入命令');
+    const input = screen.getByRole('textbox');
 
     // 空输入时按钮禁用
     expect(sendBtn).toBeDisabled();
@@ -93,7 +93,7 @@ describe('DataTerminal 组件测试', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('输入命令');
+    const input = screen.getByRole('textbox');
     const sendBtn = screen.getByRole('button', { name: /发送/ });
 
     // 用户输入
@@ -143,7 +143,7 @@ describe('DataTerminal 组件测试', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('输入命令');
+    const input = screen.getByRole('textbox');
     // 使用非 AT 开头的命令，避免触发自动完成
     await user.type(input, 'HELLO{Enter}');
 

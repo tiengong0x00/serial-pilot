@@ -40,6 +40,14 @@
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Test execution status colors */
+    --status-idle: 220 9% 46%;          /* 灰色 - 待执行 */
+    --status-running: 221 83% 53%;      /* 蓝色 - 运行中（复用primary） */
+    --status-success: 142 71% 45%;      /* 绿色 - 成功（复用success） */
+    --status-error: 0 84% 60%;          /* 红色 - 失败（复用destructive） */
+    --status-timeout: 38 92% 50%;       /* 橙色 - 超时（复用warning） */
+    --status-skipped: 220 14% 71%;      /* 浅灰 - 跳过 */
+
     /* VS Code terminal theme */
     --terminal-bg: 0 0% 12%;        /* Match main background */
     --terminal-text: 0 0% 88%;      /* Clean white text */
@@ -111,6 +119,14 @@
     --warning-foreground: 0 0% 0%;
     --destructive: 0 73% 57%;        /* #e53e3e - error red */
     --destructive-foreground: 0 0% 100%;
+
+    /* Test execution status colors - dark theme (提亮以适配深色背景) */
+    --status-idle: 0 0% 63%;            /* 灰色 - 待执行 */
+    --status-running: 207 100% 60%;     /* 蓝色 - 运行中 */
+    --status-success: 142 69% 55%;      /* 绿色 - 成功 */
+    --status-error: 0 73% 63%;          /* 红色 - 失败 */
+    --status-timeout: 45 100% 58%;      /* 橙色 - 超时 */
+    --status-skipped: 240 3% 45%;       /* 浅灰 - 跳过 */
 
     --border: 240 3% 25%;            /* #3e3e42 - borders */
     --input: 240 3% 25%;             /* #3e3e42 - input backgrounds */
@@ -281,10 +297,43 @@
     border-bottom: 1px solid hsl(var(--border));
   }
 
-  /* 背景图激活时让容器透明，显示底层背景 */
+  /* 背景图模式：容器透明显示背景，不干涉文字颜色（交由主题语义类处理） */
   .bg-image-active .app-header,
   .bg-image-active .control-panel {
     background: transparent;
+  }
+
+  /* 背景图激活时弱化边框和分隔线，消除刺眼的白色线条 */
+  /* 容器主边框（面板右边框、头部底边框）降至极淡 */
+  .bg-image-active .app-header {
+    border-bottom-color: hsl(var(--border) / 0.15);
+  }
+  .bg-image-active .control-panel {
+    border-right-color: hsl(var(--border) / 0.15);
+  }
+  /* 通用 border 工具类分隔线弱化（含 border-border/50、border-border/30 等变体） */
+  .bg-image-active [class*="border-b"],
+  .bg-image-active [class*="border-t"],
+  .bg-image-active [class*="border-r"],
+  .bg-image-active [class*="border-l"],
+  .bg-image-active [class*="border-border"] {
+    border-color: hsl(var(--border) / 0.15) !important;
+  }
+  /* 面板拖动手柄（resize handle）弱化 */
+  .bg-image-active [data-panel-resize-handle-id],
+  .bg-image-active [role="separator"] {
+    background-color: hsl(var(--border) / 0.15) !important;
+  }
+  /* 输入框、下拉框等控件边框保留但降低对比，聚焦时恢复 */
+  .bg-image-active input,
+  .bg-image-active textarea,
+  .bg-image-active select {
+    border-color: hsl(var(--border) / 0.3);
+  }
+  .bg-image-active input:focus,
+  .bg-image-active textarea:focus,
+  .bg-image-active select:focus {
+    border-color: hsl(var(--primary) / 0.6);
   }
 
   /* 背景图激活时让表单控件和语义背景默认完全透明，悬浮时显示半透明背景 */

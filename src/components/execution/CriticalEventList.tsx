@@ -58,7 +58,7 @@ const EventRow = ({
     return (
       <div className="text-sm">
         {timePrefix}{" "}
-        <span className="text-blue-600 dark:text-blue-400">🚀 {t("execution.eventStart")}</span>
+        <span className="text-status-running">🚀 {t("execution.eventStart")}</span>
         <div className="ml-6 mt-1 space-y-0.5 text-muted-foreground">
           <div>
             {t("execution.summaryRootCase")}: {event.start.rootCaseName}
@@ -96,7 +96,7 @@ const EventRow = ({
     return (
       <div className="text-sm">
         {timePrefix}{" "}
-        <span className="text-red-600 dark:text-red-400">
+        <span className="text-status-error">
           ❌ {t("execution.eventFailure", { round: f.roundIndex })}
         </span>
         <div className="ml-6 mt-1 space-y-0.5 text-xs text-muted-foreground">
@@ -126,7 +126,7 @@ const EventRow = ({
     return (
       <div className="text-sm">
         {timePrefix}{" "}
-        <span className="text-yellow-600 dark:text-yellow-400">
+        <span className="text-status-timeout">
           ⚠️ {t("execution.eventGuardTriggered", { pattern: event.guardTrigger.pattern })}
         </span>
       </div>
@@ -153,7 +153,7 @@ const EventRow = ({
     return (
       <div className="text-sm">
         {timePrefix}{" "}
-        <span className="text-green-600 dark:text-green-400">
+        <span className="text-status-success">
           ✅ {t("execution.eventComplete")}
         </span>
         <div className="ml-6 mt-1 space-y-1 text-xs">
@@ -175,7 +175,7 @@ const EventRow = ({
 
           {s.failureCount > 0 && (
             <>
-              <div className="mt-2 font-medium text-red-600 dark:text-red-400">
+              <div className="mt-2 font-medium text-status-error">
                 {t("execution.summaryFailureDetails")}
               </div>
               {s.failureList.map((fail, idx) => (

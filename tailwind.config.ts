@@ -62,6 +62,14 @@ export default {
 					DEFAULT: 'hsl(var(--warning))',
 					foreground: 'hsl(var(--warning-foreground))'
 				},
+				status: {
+					idle: 'hsl(var(--status-idle))',
+					running: 'hsl(var(--status-running))',
+					success: 'hsl(var(--status-success))',
+					error: 'hsl(var(--status-error))',
+					timeout: 'hsl(var(--status-timeout))',
+					skipped: 'hsl(var(--status-skipped))'
+				},
 				'terminal-bg': 'hsl(var(--terminal-bg))',
 				'terminal-text': 'hsl(var(--terminal-text))',
 				'terminal-sent': 'hsl(var(--terminal-sent))',
