@@ -435,6 +435,38 @@ async fn net_disconnect(
     state.network_manager.disconnect(&connection_id)
 }
 
+// ============================================================================
+// 更新检测相关
+// ============================================================================
+
+/// 检测当前运行的版本类型
+///
+/// 返回值：
+/// - "installer" - 安装版（在 Program Files 或 Program Files (x86) 下）
+/// - "portable" - 绿色版（在其他位置）
+/// - "debug" - Debug 版本（编译时 debug_assertions 开启）
+#[tauri::command]
+fn get_build_type() -> String {
+    // Debug 版本优先判断
+    #[cfg(debug_assertions)]
+    {
+        return "debug".to_string();
+    }
+
+    // Release 版本判断是否为安装版
+    #[cfg(not(debug_assertions))]
+    {
+        if let Ok(exe_path) = std::env::current_exe() {
+            let path_str = exe_path.to_string_lossy().to_lowercase();
+            // 检查是否在 Program Files 目录下
+            if path_str.contains("program files") {
+                return "installer".to_string();
+            }
+        }
+        "portable".to_string()
+    }
+}
+
 fn main() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -477,7 +509,8 @@ fn main() {
             udp_connect,
             udp_send,
             net_disconnect,
-            script::execute_script
+            script::execute_script,
+            get_build_type
         ])
         .run(tauri::generate_context!())
     {

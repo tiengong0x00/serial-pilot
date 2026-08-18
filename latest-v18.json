@@ -1,0 +1,11 @@
+{
+  "pub_date": "2026-08-18T14:00:42.795Z",
+  "notes": "## 更新内容\n\n- chore: bump version to 0.1.18",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/tiengong0x00/serial-pilot/releases/download/v0.1.18/serial-pilot.exe"
+    }
+  },
+  "version": "0.1.18"
+}

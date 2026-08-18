@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
@@ -229,7 +229,7 @@ const DataTerminal = () => {
   const { t } = useTranslation();
   const { messages, clearMessages, addMessage } = useTerminalStore();
   const { connectionStatus } = useSerialStore();
-  const { filePacketSize, filePacketInterval, terminalFontSize, terminalLineHeight, terminalMaxMessages } = useSettingsStore();
+  const { filePacketSize, filePacketInterval, terminalFontSize, terminalLineHeight, terminalMaxMessages, enterToSend } = useSettingsStore();
   const setMaxMessages = useTerminalStore((s) => s.setMaxMessages);
   const { writeSerialData } = useSerialCommands();
   const { success, error: notifyError } = useNotify();
@@ -571,7 +571,32 @@ const DataTerminal = () => {
 
   // AT 命令自动完成
   const autocomplete = useAtAutocomplete(input);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 输入框自适应高度：默认单行，随内容增长，超过上限出现滚动条
+  const INPUT_MAX_HEIGHT = 140; // 约 6 行，超过则内部滚动
+  const autoGrowInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    // 空输入时强制恢复单行高度，避免 scrollHeight 误判
+    if (!el.value.trim()) {
+      el.style.height = "36px"; // 对应 min-h-[36px]
+      el.style.overflowY = "hidden";
+      return;
+    }
+
+    // 先归零再按 scrollHeight 计算，避免累积增长；scrollHeight 含内边距
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, INPUT_MAX_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > INPUT_MAX_HEIGHT ? "auto" : "hidden";
+  }, []);
+
+  // input 内容变化时重算高度（含清空后恢复单行）
+  useLayoutEffect(() => {
+    autoGrowInput();
+  }, [input, autoGrowInput]);
 
   // 应用选中的候选命令到输入框
   const applyCandidate = useCallback(() => {
@@ -585,7 +610,7 @@ const DataTerminal = () => {
 
   // 输入框键盘处理：候选面板打开时拦截导航键
   const handleInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (autocomplete.isOpen) {
         switch (e.key) {
           case "ArrowDown":
@@ -613,9 +638,15 @@ const DataTerminal = () => {
             break;
         }
       }
-      if (e.key === "Enter" && !pendingFile) void handleSend();
+      // 回车发送：受设置开关控制
+      // 启用时：Enter 发送，Shift+Enter 或 Ctrl+Enter 换行
+      // 关闭时：Enter 换行，仅能点发送按钮
+      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && enterToSend && !pendingFile) {
+        e.preventDefault();
+        void handleSend();
+      }
     },
-    [autocomplete, applyCandidate, pendingFile, handleSend]
+    [autocomplete, applyCandidate, pendingFile, handleSend, enterToSend]
   );
 
   // 发送文件（分包）
@@ -983,12 +1014,18 @@ const DataTerminal = () => {
           </div>
         )}
 
-        <div className="flex items-center gap-2 relative">
-          <input
+        <div className="flex items-start gap-2 relative">
+          <textarea
             ref={inputRef}
-            type="text"
-            className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-            placeholder={pendingFile ? t("terminal.filePending") : t("terminal.placeholder")}
+            rows={1}
+            className="flex-1 min-h-[36px] px-2 py-1.5 text-sm leading-5 rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 resize-y"
+            placeholder={
+              pendingFile
+                ? t("terminal.filePending")
+                : enterToSend
+                ? t("terminal.placeholderEnterToSend")
+                : t("terminal.placeholder")
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -1009,7 +1046,7 @@ const DataTerminal = () => {
           <button
             type="button"
             className={cn(
-              "h-9 px-4 inline-flex items-center gap-2 text-sm font-medium rounded-md disabled:opacity-50",
+              "h-9 px-4 inline-flex items-center gap-2 text-sm font-medium rounded-md disabled:opacity-50 mt-0.5",
               isSending ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "btn-connect"
             )}
             onClick={() => {

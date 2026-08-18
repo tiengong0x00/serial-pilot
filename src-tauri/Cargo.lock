@@ -2977,7 +2977,7 @@ dependencies = [
 
 [[package]]
 name = "serial-pilot"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "include_dir",
  "serde",

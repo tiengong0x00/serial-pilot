@@ -30,7 +30,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('terminal.placeholder');
+    const input = screen.getByRole('textbox');
     await user.type(input, 'TEST');
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
@@ -52,7 +52,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('terminal.placeholder');
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'LOOP' } });
 
     // 修改间隔为 500ms
@@ -84,7 +84,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('terminal.placeholder');
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'STOP' } });
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
@@ -110,7 +110,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByPlaceholderText('terminal.placeholder');
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'OLD' } });
 
     const intervalInput = screen.getByDisplayValue('1000');

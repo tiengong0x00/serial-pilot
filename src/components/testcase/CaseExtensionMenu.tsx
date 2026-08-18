@@ -56,7 +56,7 @@ export function CaseExtensionMenu({
   return (
     <div className="relative" ref={menuRef}>
       <button
-        className="flex items-center justify-center h-8 w-8 bg-background border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
+        className="flex items-center justify-center h-8 w-8 bg-background border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled}
         title={t('testCase.moreActions')}

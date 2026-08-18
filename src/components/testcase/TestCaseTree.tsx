@@ -53,17 +53,17 @@ type StatusValue = TestCase['status'] | TestCommand['status'];
 function StatusIcon({ status }: { status: StatusValue }) {
   switch (status) {
     case 'running':
-      return <Clock className="h-3.5 w-3.5 text-blue-500 animate-spin" />;
+      return <Clock className="h-3.5 w-3.5 text-status-running animate-spin" />;
     case 'success':
-      return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
+      return <CheckCircle2 className="h-3.5 w-3.5 text-status-success" />;
     case 'failed':
-      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+      return <XCircle className="h-3.5 w-3.5 text-status-error" />;
     case 'interrupted':
-      return <XCircle className="h-3.5 w-3.5 text-yellow-500" />;
+      return <XCircle className="h-3.5 w-3.5 text-status-timeout" />;
     case 'skipped':
-      return <ChevronRight className="h-3.5 w-3.5 text-gray-400" />;
+      return <ChevronRight className="h-3.5 w-3.5 text-status-skipped" />;
     default:
-      return <Clock className="h-3.5 w-3.5 text-gray-400" />;
+      return <Clock className="h-3.5 w-3.5 text-status-idle" />;
   }
 }
 

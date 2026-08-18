@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,13 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     | { status: 'error'; message: string };
 
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
+  const [bgAdvancedOpen, setBgAdvancedOpen] = useState(false); // 背景图高级选项折叠状态
+  const [appVersion, setAppVersion] = useState<string>("0.1.0"); // 应用版本号
+
+  // 获取应用版本号
+  useEffect(() => {
+    getVersion().then(version => setAppVersion(version)).catch(() => setAppVersion("0.1.0"));
+  }, []);
 
   const handleCheckUpdate = async () => {
     setUpdateState({ status: 'checking' });
@@ -79,21 +87,50 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
           version: update.version,
           body: update.body,
           download: async () => {
+            // 使用 ref 保持变量在 setState 调用后不丢失
+            const progress = { total: 0, downloaded: 0 };
+            let lastUpdateTime = 0;
+            const UPDATE_INTERVAL = 100; // 节流：每 100ms 更新一次 UI
+
             setUpdateState({ status: 'downloading', percent: 0 });
-            let total = 0;
-            let downloaded = 0;
-            await update.downloadAndInstall((event) => {
-              if (event.event === 'Started') {
-                total = event.data.contentLength ?? 0;
-                setUpdateState({ status: 'downloading', percent: 0 });
-              } else if (event.event === 'Progress') {
-                downloaded += event.data.chunkLength;
-                const percent = total > 0 ? Math.round((downloaded / total) * 100) : 0;
-                setUpdateState({ status: 'downloading', percent });
-              } else if (event.event === 'Finished') {
-                setUpdateState({ status: 'ready', relaunch: () => { void relaunch(); } });
-              }
-            });
+
+            try {
+              await update.downloadAndInstall((event) => {
+                console.log('[Update Event]', event.event, event);
+                if (event.event === 'Started') {
+                  progress.total = event.data.contentLength ?? 0;
+                  progress.downloaded = 0;
+                  console.log('[Update] Started, total:', progress.total);
+                  setUpdateState({ status: 'downloading', percent: 0 });
+                } else if (event.event === 'Progress') {
+                  progress.downloaded += event.data.chunkLength;
+
+                  // 节流：避免过于频繁的 UI 更新
+                  const now = Date.now();
+                  if (now - lastUpdateTime >= UPDATE_INTERVAL) {
+                    const percent = progress.total > 0
+                      ? Math.round((progress.downloaded / progress.total) * 100)
+                      : 0;
+                    console.log('[Update] Progress:', progress.downloaded, '/', progress.total, `(${percent}%)`);
+                    setUpdateState({ status: 'downloading', percent });
+                    lastUpdateTime = now;
+                  }
+                } else if (event.event === 'Finished') {
+                  console.log('[Update] Finished');
+                  // 确保显示 100%
+                  setUpdateState({ status: 'downloading', percent: 100 });
+                  setTimeout(() => {
+                    setUpdateState({ status: 'ready', relaunch: () => { void relaunch(); } });
+                  }, 100);
+                }
+              });
+            } catch (error) {
+              console.error('[Update Error]', error);
+              setUpdateState({
+                status: 'error',
+                message: error instanceof Error ? error.message : String(error)
+              });
+            }
           },
         });
       } else {
@@ -115,6 +152,12 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     terminalOpacity,
     backgroundImage,
     backgroundOpacity,
+    backgroundPositionX,
+    backgroundPositionY,
+    backgroundScale,
+    backgroundCover,
+    backgroundMaxResolution,
+    backgroundQuality,
     filePacketSize,
     filePacketInterval,
     serialFrameTimeout,
@@ -123,6 +166,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     terminalMaxMessages,
     terminalLogPath,
     testCaseAutoSave,
+    enterToSend,
     setLanguage,
     setThemeMode,
     setTerminalBgColor,
@@ -130,6 +174,12 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setTerminalOpacity,
     setBackgroundImage,
     setBackgroundOpacity,
+    setBackgroundPosition,
+    setBackgroundScale,
+    setBackgroundCover,
+    setBackgroundMaxResolution,
+    setBackgroundQuality,
+    resetBackgroundTransform,
     setFilePacketSize,
     setFilePacketInterval,
     setSerialFrameTimeout,
@@ -138,6 +188,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setTerminalMaxMessages,
     setTerminalLogPath,
     setTestCaseAutoSave,
+    setEnterToSend,
   } = useSettingsStore();
 
   const tabs: Array<{ id: SettingsTab; label: string }> = [
@@ -208,6 +259,19 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     type="checkbox"
                     checked={testCaseAutoSave}
                     onChange={(e) => setTestCaseAutoSave(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{t("settings.enterToSend")}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.enterToSendHint")}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={enterToSend}
+                    onChange={(e) => setEnterToSend(e.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
                   />
                 </div>
@@ -294,11 +358,96 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
 
                   {backgroundImage ? (
                     <div className="flex flex-col gap-2">
-                      {/* 背景图预览 */}
-                      <div
-                        className="w-full h-32 rounded-md border border-border bg-cover bg-center"
-                        style={{ backgroundImage: `url(${backgroundImage})` }}
-                      />
+                      {/* 交互式背景图预览 */}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">{t("settings.backgroundAdjust")}</span>
+                          <span className="font-mono">{backgroundCover ? t("settings.backgroundFit") : `${backgroundScale}%`}</span>
+                        </div>
+                        <div
+                          className="relative w-full h-40 rounded-md border border-border overflow-hidden bg-secondary/20 group"
+                          onMouseDown={(e) => {
+                            if (e.button !== 0) return; // 只响应左键
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startY = e.clientY;
+                            const startPosX = backgroundPositionX;
+                            const startPosY = backgroundPositionY;
+
+                            const handleMouseMove = (moveEvent: MouseEvent) => {
+                              const deltaX = moveEvent.clientX - startX;
+                              const deltaY = moveEvent.clientY - startY;
+                              // 每 3px 鼠标移动 = 1% 位置偏移（灵敏度调节）
+                              const newX = Math.max(-50, Math.min(50, startPosX + deltaX / 3));
+                              const newY = Math.max(-50, Math.min(50, startPosY + deltaY / 3));
+                              setBackgroundPosition(newX, newY);
+                            };
+
+                            const handleMouseUp = () => {
+                              document.removeEventListener('mousemove', handleMouseMove);
+                              document.removeEventListener('mouseup', handleMouseUp);
+                            };
+
+                            document.addEventListener('mousemove', handleMouseMove);
+                            document.addEventListener('mouseup', handleMouseUp);
+                          }}
+                          onWheel={(e) => {
+                            e.preventDefault();
+                            const delta = e.deltaY > 0 ? -10 : 10; // 滚轮缩放步进 10%
+                            const base = backgroundCover ? 100 : backgroundScale; // cover 模式从 100% 起算
+                            const newScale = Math.max(50, Math.min(300, base + delta));
+                            setBackgroundScale(newScale);
+                          }}
+                        >
+                          <div
+                            className="absolute inset-0 bg-no-repeat cursor-move"
+                            style={{
+                              backgroundImage: `url(${backgroundImage})`,
+                              backgroundPosition: `${50 + backgroundPositionX}% ${50 + backgroundPositionY}%`,
+                              backgroundSize: backgroundCover ? 'cover' : `${backgroundScale}%`,
+                            }}
+                          />
+                          {/* 控制按钮（hover 时显示） */}
+                          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => { setBackgroundCover(true); setBackgroundPosition(0, 0); }}
+                              className={`w-7 h-7 rounded text-white text-xs flex items-center justify-center ${backgroundCover ? 'bg-primary/80 hover:bg-primary' : 'bg-black/60 hover:bg-black/80'}`}
+                              title={t("settings.backgroundFit")}
+                            >
+                              ⤢
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBackgroundScale(Math.min(300, (backgroundCover ? 100 : backgroundScale) + 10))}
+                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                              title={t("settings.zoomIn")}
+                            >
+                              +
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBackgroundScale(Math.max(50, (backgroundCover ? 100 : backgroundScale) - 10))}
+                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                              title={t("settings.zoomOut")}
+                            >
+                              −
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resetBackgroundTransform()}
+                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                              title={t("settings.backgroundReset")}
+                            >
+                              ↻
+                            </button>
+                          </div>
+                          {/* 提示文字 */}
+                          <div className="absolute top-2 left-2 text-[10px] text-white bg-black/50 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            {t("settings.backgroundAdjustHint")}
+                          </div>
+                        </div>
+                      </div>
 
                       {/* 背景图不透明度滑块 */}
                       <div className="flex flex-col gap-1.5">
@@ -338,7 +487,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                       {/* 移除背景图按钮 */}
                       <button
                         type="button"
-                        onClick={() => setBackgroundImage('')}
+                        onClick={() => { setBackgroundImage(''); resetBackgroundTransform(); }}
                         className="px-3 py-1.5 text-xs rounded-md border border-input hover:bg-muted transition-colors"
                       >
                         {t("settings.removeBackground")}
@@ -364,12 +513,12 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                           reader.onload = (evt) => {
                             const base64 = evt.target?.result as string;
 
-                            // 压缩图片以避免 localStorage 超限
+                            // 按用户配置压缩图片（分辨率上限 + JPEG 质量），避免 localStorage 超限
                             const img = new Image();
                             img.onload = () => {
-                              // 计算缩放比例，最大宽度 1920px
-                              const maxWidth = 1920;
-                              const maxHeight = 1080;
+                              // 宽度上限来自配置，高度按 16:9 推算上限（宽屏背景常见比例）
+                              const maxWidth = backgroundMaxResolution;
+                              const maxHeight = Math.round((backgroundMaxResolution * 9) / 16);
                               let { width, height } = img;
 
                               if (width > maxWidth || height > maxHeight) {
@@ -385,9 +534,15 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                               const ctx = canvas.getContext('2d');
                               if (ctx) {
                                 ctx.drawImage(img, 0, 0, width, height);
-                                // 输出 JPEG 格式，质量 0.8（平衡质量和大小）
-                                const compressed = canvas.toDataURL('image/jpeg', 0.8);
+                                // 输出 JPEG，质量取自配置
+                                const compressed = canvas.toDataURL('image/jpeg', backgroundQuality);
+                                // 体积保护：压缩后 base64 超过 ~4MB（localStorage 安全线）时提示
+                                if (compressed.length > 4 * 1024 * 1024) {
+                                  alert(t("settings.backgroundCompressedTooLarge"));
+                                  return;
+                                }
                                 setBackgroundImage(compressed);
+                                resetBackgroundTransform(); // 新图重置位置和缩放
                               }
                             };
                             img.src = base64;
@@ -405,6 +560,58 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                         {t("settings.chooseImage")}
                       </label>
                       <p className="text-xs text-muted-foreground">{t("settings.backgroundHint")}</p>
+
+                      {/* 高级选项折叠面板 */}
+                      <div className="mt-2 border-t pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setBgAdvancedOpen(!bgAdvancedOpen)}
+                          className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <span>{t("settings.backgroundAdvanced")}</span>
+                          <span className="text-[10px]">{bgAdvancedOpen ? '▲' : '▼'}</span>
+                        </button>
+
+                        {bgAdvancedOpen && (
+                          <div className="flex flex-col gap-3 mt-3">
+                            {/* 分辨率上限 */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">{t("settings.backgroundMaxResolution")}</span>
+                                <span className="font-mono">{backgroundMaxResolution}px</span>
+                              </div>
+                              <select
+                                value={backgroundMaxResolution}
+                                onChange={(e) => setBackgroundMaxResolution(Number(e.target.value))}
+                                className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background"
+                              >
+                                <option value={1920}>1920px (1080p)</option>
+                                <option value={2560}>2560px (1440p)</option>
+                                <option value={3840}>3840px (4K)</option>
+                              </select>
+                              <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundMaxResolutionHint")}</span>
+                            </div>
+
+                            {/* 压缩质量 */}
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">{t("settings.backgroundQuality")}</span>
+                                <span className="font-mono">{Math.round(backgroundQuality * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="50"
+                                max="100"
+                                step="5"
+                                value={backgroundQuality * 100}
+                                onChange={(e) => setBackgroundQuality(Number(e.target.value) / 100)}
+                                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                              />
+                              <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundQualityHint")}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -578,7 +785,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                 <div className="flex flex-col gap-3 text-sm">
                   <div className="flex items-baseline gap-2">
                     <span className="font-medium text-foreground">{t("settings.aboutAppName")}</span>
-                    <span className="text-muted-foreground">v0.1.0</span>
+                    <span className="text-muted-foreground">v{appVersion}</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
                     {t("settings.aboutDescription")}

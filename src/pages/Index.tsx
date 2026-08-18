@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Terminal, Plug, TestTube2, Settings2, Wrench } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Panel, Group, Separator } from "react-resizable-panels";
@@ -16,7 +17,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 
 const Index = () => {
   const { t } = useTranslation();
-  const { backgroundImage, backgroundOpacity } = useSettingsStore();
+  const { backgroundImage, backgroundOpacity, backgroundPositionX, backgroundPositionY, backgroundScale, backgroundCover } = useSettingsStore();
 
   // 挂载串口数据监听器
   useSerialListener();
@@ -26,6 +27,12 @@ const Index = () => {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>("0.1.0");
+
+  // 获取应用版本号
+  useEffect(() => {
+    getVersion().then(version => setAppVersion(version)).catch(() => setAppVersion("0.1.0"));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("serial_left_tab", leftPanelTab);
@@ -45,8 +52,8 @@ const Index = () => {
         backgroundImage
           ? {
               backgroundImage: `url(${backgroundImage})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
+              backgroundSize: backgroundCover ? 'cover' : `${backgroundScale}%`,
+              backgroundPosition: `${50 + backgroundPositionX}% ${50 + backgroundPositionY}%`,
               backgroundRepeat: 'no-repeat',
             }
           : undefined
@@ -71,7 +78,7 @@ const Index = () => {
             <h1 className="text-lg font-semibold text-foreground">{t("app.title")}</h1>
           </div>
           <span className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
-            {t("app.version")}
+            v{appVersion}
           </span>
         </div>
 

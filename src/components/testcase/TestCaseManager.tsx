@@ -477,7 +477,7 @@ export function TestCaseManager() {
           onMouseLeave={handleAddMouseLeave}
         >
           <button
-            className="flex items-center justify-center h-8 w-8 bg-background border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
+            className="flex items-center justify-center h-8 w-8 bg-background border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
             onClick={handleAddCommand}
             disabled={cases.length === 0}
             title={t('testCase.addHint')}
@@ -524,7 +524,7 @@ export function TestCaseManager() {
 
         {/* 刷新 */}
         <button
-          className="flex items-center justify-center h-8 w-8 bg-background border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
+          className="flex items-center justify-center h-8 w-8 bg-background border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
           onClick={() => void refreshFiles()}
           disabled={filesLoading}
           title={t('testCase.refreshFiles')}
@@ -534,7 +534,7 @@ export function TestCaseManager() {
 
         {/* 折叠/展开 */}
         <button
-          className="flex items-center justify-center h-8 w-8 bg-background border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
+          className="flex items-center justify-center h-8 w-8 bg-background border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
           onClick={handleToggleAllExpanded}
           disabled={cases.length === 0}
           title={allExpanded ? t('testCase.collapseAll') : t('testCase.expandAll')}
