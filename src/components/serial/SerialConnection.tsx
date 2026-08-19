@@ -117,12 +117,25 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
   // 修复标签页切换后显示错误端口的 bug
   const displayPort = isConnected && connectedPortName ? connectedPortName : selectedPort;
 
-  // 端口列表变化时自动选第一个（仅未连接时）
+  // 端口列表变化时验证并同步 selectedPort（仅未连接时）
   useEffect(() => {
-    if (!isConnected && ports.length > 0 && !selectedPort) {
-      setSelectedPort(ports[0].port_name);
+    if (!isConnected) {
+      if (ports.length === 0) {
+        // 无端口时清空选择
+        setSelectedPort('');
+      } else if (selectedPort) {
+        // 检查当前选中的端口是否还在列表中
+        const portExists = ports.some(p => p.port_name === selectedPort);
+        if (!portExists) {
+          // 不存在则自动选择第一个
+          setSelectedPort(ports[0].port_name);
+        }
+      } else {
+        // 没有选择时自动选第一个
+        setSelectedPort(ports[0].port_name);
+      }
     }
-  }, [ports, selectedPort, isConnected]);
+  }, [ports, isConnected, selectedPort]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
