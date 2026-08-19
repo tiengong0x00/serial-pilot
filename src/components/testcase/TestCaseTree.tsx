@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { TestCase, TestCommand } from '@/types/testCase';
 import { isCase, isCommand } from '@/lib/testCaseUtils';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 type DropPosition = 'before' | 'after' | 'inside';
 type DropIndicator = { overId: string; position: DropPosition } | null;
@@ -97,6 +98,22 @@ function commandLabel(cmd: TestCommand, t: (key: string) => string): string {
   return t('testCase.emptyCommand');
 }
 
+// 根据行高计算图标尺寸（px）
+function getIconSize(rowHeight: number): number {
+  // 24-28px: 14px, 29-36px: 16px, 37-48px: 18px
+  if (rowHeight <= 28) return 14;
+  if (rowHeight <= 36) return 16;
+  return 18;
+}
+
+// 根据行高计算文字大小类名
+function getTextSizeClass(rowHeight: number): string {
+  // 24-28px: text-xs(12px), 29-36px: text-sm(14px), 37-48px: text-base(16px)
+  if (rowHeight <= 28) return 'text-xs';
+  if (rowHeight <= 36) return 'text-sm';
+  return 'text-base';
+}
+
 // 可拖拽的命令行
 function DraggableCommandRow({
   cmd,
@@ -124,6 +141,9 @@ function DraggableCommandRow({
   dropIndicator: DropIndicator;
 }) {
   const { t } = useTranslation();
+  const { testCaseRowHeight, testCaseButtonWidth, testCaseButtonDisplay, testCaseButtonContent } = useSettingsStore();
+  const iconSize = getIconSize(testCaseRowHeight);
+  const textSizeClass = getTextSizeClass(testCaseRowHeight);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cmd.id,
     data: { type: 'command', caseId, command: cmd },
@@ -185,9 +205,13 @@ function DraggableCommandRow({
 
       <div
       ref={setNodeRef}
-      style={{ ...style, paddingLeft: `${(level + 1) * 12 + 6}px` }}
+      style={{
+        ...style,
+        paddingLeft: `${(level + 1) * 12 + 6}px`,
+        minHeight: `${testCaseRowHeight}px`,
+      }}
       className={cn(
-        'group flex items-center gap-1 px-1.5 py-0.5 cursor-pointer hover:bg-accent rounded transition-colors',
+        'group flex items-center gap-1 px-1.5 cursor-pointer hover:bg-accent rounded transition-colors',
         selected && 'bg-accent',
         !cmd.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
       )}
@@ -207,14 +231,14 @@ function DraggableCommandRow({
         {...listeners}
         onClick={(e) => e.stopPropagation()}
       >
-        <GripVertical className="h-3.5 w-3.5" />
+        <GripVertical style={{ width: iconSize, height: iconSize }} />
       </button>
       <CommandTypeIcon type={cmd.type} />
       <StatusIcon status={cmd.status} />
       {editing ? (
         <input
           ref={inputRef}
-          className="flex-1 min-w-0 text-xs font-mono px-1 py-0 border border-primary rounded bg-background outline-none"
+          className={cn("flex-1 min-w-0 font-mono px-1 py-0 border border-primary rounded bg-background outline-none", textSizeClass)}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           // 阻止冒泡：编辑时不触发行选中/拖拽/双击
@@ -242,7 +266,8 @@ function DraggableCommandRow({
       ) : (
         <span
           className={cn(
-            'flex-1 text-xs truncate font-mono',
+            'flex-1 truncate font-mono',
+            textSizeClass,
             !cmd.selected && 'text-muted-foreground',
             selected && 'hover:bg-primary/10 rounded px-0.5 -mx-0.5',
           )}
@@ -259,7 +284,16 @@ function DraggableCommandRow({
       )}
       {onRun && (
         <button
-          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-green-100 text-green-600 transition-opacity disabled:opacity-30"
+          className={cn(
+            "transition-all disabled:opacity-30 flex items-center justify-center font-medium text-green-600",
+            textSizeClass,
+            testCaseButtonDisplay === 'hover' && "opacity-0 group-hover:opacity-100",
+            testCaseButtonDisplay === 'always' && "opacity-100",
+          )}
+          style={{
+            width: `${testCaseButtonWidth}px`,
+            height: `${testCaseRowHeight - 4}px`,
+          }}
           title={t('testCase.runThisCommand')}
           disabled={isRunning}
           onClick={(e) => {
@@ -267,7 +301,24 @@ function DraggableCommandRow({
             onRun();
           }}
         >
-          <Play className="h-3.5 w-3.5" />
+          {(() => {
+            // 判断显示图标还是文字
+            const showIcon = testCaseButtonContent === 'icon' ||
+                            (testCaseButtonContent === 'auto' && testCaseButtonWidth < 50);
+            const showText = testCaseButtonContent === 'text' ||
+                            (testCaseButtonContent === 'auto' && testCaseButtonWidth >= 50);
+
+            if (showIcon) {
+              return <Play style={{ width: iconSize, height: iconSize }} />;
+            }
+
+            if (showText) {
+              // 命令按钮只显示"发送"，不显示行结束符
+              return <span>{t('testCase.send')}</span>;
+            }
+
+            return null;
+          })()}
         </button>
       )}
     </div>
@@ -298,6 +349,9 @@ function DraggableCaseNode(props: {
   onUpdateCommand: (caseId: string, cmdId: string, patch: Partial<TestCommand>) => void;
 }) {
   const { t } = useTranslation();
+  const { testCaseRowHeight, testCaseButtonWidth, testCaseButtonDisplay, testCaseButtonContent } = useSettingsStore();
+  const iconSize = getIconSize(testCaseRowHeight);
+  const textSizeClass = getTextSizeClass(testCaseRowHeight);
   const { case_, level, shared, dropIndicator, onEditCase, onEditCommand, onUpdateCommand } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: case_.id,
@@ -332,13 +386,17 @@ function DraggableCaseNode(props: {
       <div
         ref={setNodeRef}
         className={cn(
-          'group flex items-center gap-1 px-1.5 py-0.5 cursor-pointer hover:bg-accent rounded transition-colors',
+          'group flex items-center gap-1 px-1.5 cursor-pointer hover:bg-accent rounded transition-colors',
           shared.selectedCaseId === case_.id && 'bg-accent',
           showInside && 'ring-2 ring-blue-400',
           !case_.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
           isDragging && 'opacity-30',
         )}
-        style={{ paddingLeft: `${level * 12 + 6}px`, ...style }}
+        style={{
+          paddingLeft: `${level * 12 + 6}px`,
+          minHeight: `${testCaseRowHeight}px`,
+          ...style,
+        }}
         onClick={() => shared.onSelectCase(case_.id)}
         onDoubleClick={() => onEditCase(case_.id)}
         onContextMenu={(e) => {
@@ -353,7 +411,7 @@ function DraggableCaseNode(props: {
           {...listeners}
           onClick={(e) => e.stopPropagation()}
         >
-          <GripVertical className="h-3.5 w-3.5" />
+          <GripVertical style={{ width: iconSize, height: iconSize }} />
         </button>
 
         {hasChildren ? (
@@ -364,25 +422,38 @@ function DraggableCaseNode(props: {
               shared.onToggleExpanded(case_.id);
             }}
           >
-            {case_.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {case_.isExpanded ? (
+              <ChevronDown style={{ width: iconSize + 2, height: iconSize + 2 }} />
+            ) : (
+              <ChevronRight style={{ width: iconSize + 2, height: iconSize + 2 }} />
+            )}
           </button>
         ) : (
-          <div className="w-4" />
+          <div style={{ width: iconSize + 2 }} />
         )}
 
-        <Folder className="h-3.5 w-3.5 text-blue-500" />
+        <Folder style={{ width: iconSize, height: iconSize }} className="text-blue-500" />
         <StatusIcon status={case_.status} />
-        <span className={cn('flex-1 text-xs truncate', !case_.selected && 'text-muted-foreground')}>
+        <span className={cn('flex-1 truncate', textSizeClass, !case_.selected && 'text-muted-foreground')}>
           {case_.name}
         </span>
         {case_.runCount !== 1 && (
-          <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+          <span className={cn("px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded", textSizeClass)}>
             {case_.runCount === 0 ? t('testCase.infiniteLoop') : `×${case_.runCount}`}
           </span>
         )}
         {shared.onRunCase && (
           <button
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-green-100 text-green-600 transition-opacity disabled:opacity-30"
+            className={cn(
+              "transition-all disabled:opacity-30 flex items-center justify-center font-medium text-green-600",
+              textSizeClass,
+              testCaseButtonDisplay === 'hover' && "opacity-0 group-hover:opacity-100",
+              testCaseButtonDisplay === 'always' && "opacity-100",
+            )}
+            style={{
+              width: `${testCaseButtonWidth}px`,
+              height: `${testCaseRowHeight - 4}px`,
+            }}
             title={t('testCase.runThisCase')}
             disabled={shared.isRunning}
             onClick={(e) => {
@@ -390,7 +461,18 @@ function DraggableCaseNode(props: {
               shared.onRunCase?.(case_.id);
             }}
           >
-            <Play className="h-4 w-4" />
+            {(() => {
+              // 判断显示图标还是文字
+              const showIcon = testCaseButtonContent === 'icon' ||
+                              (testCaseButtonContent === 'auto' && testCaseButtonWidth < 50);
+
+              if (showIcon) {
+                return <Play style={{ width: iconSize + 2, height: iconSize + 2 }} />;
+              }
+
+              // 用例按钮显示"运行"
+              return <span>{t('testCase.run')}</span>;
+            })()}
           </button>
         )}
       </div>

@@ -119,9 +119,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   console.log('[Update] Finished');
                   // 确保显示 100%
                   setUpdateState({ status: 'downloading', percent: 100 });
+                  // 延迟 3 秒，等待安装程序完成
                   setTimeout(() => {
                     setUpdateState({ status: 'ready', relaunch: () => { void relaunch(); } });
-                  }, 100);
+                  }, 3000);
                 }
               });
             } catch (error) {
@@ -166,6 +167,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     terminalMaxMessages,
     terminalLogPath,
     testCaseAutoSave,
+    testCaseRowHeight,
+    testCaseButtonWidth,
+    testCaseButtonDisplay,
+    testCaseButtonContent,
     enterToSend,
     setLanguage,
     setThemeMode,
@@ -188,6 +193,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setTerminalMaxMessages,
     setTerminalLogPath,
     setTestCaseAutoSave,
+    setTestCaseRowHeight,
+    setTestCaseButtonWidth,
+    setTestCaseButtonDisplay,
+    setTestCaseButtonContent,
     setEnterToSend,
   } = useSettingsStore();
 
@@ -261,6 +270,121 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     onChange={(e) => setTestCaseAutoSave(e.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{t("settings.testCaseRowHeight")}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{t("settings.testCaseRowHeightHint")}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-12 text-right">{testCaseRowHeight}px</span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={24}
+                    max={48}
+                    step={2}
+                    value={testCaseRowHeight}
+                    onChange={(e) => setTestCaseRowHeight(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{t("settings.testCaseButtonWidth")}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{t("settings.testCaseButtonWidthHint")}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-12 text-right">{testCaseButtonWidth}px</span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={24}
+                    max={80}
+                    step={2}
+                    value={testCaseButtonWidth}
+                    onChange={(e) => setTestCaseButtonWidth(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{t("settings.testCaseButtonDisplay")}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.testCaseButtonDisplayHint")}</p>
+                  </div>
+                  <div className="flex flex-col gap-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonDisplay"
+                        value="hover"
+                        checked={testCaseButtonDisplay === 'hover'}
+                        onChange={(e) => setTestCaseButtonDisplay(e.target.value as 'hover' | 'always')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonHover")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonDisplay"
+                        value="always"
+                        checked={testCaseButtonDisplay === 'always'}
+                        onChange={(e) => setTestCaseButtonDisplay(e.target.value as 'hover' | 'always')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonAlways")}</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{t("settings.testCaseButtonContent")}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.testCaseButtonContentHint")}</p>
+                  </div>
+                  <div className="flex flex-col gap-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonContent"
+                        value="auto"
+                        checked={testCaseButtonContent === 'auto'}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonContentAuto")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonContent"
+                        value="icon"
+                        checked={testCaseButtonContent === 'icon'}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonContentIcon")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonContent"
+                        value="text"
+                        checked={testCaseButtonContent === 'text'}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonContentText")}</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex items-start justify-between gap-4">
