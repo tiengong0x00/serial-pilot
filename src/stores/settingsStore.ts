@@ -37,6 +37,10 @@ interface SettingsStore {
 
   // 测试用例配置
   testCaseAutoSave: boolean; // 用例改动自动保存（默认 false）
+  testCaseRowHeight: number; // 测试用例树形行高（px），范围 24-48，默认 28
+  testCaseButtonWidth: number; // 运行按钮宽度（px），范围 24-80，默认 28
+  testCaseButtonDisplay: 'hover' | 'always'; // 运行按钮显示方式，hover=悬浮显示，always=固定显示
+  testCaseButtonContent: 'icon' | 'text' | 'auto'; // 运行按钮内容，icon=图标，text=文字，auto=根据宽度自动
 
   // 发送配置
   enterToSend: boolean; // 手动发送框：回车键是否直接发送（默认 true）
@@ -63,6 +67,10 @@ interface SettingsStore {
   setTerminalMaxMessages: (max: number) => void;
   setTerminalLogPath: (path: string) => void;
   setTestCaseAutoSave: (enabled: boolean) => void;
+  setTestCaseRowHeight: (height: number) => void;
+  setTestCaseButtonWidth: (width: number) => void;
+  setTestCaseButtonDisplay: (mode: 'hover' | 'always') => void;
+  setTestCaseButtonContent: (mode: 'icon' | 'text' | 'auto') => void;
   setEnterToSend: (enabled: boolean) => void;
 }
 
@@ -99,6 +107,10 @@ export const useSettingsStore = create<SettingsStore>()(
       terminalLogPath: "",
       // 测试用例默认不自动保存
       testCaseAutoSave: false,
+      testCaseRowHeight: 28, // 默认行高 28px（保持当前样式不变）
+      testCaseButtonWidth: 28, // 默认按钮宽度 28px（小按钮，需用户主动调大）
+      testCaseButtonDisplay: 'hover', // 默认悬浮显示（保持当前行为）
+      testCaseButtonContent: 'auto', // 默认根据宽度自动判断（保持当前行为）
       // 手动发送框默认回车即发送
       enterToSend: true,
 
@@ -123,6 +135,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setTerminalMaxMessages: (max) => set({ terminalMaxMessages: max }),
       setTerminalLogPath: (path) => set({ terminalLogPath: path }),
       setTestCaseAutoSave: (enabled) => set({ testCaseAutoSave: enabled }),
+      setTestCaseRowHeight: (height) => set({ testCaseRowHeight: Math.max(24, Math.min(48, height)) }),
+      setTestCaseButtonWidth: (width) => set({ testCaseButtonWidth: Math.max(24, Math.min(80, width)) }),
+      setTestCaseButtonDisplay: (mode) => set({ testCaseButtonDisplay: mode }),
+      setTestCaseButtonContent: (mode) => set({ testCaseButtonContent: mode }),
       setEnterToSend: (enabled) => set({ enterToSend: enabled }),
     }),
     {
