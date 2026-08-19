@@ -90,6 +90,7 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
   const connectedPortName = portLabel === 'P1' ? useSerialStore((s) => s.p1PortName) : useSerialStore((s) => s.p2PortName);
 
   const { success, error } = useNotify();
+  // ✅ 已连接时使用 store 中的端口名，未连接时使用本地状态
   const [selectedPort, setSelectedPort] = useState<string>("");
   const [baudRate, setBaudRate] = useState<number>(savedConfig.baud_rate);
   const [dataBits, setDataBits] = useState<5 | 6 | 7 | 8>(savedConfig.data_bits);
@@ -112,19 +113,16 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
     setRts(savedConfig.rts);
   }, [savedConfig]);
 
-  // 同步已连接端口到选择框
-  useEffect(() => {
-    if (isConnected && connectedPortName) {
-      setSelectedPort(connectedPortName);
-    }
-  }, [isConnected, connectedPortName]);
+  // ✅ 统一状态源：已连接时始终显示 store 中的端口，未连接时才使用本地状态
+  // 修复标签页切换后显示错误端口的 bug
+  const displayPort = isConnected && connectedPortName ? connectedPortName : selectedPort;
 
-  // 端口列表变化时自动选第一个
+  // 端口列表变化时自动选第一个（仅未连接时）
   useEffect(() => {
-    if (ports.length > 0 && !selectedPort) {
+    if (!isConnected && ports.length > 0 && !selectedPort) {
       setSelectedPort(ports[0].port_name);
     }
-  }, [ports, selectedPort]);
+  }, [ports, selectedPort, isConnected]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -142,7 +140,9 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
   }, [onRefresh, t, success, error, portLabel]);
 
   const handleConnect = useCallback(async () => {
-    if (!selectedPort) return;
+    // ✅ 使用 displayPort 确保连接时用的是正确的端口
+    const portToConnect = isConnected && connectedPortName ? connectedPortName : selectedPort;
+    if (!portToConnect) return;
     setIsConnecting(true);
     setErrorMsg("");
     const config: SerialConfig = {
@@ -155,10 +155,10 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
       rts,
     };
     try {
-      await onConnect(selectedPort, config);
+      await onConnect(portToConnect, config);
       // 连接成功后保存配置到 store
       setConfig(portLabel, config);
-      success(t("connection.connectSuccess", { port: selectedPort }), { portLabel, toast: true, log: true });
+      success(t("connection.connectSuccess", { port: portToConnect }), { portLabel, toast: true, log: true });
     } catch (e) {
       const err = e as { message?: string };
       const errMsg = `${t("connection.connectFailed")}: ${err.message ?? String(e)}`;
@@ -167,7 +167,7 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
     } finally {
       setIsConnecting(false);
     }
-  }, [selectedPort, baudRate, dataBits, parity, stopBits, dtr, rts, savedConfig.flow_control, onConnect, setConfig, portLabel, t, success, error]);
+  }, [isConnected, connectedPortName, selectedPort, baudRate, dataBits, parity, stopBits, dtr, rts, savedConfig.flow_control, onConnect, setConfig, portLabel, t, success, error]);
 
   const handleDtrToggle = useCallback(async (checked: boolean) => {
     setDtr(checked);
@@ -227,7 +227,7 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
         <div className="flex items-center gap-2">
           <select
             className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background disabled:opacity-50"
-            value={selectedPort}
+            value={displayPort}
             onChange={(e) => setSelectedPort(e.target.value)}
             disabled={isConnected}
           >
@@ -379,7 +379,7 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
             : "btn-connect"
         } disabled:opacity-50`}
         onClick={isConnected ? () => void handleDisconnect() : () => void handleConnect()}
-        disabled={isConnecting || (!isConnected && !selectedPort)}
+        disabled={isConnecting || (!isConnected && !displayPort)}
       >
         {isConnecting ? (
           <Loader2 className="w-4 h-4 animate-spin" />
