@@ -138,6 +138,9 @@ interface ExecutionState {
   setVariable: (key: string, value: string) => void;
   getVariable: (key: string) => string | undefined;
 
+  // 序列计数器管理
+  resetSequenceCounters: () => void;
+
   // 守护注册（防重复）
   registerGuard: (guard: UrcGuardCommand) => void;
   unregisterGuard: (guardId: string) => void;
@@ -183,6 +186,7 @@ export const useExecutionStore = create<ExecutionState>()(
           targetPort,
           startTime: Date.now(),
           activeGuards: new Map(),
+          sequenceCounters: new Map(),
         };
         state.isRunning = false;
         state.isPaused = false;
@@ -230,6 +234,14 @@ export const useExecutionStore = create<ExecutionState>()(
 
     getVariable: (key) => {
       return get().context?.variables[key];
+    },
+
+    resetSequenceCounters: () => {
+      set((state) => {
+        if (state.context) {
+          state.context.sequenceCounters.clear();
+        }
+      });
     },
 
     registerGuard: (guard) => {

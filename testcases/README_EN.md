@@ -206,6 +206,8 @@ Command content (`content`) supports the following variable syntax:
 | `${varName}` | Extracted variable (from response) | `AT+CMD=${token}` |
 | `${rand:str:N}` | Generate N random visible chars | `${rand:str:8}` → `A3kF9pQz` |
 | `${rand:hex:N}` | Generate N random bytes, output 2N uppercase HEX chars | `${rand:hex:4}` → `3FA8B21C` (4 bytes = 8 hex) |
+| `${seq:start:step}` | Sequence generator, auto-increment on each call | `${seq:60:20}` → 60, 80, 100... |
+| `${seq:start:step:max}` | Sequence generator with upper limit (keeps max when reached) | `${seq:10:5:30}` → 10, 15, 20, 25, 30, 30... |
 
 **Example:**
 
@@ -231,6 +233,27 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 ```
 
 If `len=4`, first replaces to `${rand:hex:4}`, then generates 8 hex chars.
+
+**Sequence Generator:**
+
+Sequence generator is used for auto-incrementing parameters, suitable for timeout tests, power scanning, etc.:
+
+```json
+{
+  "content": "AT+HTTPGET=${seq:60:20}",
+  "repeatCount": 5
+}
+```
+
+Actual sends: `AT+HTTPGET=60` → `AT+HTTPGET=80` → `AT+HTTPGET=100` → `AT+HTTPGET=120` → `AT+HTTPGET=140`
+
+Features:
+- **Reset per round**: Counter resets to initial value at the start of each round (each `runCount` iteration)
+- **Independent counting**: Different parameter combinations count independently (e.g., `${seq:60:20}` and `${seq:0:1}` don't interfere)
+- **Negative numbers**: Start value and step can be negative for decrement (e.g., `${seq:100:-10}` → 100, 90, 80...)
+- **Upper limit**: With max specified, value stays at max when reached
+
+For detailed documentation, see: [Sequence Generator Full Guide](../docs/sequence-generator.md)
 
 ---
 

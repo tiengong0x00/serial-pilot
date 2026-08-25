@@ -411,6 +411,51 @@ describe('testCaseUtils', () => {
       const result = replaceVariables('${rand:hex:${len}}', vars);
       expect(result).toMatch(/^[0-9A-F]{8}$/); // 4 字节 → 8 个 hex 字符
     });
+
+    it('应支持序列生成器 ${seq:start:step}', () => {
+      const counters = new Map<string, number>();
+      const r1 = replaceVariables('AT+TEST=${seq:60:20}', {}, counters);
+      const r2 = replaceVariables('AT+TEST=${seq:60:20}', {}, counters);
+      const r3 = replaceVariables('AT+TEST=${seq:60:20}', {}, counters);
+      expect(r1).toBe('AT+TEST=60');
+      expect(r2).toBe('AT+TEST=80');
+      expect(r3).toBe('AT+TEST=100');
+    });
+
+    it('序列生成器应支持上限 ${seq:start:step:max}', () => {
+      const counters = new Map<string, number>();
+      const r1 = replaceVariables('${seq:10:5:20}', {}, counters);
+      const r2 = replaceVariables('${seq:10:5:20}', {}, counters);
+      const r3 = replaceVariables('${seq:10:5:20}', {}, counters);
+      const r4 = replaceVariables('${seq:10:5:20}', {}, counters);
+      expect(r1).toBe('10');
+      expect(r2).toBe('15');
+      expect(r3).toBe('20');
+      expect(r4).toBe('20'); // 达到上限，保持 20
+    });
+
+    it('多个不同的序列生成器应独立计数', () => {
+      const counters = new Map<string, number>();
+      const r1 = replaceVariables('id=${seq:1:1} val=${seq:100:10}', {}, counters);
+      const r2 = replaceVariables('id=${seq:1:1} val=${seq:100:10}', {}, counters);
+      expect(r1).toBe('id=1 val=100');
+      expect(r2).toBe('id=2 val=110');
+    });
+
+    it('序列生成器应支持负数和负步长', () => {
+      const counters = new Map<string, number>();
+      const r1 = replaceVariables('${seq:100:-10}', {}, counters);
+      const r2 = replaceVariables('${seq:100:-10}', {}, counters);
+      const r3 = replaceVariables('${seq:100:-10}', {}, counters);
+      expect(r1).toBe('100');
+      expect(r2).toBe('90');
+      expect(r3).toBe('80');
+    });
+
+    it('序列生成器不传入 counters 时应被忽略', () => {
+      const result = replaceVariables('AT+TEST=${seq:60:20}', {});
+      expect(result).toBe('AT+TEST=${seq:60:20}'); // 未处理，保持原样
+    });
   });
 
   describe('matchPattern', () => {

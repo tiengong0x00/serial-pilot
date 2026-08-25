@@ -220,6 +220,9 @@ export interface ExecutionContext {
 
   // 后台守护注册表（防重复注册）
   activeGuards: Map<string, UrcGuardCommand>;  // guardId -> 守护配置
+
+  // 序列计数器（${seq:start:step} 自增变量支持）
+  sequenceCounters: Map<string, number>;  // key="seq:60:20" -> 当前值
 }
 
 // ============ 向后兼容：旧格式类型（导入时自动迁移） ============

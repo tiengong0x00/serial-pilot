@@ -313,7 +313,7 @@ export function useTestExecution() {
       if (cmd.preDelay > 0) await sleep(cmd.preDelay);
 
       // 命令字符串变量替换
-      const resolvedCommand = replaceVariables(cmd.command, ctx.variables);
+      const resolvedCommand = replaceVariables(cmd.command, ctx.variables, ctx.sequenceCounters);
 
       addLog('info', `Executing in ${cmd.scriptPath}: ${resolvedCommand}`, cmd.id, caseId);
 
@@ -569,7 +569,11 @@ export function useTestExecution() {
         } else {
           // ============ 普通命令模式（现有逻辑） ============
           // 变量替换
-          const content = replaceVariables(cmd.content, getContext()?.variables || {});
+          const content = replaceVariables(
+            cmd.content,
+            getContext()?.variables || {},
+            getContext()?.sequenceCounters
+          );
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 
@@ -730,6 +734,8 @@ export function useTestExecution() {
           // 根用例每轮开始：重置硬件信号为连接配置初始值（粘滞继承的锚点）
           if (_parentId === null) {
             await resetSignalLevels();
+            // 重置序列计数器（每轮从初始值开始）
+            useExecutionStore.getState().resetSequenceCounters();
           }
 
           // 遍历子项（下标驱动，支持跳转）
@@ -1283,7 +1289,11 @@ export function useTestExecution() {
           addLog('info', `Quick sent file: ${cmd.fileData.name} (${fileBytes.length} bytes)`);
         } else {
           // ============ 普通命令快速发送 ============
-          const content = replaceVariables(cmd.content, getContext()?.variables || {});
+          const content = replaceVariables(
+            cmd.content,
+            getContext()?.variables || {},
+            getContext()?.sequenceCounters
+          );
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 

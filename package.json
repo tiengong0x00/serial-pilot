@@ -1,7 +1,7 @@
 {
   "name": "serial-pilot",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",

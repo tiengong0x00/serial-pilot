@@ -546,17 +546,59 @@ function genRandHex(nBytes: number): string {
  * 1) ${varName}          —— 提取型变量，从字典查表替换
  * 2) ${rand:str:N}       —— 生成 N 个随机可见字符
  * 3) ${rand:hex:N}       —— 生成 N 字节随机数据，输出 2N 个大写 HEX 字符
+ * 4) ${seq:start:step}   —— 序列生成器，每次调用自增（start 起始值，step 步长）
+ * 5) ${seq:start:step:max} —— 带上限的序列生成器（达到 max 后保持）
  *
  * 生成型函数变量每次调用都重新生成（压测重复发送时每次不同）。
  * 先做字典替换再做函数展开：这样长度参数也可用提取变量，
  * 例如 ${rand:hex:${len}} 会先把 ${len} 替换成数字再生成对应长度随机数据。
+ *
+ * 序列计数器每轮用例重置（用例 runCount 的每一轮都从初始值开始）。
  */
-export function replaceVariables(text: string, variables: Record<string, string>): string {
+export function replaceVariables(
+  text: string,
+  variables: Record<string, string>,
+  sequenceCounters?: Map<string, number>,
+): string {
   // 1) 提取型变量字典替换
   let result = text;
   for (const [key, value] of Object.entries(variables)) {
     result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
   }
+
+  // 2) 序列生成器 ${seq:start:step} 或 ${seq:start:step:max}
+  if (sequenceCounters) {
+    result = result.replace(
+      /\$\{seq:(-?\d+):(-?\d+)(?::(-?\d+))?\}/g,
+      (_match, startStr, stepStr, maxStr) => {
+        const start = parseInt(startStr, 10);
+        const step = parseInt(stepStr, 10);
+        const max = maxStr ? parseInt(maxStr, 10) : undefined;
+
+        // 计数器 key：包含完整参数以区分不同序列
+        const key = `seq:${start}:${step}${max !== undefined ? ':' + max : ''}`;
+
+        // 首次使用：初始化为起始值
+        if (!sequenceCounters.has(key)) {
+          sequenceCounters.set(key, start);
+        }
+
+        const current = sequenceCounters.get(key)!;
+
+        // 检查上限
+        if (max !== undefined && current > max) {
+          return String(max);  // 达到上限，返回最大值
+        }
+
+        // 自增（下次使用时生效）
+        sequenceCounters.set(key, current + step);
+
+        return String(current);
+      }
+    );
+  }
+
+  // 3) 生成型函数变量 ${rand:str:N} / ${rand:hex:N}
   // 2) 生成型函数变量 ${rand:str:N} / ${rand:hex:N}
   result = result.replace(/\$\{rand:(str|hex):(\d+)\}/g, (_match, kind: string, lenStr: string) => {
     const n = parseInt(lenStr, 10);

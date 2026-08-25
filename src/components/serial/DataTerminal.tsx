@@ -58,12 +58,70 @@ function toHex(data: Uint8Array): string {
     .join(" ");
 }
 
+/**
+ * 智能文本渲染：混合显示可打印和不可打印字符
+ * - 可打印 ASCII (32-126): 直接显示
+ * - 换行符 (0x0A, 0x0D): 保留
+ * - 其他不可打印字符: 显示为 \xHH 格式
+ * - UTF-8 多字节序列: 尝试解码，失败则逐字节显示
+ */
+function renderTextSmart(data: Uint8Array): string {
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < data.length) {
+    const byte = data[i];
+
+    // 换行符：保留
+    if (byte === 0x0A || byte === 0x0D) {
+      result.push(String.fromCharCode(byte));
+      i++;
+      continue;
+    }
+
+    // 可打印 ASCII (32-126，包括空格)
+    if (byte >= 32 && byte <= 126) {
+      result.push(String.fromCharCode(byte));
+      i++;
+      continue;
+    }
+
+    // UTF-8 多字节序列检测
+    let utf8Length = 0;
+    if ((byte & 0xE0) === 0xC0) utf8Length = 2;       // 110xxxxx
+    else if ((byte & 0xF0) === 0xE0) utf8Length = 3;  // 1110xxxx
+    else if ((byte & 0xF8) === 0xF0) utf8Length = 4;  // 11110xxx
+
+    // 尝试解码 UTF-8 多字节字符
+    if (utf8Length > 0 && i + utf8Length <= data.length) {
+      try {
+        const utf8Bytes = data.slice(i, i + utf8Length);
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(utf8Bytes);
+        // 验证解码成功且不是控制字符
+        if (decoded.length > 0 && decoded.charCodeAt(0) >= 32) {
+          result.push(decoded);
+          i += utf8Length;
+          continue;
+        }
+      } catch {
+        // UTF-8 解码失败，按单字节处理
+      }
+    }
+
+    // 不可打印字符：显示为 \xHH
+    result.push(`\\x${byte.toString(16).padStart(2, '0').toUpperCase()}`);
+    i++;
+  }
+
+  return result.join('');
+}
+
 function renderContent(msg: TerminalMessage, format: DisplayFormat): string {
   if (format === "hex") {
     return toHex(msg.data);
   }
-  // text 模式：优先用已解码文本，失败则回退 hex
-  return msg.text ?? toHex(msg.data);
+  // text 模式：优先用后端解码的文本，失败则用智能混合显示
+  return msg.text ?? renderTextSmart(msg.data);
 }
 
 /** 端口标签颜色：P1 蓝色，P2 绿色 */
