@@ -313,7 +313,13 @@ export function useTestExecution() {
       if (cmd.preDelay > 0) await sleep(cmd.preDelay);
 
       // 命令字符串变量替换
-      const resolvedCommand = replaceVariables(cmd.command, ctx.variables, ctx.sequenceCounters);
+      const replaceResult = replaceVariables(cmd.command, ctx.variables, ctx.sequenceCounters, true);
+      const resolvedCommand = replaceResult.text;
+
+      // 更新序列计数器（通过 store action）
+      replaceResult.counterUpdates.forEach(({ key, value }) => {
+        useExecutionStore.getState().updateSequenceCounter(key, value);
+      });
 
       addLog('info', `Executing in ${cmd.scriptPath}: ${resolvedCommand}`, cmd.id, caseId);
 
@@ -569,11 +575,19 @@ export function useTestExecution() {
         } else {
           // ============ 普通命令模式（现有逻辑） ============
           // 变量替换
-          const content = replaceVariables(
+          const replaceResult = replaceVariables(
             cmd.content,
             getContext()?.variables || {},
-            getContext()?.sequenceCounters
+            getContext()?.sequenceCounters,
+            true
           );
+          const content = replaceResult.text;
+
+          // 更新序列计数器
+          replaceResult.counterUpdates.forEach(({ key, value }) => {
+            useExecutionStore.getState().updateSequenceCounter(key, value);
+          });
+
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 
@@ -1289,11 +1303,18 @@ export function useTestExecution() {
           addLog('info', `Quick sent file: ${cmd.fileData.name} (${fileBytes.length} bytes)`);
         } else {
           // ============ 普通命令快速发送 ============
-          const content = replaceVariables(
+          const replaceResult = replaceVariables(
             cmd.content,
             getContext()?.variables || {},
-            getContext()?.sequenceCounters
+            getContext()?.sequenceCounters,
+            true
           );
+          const content = replaceResult.text;
+
+          // 更新序列计数器
+          replaceResult.counterUpdates.forEach(({ key, value }) => {
+            useExecutionStore.getState().updateSequenceCounter(key, value);
+          });
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 

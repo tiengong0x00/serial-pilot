@@ -140,6 +140,8 @@ interface ExecutionState {
 
   // 序列计数器管理
   resetSequenceCounters: () => void;
+  updateSequenceCounter: (key: string, value: number) => void;
+  getSequenceCounter: (key: string) => number | undefined;
 
   // 守护注册（防重复）
   registerGuard: (guard: UrcGuardCommand) => void;
@@ -242,6 +244,18 @@ export const useExecutionStore = create<ExecutionState>()(
           state.context.sequenceCounters.clear();
         }
       });
+    },
+
+    updateSequenceCounter: (key, value) => {
+      set((state) => {
+        if (state.context) {
+          state.context.sequenceCounters.set(key, value);
+        }
+      });
+    },
+
+    getSequenceCounter: (key) => {
+      return get().context?.sequenceCounters.get(key);
     },
 
     registerGuard: (guard) => {

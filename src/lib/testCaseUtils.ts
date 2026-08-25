@@ -555,11 +555,37 @@ function genRandHex(nBytes: number): string {
  *
  * 序列计数器每轮用例重置（用例 runCount 的每一轮都从初始值开始）。
  */
+/**
+ * 替换变量结果
+ */
+export interface ReplaceResult {
+  text: string;
+  counterUpdates: Array<{ key: string; value: number }>;
+}
+
+/**
+ * 变量替换
+ * @param returnUpdates 如果为 true，不直接修改 sequenceCounters，而是返回更新信息（用于 Zustand + Immer）
+ */
 export function replaceVariables(
   text: string,
   variables: Record<string, string>,
   sequenceCounters?: Map<string, number>,
-): string {
+): string;
+export function replaceVariables(
+  text: string,
+  variables: Record<string, string>,
+  sequenceCounters: Map<string, number> | undefined,
+  returnUpdates: true,
+): ReplaceResult;
+export function replaceVariables(
+  text: string,
+  variables: Record<string, string>,
+  sequenceCounters?: Map<string, number>,
+  returnUpdates?: boolean,
+): string | ReplaceResult {
+  const counterUpdates: Array<{ key: string; value: number }> = [];
+
   // 1) 提取型变量字典替换
   let result = text;
   for (const [key, value] of Object.entries(variables)) {
@@ -578,12 +604,8 @@ export function replaceVariables(
         // 计数器 key：包含完整参数以区分不同序列
         const key = `seq:${start}:${step}${max !== undefined ? ':' + max : ''}`;
 
-        // 首次使用：初始化为起始值
-        if (!sequenceCounters.has(key)) {
-          sequenceCounters.set(key, start);
-        }
-
-        const current = sequenceCounters.get(key)!;
+        // 获取当前值（首次使用则为起始值）
+        const current = sequenceCounters.has(key) ? sequenceCounters.get(key)! : start;
 
         // 检查上限
         let returnValue: string;
@@ -593,8 +615,16 @@ export function replaceVariables(
           returnValue = String(current);
         }
 
-        // 自增（下次使用时生效）
-        sequenceCounters.set(key, current + step);
+        // 计算下次值
+        const nextValue = current + step;
+
+        if (returnUpdates) {
+          // 新模式：不直接修改 Map，返回更新信息（用于 Zustand + Immer）
+          counterUpdates.push({ key, value: nextValue });
+        } else {
+          // 旧模式：直接修改 Map（用于测试和非 Zustand 场景）
+          sequenceCounters.set(key, nextValue);
+        }
 
         return returnValue;
       }
@@ -602,12 +632,15 @@ export function replaceVariables(
   }
 
   // 3) 生成型函数变量 ${rand:str:N} / ${rand:hex:N}
-  // 2) 生成型函数变量 ${rand:str:N} / ${rand:hex:N}
   result = result.replace(/\$\{rand:(str|hex):(\d+)\}/g, (_match, kind: string, lenStr: string) => {
     const n = parseInt(lenStr, 10);
     if (n <= 0) return '';
     return kind === 'hex' ? genRandHex(n) : genRandStr(n);
   });
+
+  if (returnUpdates) {
+    return { text: result, counterUpdates };
+  }
   return result;
 }
 
