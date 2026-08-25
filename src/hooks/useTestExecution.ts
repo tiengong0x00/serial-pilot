@@ -745,11 +745,12 @@ export function useTestExecution() {
             break;
           }
 
+          // 每个用例每轮开始：重置序列计数器（使子用例循环中的序列独立计数）
+          useExecutionStore.getState().resetSequenceCounters();
+
           // 根用例每轮开始：重置硬件信号为连接配置初始值（粘滞继承的锚点）
           if (_parentId === null) {
             await resetSignalLevels();
-            // 重置序列计数器（每轮从初始值开始）
-            useExecutionStore.getState().resetSequenceCounters();
           }
 
           // 遍历子项（下标驱动，支持跳转）
