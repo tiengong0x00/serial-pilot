@@ -586,14 +586,17 @@ export function replaceVariables(
         const current = sequenceCounters.get(key)!;
 
         // 检查上限
+        let returnValue: string;
         if (max !== undefined && current > max) {
-          return String(max);  // 达到上限，返回最大值
+          returnValue = String(max);  // 达到上限，返回最大值
+        } else {
+          returnValue = String(current);
         }
 
         // 自增（下次使用时生效）
         sequenceCounters.set(key, current + step);
 
-        return String(current);
+        return returnValue;
       }
     );
   }
