@@ -12,6 +12,13 @@ const resources = {
         quickToggle: "快速连接/断开",
         notSupported: "当前环境不支持串口",
       },
+      power: {
+        suspendWarning: "系统即将休眠，串口连接已自动断开",
+        resumeInfo: "系统已从休眠恢复，请重新连接串口",
+      },
+      common: {
+        refresh: "刷新",
+      },
       tabs: {
         connection: "连接配置",
         testCase: "测试用例",
@@ -797,6 +804,13 @@ const resources = {
         settings: "Settings",
         quickToggle: "Quick Connect/Disconnect",
         notSupported: "Serial not supported",
+      },
+      power: {
+        suspendWarning: "System suspending, all serial ports disconnected",
+        resumeInfo: "System resumed from suspend, please reconnect serial ports",
+      },
+      common: {
+        refresh: "Refresh",
       },
       tabs: {
         connection: "Connection",

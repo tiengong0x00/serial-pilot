@@ -6,11 +6,15 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { useCommandLibrary } from "./stores/commandLibraryStore";
 import { useThemeEffect } from "./hooks/useThemeEffect";
 import { useLanguageEffect } from "./hooks/useLanguageEffect";
+import { usePowerMonitor } from "./hooks/usePowerMonitor";
 
 const App = () => {
   // 应用主题和语言设置（从 settingsStore 读取并应用到 DOM）
   useThemeEffect();
   useLanguageEffect();
+
+  // 监听系统电源事件（休眠/恢复）
+  usePowerMonitor();
 
   // 启动时加载命令库（从 .exe/../commands/*.json 构建内存 Trie）
   useEffect(() => {

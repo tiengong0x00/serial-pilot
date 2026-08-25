@@ -9,7 +9,7 @@ import { useShortcutAction } from "@/hooks/useShortcuts";
 import { Badge } from "@/components/ui/badge";
 import type { SerialConfig, PortLabel } from "@/types/serial";
 
-const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 1500000, 2000000];
 const DATA_BITS = [5, 6, 7, 8] as const;
 const STOP_BITS = [1, 2] as const;
 

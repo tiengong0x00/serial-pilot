@@ -22,6 +22,12 @@ tauri-plugin-process = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows = { version = "0.58", features = [
+    "Win32_System_Power",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+] }
 
 [profile.release]
 opt-level = "z"

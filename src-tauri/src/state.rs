@@ -84,6 +84,21 @@ pub struct PortHandle {
     pub cancel_tx: watch::Sender<bool>,
 }
 
+impl Drop for PortHandle {
+    fn drop(&mut self) {
+        eprintln!("[PortHandle] Dropping, sending cancel signal and closing port");
+
+        // 1. 发送取消信号给后台读线程
+        let _ = self.cancel_tx.send(true);
+
+        // 2. 显式释放串口（serialport 库的 Drop 会调用底层 CloseHandle）
+        // 即使底层句柄已失效（如休眠导致），也要告诉操作系统释放资源
+        if let Ok(port) = self.port.lock() {
+            drop(port);
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SerialManager {
     connections: Arc<Mutex<HashMap<String, PortHandle>>>,
@@ -193,6 +208,24 @@ impl SerialManager {
 
         // 发送取消信号（监听器会优雅退出）
         let _ = handle.cancel_tx.send(true);
+
+        Ok(())
+    }
+
+    /// 断开所有串口（电源管理专用）
+    pub fn disconnect_all(&self) -> Result<(), String> {
+        let mut guard = self.connections.lock()
+            .map_err(|e| format!("Failed to acquire lock: {}", e))?;
+
+        let labels: Vec<String> = guard.keys().cloned().collect();
+
+        for label in labels {
+            if let Some(handle) = guard.remove(&label) {
+                eprintln!("[{}] Disconnecting due to power event", label);
+                let _ = handle.cancel_tx.send(true);
+                // handle 被移除后自动触发 Drop，释放底层资源
+            }
+        }
 
         Ok(())
     }

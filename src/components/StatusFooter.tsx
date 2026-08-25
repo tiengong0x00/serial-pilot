@@ -69,7 +69,7 @@ function QuickConfigDropdown({
     setOpen(true);
   };
 
-  const commonBaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+  const commonBaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 1500000, 2000000];
 
   return (
     <div className="relative inline-flex items-center gap-1" ref={dropdownRef}>

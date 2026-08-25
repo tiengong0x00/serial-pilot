@@ -2,6 +2,7 @@
 
 mod error;
 mod network;
+mod power_monitor;
 mod serial;
 mod script;
 mod state;
@@ -472,7 +473,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
-        .setup(|_app| {
+        .setup(|app| {
             // 启动时释放内嵌的种子测试用例（目录不存在才创建）
             if let Err(e) = ensure_test_cases_seeded() {
                 eprintln!("[Seed] testcases failed: {}", e);
@@ -485,6 +486,10 @@ fn main() {
             if let Err(e) = ensure_scripts_seeded() {
                 eprintln!("[Seed] scripts failed: {}", e);
             }
+
+            // 启动电源监听器（监听系统休眠/恢复事件）
+            power_monitor::setup_power_monitor(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
