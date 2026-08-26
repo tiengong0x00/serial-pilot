@@ -124,13 +124,15 @@ export function useSerialListener() {
         }
 
         // 新起一行
+        // 使用前端接收时刻 now，而非后端 payload.timestamp，
+        // 保证与 TX（用户点击时刻）在同一时间基准下正确排序
         const t3 = performance.now();
         const message: TerminalMessage = {
-          id: `${payload.timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+          id: `${now}-${Math.random().toString(36).substr(2, 9)}`,
           type: 'RX',
           port_label: payload.port_label,
           data,
-          timestamp: payload.timestamp,
+          timestamp: now,
           text,
         };
 
