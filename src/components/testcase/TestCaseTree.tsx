@@ -15,6 +15,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragOverlay,
   type DragEndEvent,
   type DragStartEvent,
@@ -26,11 +27,48 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { TestCase, TestCommand } from '@/types/testCase';
-import { isCase, isCommand } from '@/lib/testCaseUtils';
+import { isCase, isCommand, flattenTree, getProjectedPosition } from '@/lib/testCaseUtils';
+import type { ProjectedPosition } from '@/lib/testCaseUtils';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 type DropPosition = 'before' | 'after' | 'inside';
-type DropIndicator = { overId: string; position: DropPosition } | null;
+
+// 每层缩进宽度（px），与渲染时的 level * 12 保持一致
+const INDENT_WIDTH = 12;
+
+// 头部/尾部放置区的固定 ID（Bug 1：拖到边界空白时命中，投影到根层级首/末）
+const HEAD_DROP_ID = '__head_drop_zone__';
+const TAIL_DROP_ID = '__tail_drop_zone__';
+
+// 头部放置区：占据树顶部空白，为"拖到最开头作为根层级第一项"提供落点
+function HeadDropZone({ active }: { active: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: HEAD_DROP_ID });
+  return (
+    <div ref={setNodeRef} className="relative" style={{ minHeight: 32 }}>
+      {active && isOver && (
+        <div
+          className="absolute left-0 right-0 h-0.5 bg-blue-500 bottom-1 z-10"
+          style={{ left: `${6}px` }}
+        />
+      )}
+    </div>
+  );
+}
+
+// 尾部放置区：占据树底部空白，为"拖到最末尾作为根层级最后一项"提供落点
+function TailDropZone({ active }: { active: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: TAIL_DROP_ID });
+  return (
+    <div ref={setNodeRef} className="relative" style={{ minHeight: 32 }}>
+      {active && isOver && (
+        <div
+          className="absolute left-0 right-0 h-0.5 bg-blue-500 top-1 z-10"
+          style={{ left: `${6}px` }}
+        />
+      )}
+    </div>
+  );
+}
 
 interface TestCaseTreeProps {
   cases: TestCase[];
@@ -44,6 +82,7 @@ interface TestCaseTreeProps {
   onEditCommand: (caseId: string, commandId: string) => void;
   onUpdateCommand: (caseId: string, commandId: string, patch: Partial<TestCommand>) => void;
   onMoveChildRelative: (childId: string, overId: string, position: DropPosition) => void;
+  onMoveChildToPosition: (childId: string, targetParentId: string, targetIndex: number) => void;
   onRunCase?: (caseId: string) => void;
   onRunCommand?: (caseId: string, commandId: string) => void;
   isRunning?: boolean;
@@ -126,7 +165,7 @@ function DraggableCommandRow({
   onUpdateCommand,
   onRun,
   isRunning,
-  dropIndicator,
+  projected,
 }: {
   cmd: TestCommand;
   caseId: string;
@@ -138,7 +177,7 @@ function DraggableCommandRow({
   onUpdateCommand: (patch: Partial<TestCommand>) => void;
   onRun?: () => void;
   isRunning?: boolean;
-  dropIndicator: DropIndicator;
+  projected: ProjectedPosition | null;
 }) {
   const { t } = useTranslation();
   const { testCaseRowHeight, testCaseButtonWidth, testCaseButtonDisplay, testCaseButtonContent } = useSettingsStore();
@@ -149,9 +188,11 @@ function DraggableCommandRow({
     data: { type: 'command', caseId, command: cmd },
   });
 
-  // 命令是叶子节点，只接受 before/after（不能作为容器）
-  const showBefore = dropIndicator?.overId === cmd.id && dropIndicator.position === 'before';
-  const showAfter = dropIndicator?.overId === cmd.id && dropIndicator.position === 'after';
+  // 命令是叶子节点，根据投影位置显示插入线
+  const isOver = projected?.overId === cmd.id;
+  const showBefore = isOver && projected.offsetY === 0;
+  const showAfter = isOver && projected.offsetY !== 0;
+  const lineDepth = projected?.depth ?? (level + 1);
 
   // 行内编辑：仅正在编辑的行才渲染 input，其余行是纯文本（零常驻成本）
   const [editing, setEditing] = useState(false);
@@ -199,7 +240,7 @@ function DraggableCommandRow({
       {showBefore && (
         <div
           className="absolute left-0 right-0 h-0.5 bg-blue-500 -top-0.5 z-10"
-          style={{ left: `${(level + 1) * 12 + 6}px` }}
+          style={{ left: `${lineDepth * INDENT_WIDTH + 6}px` }}
         />
       )}
 
@@ -300,6 +341,7 @@ function DraggableCommandRow({
             e.stopPropagation();
             onRun();
           }}
+          onDoubleClick={(e) => e.stopPropagation()}
         >
           {(() => {
             // 判断显示图标还是文字
@@ -327,7 +369,7 @@ function DraggableCommandRow({
       {showAfter && (
         <div
           className="absolute left-0 right-0 h-0.5 bg-blue-500 -bottom-0.5 z-10"
-          style={{ left: `${(level + 1) * 12 + 6}px` }}
+          style={{ left: `${lineDepth * INDENT_WIDTH + 6}px` }}
         />
       )}
     </div>
@@ -341,9 +383,9 @@ function DraggableCaseNode(props: {
   level: number;
   shared: Omit<
     TestCaseTreeProps,
-    'cases' | 'onMoveChildRelative' | 'onEditCase' | 'onEditCommand' | 'onUpdateCommand'
+    'cases' | 'onMoveChildRelative' | 'onMoveChildToPosition' | 'onEditCase' | 'onEditCommand' | 'onUpdateCommand'
   >;
-  dropIndicator: DropIndicator;
+  projected: ProjectedPosition | null;
   onEditCase: (caseId: string) => void;
   onEditCommand: (caseId: string, cmdId: string) => void;
   onUpdateCommand: (caseId: string, cmdId: string, patch: Partial<TestCommand>) => void;
@@ -352,7 +394,7 @@ function DraggableCaseNode(props: {
   const { testCaseRowHeight, testCaseButtonWidth, testCaseButtonDisplay, testCaseButtonContent } = useSettingsStore();
   const iconSize = getIconSize(testCaseRowHeight);
   const textSizeClass = getTextSizeClass(testCaseRowHeight);
-  const { case_, level, shared, dropIndicator, onEditCase, onEditCommand, onUpdateCommand } = props;
+  const { case_, level, shared, projected, onEditCase, onEditCommand, onUpdateCommand } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: case_.id,
     data: { type: 'case', parentId: props.parentId, case: case_ },
@@ -367,10 +409,14 @@ function DraggableCaseNode(props: {
   const subCases = case_.children.filter(isCase);
   const hasChildren = case_.children.length > 0;
 
-  // 三种落点：before/after 显示插入线，inside 显示整节点高亮框
-  const showBefore = dropIndicator?.overId === case_.id && dropIndicator.position === 'before';
-  const showAfter = dropIndicator?.overId === case_.id && dropIndicator.position === 'after';
-  const showInside = dropIndicator?.overId === case_.id && dropIndicator.position === 'inside';
+  // 投影落点：本节点是锚点时，根据 offsetY 判断插入线在上还是在下
+  const isOver = projected?.overId === case_.id;
+  const showBefore = isOver && projected.offsetY === 0;
+  const showAfter = isOver && projected.offsetY !== 0;
+  // 嵌套高亮：目标父节点是本用例（插入到内部）
+  const showInside = projected?.parentId === case_.id && projected.overId === case_.id && projected.offsetY !== 0 && projected.depth > level;
+  // 插入线缩进深度（用投影深度，回退到当前 level）
+  const lineDepth = projected?.depth ?? level;
 
   return (
     <div className="relative">
@@ -378,7 +424,7 @@ function DraggableCaseNode(props: {
       {showBefore && (
         <div
           className="absolute left-0 right-0 h-0.5 bg-blue-500 -top-0.5 z-10"
-          style={{ left: `${level * 12 + 6}px` }}
+          style={{ left: `${lineDepth * INDENT_WIDTH + 6}px` }}
         />
       )}
 
@@ -388,7 +434,7 @@ function DraggableCaseNode(props: {
         className={cn(
           'group flex items-center gap-1 px-1.5 cursor-pointer hover:bg-accent rounded transition-colors',
           shared.selectedCaseId === case_.id && 'bg-accent',
-          showInside && 'ring-2 ring-blue-400',
+          showInside && 'ring-2 ring-blue-500',
           !case_.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
           isDragging && 'opacity-30',
         )}
@@ -460,6 +506,7 @@ function DraggableCaseNode(props: {
               e.stopPropagation();
               shared.onRunCase?.(case_.id);
             }}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
             {(() => {
               // 判断显示图标还是文字
@@ -494,7 +541,7 @@ function DraggableCaseNode(props: {
                 onUpdateCommand={(patch) => onUpdateCommand(case_.id, child.id, patch)}
                 onRun={shared.onRunCommand ? () => shared.onRunCommand?.(case_.id, child.id) : undefined}
                 isRunning={shared.isRunning}
-                dropIndicator={dropIndicator}
+                projected={projected}
               />
             ) : (
               <DraggableCaseNode
@@ -503,7 +550,7 @@ function DraggableCaseNode(props: {
                 parentId={case_.id}
                 level={level + 1}
                 shared={shared}
-                dropIndicator={dropIndicator}
+                projected={projected}
                 onEditCase={onEditCase}
                 onEditCommand={onEditCommand}
                 onUpdateCommand={onUpdateCommand}
@@ -514,11 +561,11 @@ function DraggableCaseNode(props: {
         </div>
       )}
 
-      {/* 插入线 - after */}
+      {/* 插入线 - after（缩进按投影深度，实现跨层级视觉反馈） */}
       {showAfter && (
         <div
           className="absolute left-0 right-0 h-0.5 bg-blue-500 -bottom-0.5 z-10"
-          style={{ left: `${level * 12 + 6}px` }}
+          style={{ left: `${lineDepth * INDENT_WIDTH + 6}px` }}
         />
       )}
     </div>
@@ -530,6 +577,7 @@ export function TestCaseTree(props: TestCaseTreeProps) {
   const {
     cases,
     onMoveChildRelative,
+    onMoveChildToPosition,
     onEditCase,
     onEditCommand,
     onUpdateCommand,
@@ -537,67 +585,101 @@ export function TestCaseTree(props: TestCaseTreeProps) {
   } = props;
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [dropIndicator, setDropIndicator] = useState<DropIndicator>(null);
+  // 投影位置：X+Y 双维度计算的精确落点，null=无有效落点
+  const [projected, setProjected] = useState<ProjectedPosition | null>(null);
+  // 记录拖拽时的鼠标 X 坐标（dnd-kit 不直接提供，需从事件中提取）
+  const pointerXRef = useRef<number>(0);
+
+  const rootId = cases.length > 0 ? cases[0].id : '';
+  // 扁平化当前可见树（用于投影计算）
+  const flatNodes = rootId ? flattenTree(cases[0].children, 0, rootId) : [];
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
-    setDropIndicator(null);
+    setProjected(null);
+  };
+
+  const handleDragMove = (event: DragOverEvent) => {
+    // 从原生指针事件持续记录 X 坐标（activatorEvent 只有起点，delta 提供偏移）
+    if (event.activatorEvent && 'clientX' in event.activatorEvent) {
+      pointerXRef.current = (event.activatorEvent as PointerEvent).clientX + (event.delta.x || 0);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) {
-      setDropIndicator(null);
+      setProjected(null);
       return;
     }
 
-    const overData = over.data.current;
-    if (!overData) {
-      setDropIndicator(null);
+    // Bug 1：拖到头部放置区时，投影到根层级首位
+    if (over.id === HEAD_DROP_ID) {
+      const rootParentId = flatNodes[0]?.parentId;
+      if (rootParentId) {
+        setProjected({
+          parentId: rootParentId,
+          index: 0,
+          depth: 0,
+          overId: HEAD_DROP_ID,
+          offsetY: 0,
+        });
+      } else {
+        setProjected(null);
+      }
       return;
     }
 
-    // 获取 over 节点的矩形和指针的当前 Y 坐标
+    // Bug 1：拖到尾部放置区时，投影到根层级末尾
+    if (over.id === TAIL_DROP_ID) {
+      const rootParentId = flatNodes[0]?.parentId;
+      if (rootParentId) {
+        setProjected({
+          parentId: rootParentId,
+          index: flatNodes.filter((n) => n.depth === 0).length,
+          depth: 0,
+          overId: TAIL_DROP_ID,
+          offsetY: 0,
+        });
+      } else {
+        setProjected(null);
+      }
+      return;
+    }
+
     const overRect = over.rect;
-    // delta 是从拖动开始点的偏移量，active.rect.current.translated 包含了当前位置
+    const pointerX = pointerXRef.current || overRect.left;
     const pointerY = event.activatorEvent && 'clientY' in event.activatorEvent
       ? (event.activatorEvent as PointerEvent).clientY + (event.delta.y || 0)
       : overRect.top + overRect.height / 2;
 
-    const relativeY = pointerY - overRect.top;
-    const percent = relativeY / overRect.height;
-
-    // 用例节点：上 30% = before，中间 40% = inside，下 30% = after
-    // 命令节点：上 50% = before，下 50% = after（命令不能作为容器）
-    let position: DropPosition;
-    if (overData.type === 'case') {
-      if (percent < 0.3) {
-        position = 'before';
-      } else if (percent > 0.7) {
-        position = 'after';
-      } else {
-        position = 'inside';
-      }
-    } else {
-      // command
-      position = percent < 0.5 ? 'before' : 'after';
-    }
-
-    setDropIndicator({ overId: over.id as string, position });
+    // 用投影算法计算精确落点（X 决定层级深度，Y 决定前后位置）
+    const rect = new DOMRect(overRect.left, overRect.top, overRect.width, overRect.height);
+    const proj = getProjectedPosition(
+      flatNodes,
+      active.id as string,
+      over.id as string,
+      pointerX,
+      pointerY,
+      rect,
+      INDENT_WIDTH,
+    );
+    setProjected(proj);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
-    setDropIndicator(null);
+    const finalProjected = projected;
+    setProjected(null);
 
     if (!over || active.id === over.id) return;
-    if (!dropIndicator) return;
+    if (!finalProjected) return;
 
-    // 统一调用 moveChildRelative，根据 dropIndicator 的位置信息完成操作
-    onMoveChildRelative(active.id as string, dropIndicator.overId, dropIndicator.position);
+    // 用投影位置精确移动：目标父 + 目标索引
+    onMoveChildToPosition(active.id as string, finalProjected.parentId, finalProjected.index);
   };
 
   const root = cases.length > 0 ? cases[0] : null;
@@ -610,6 +692,7 @@ export function TestCaseTree(props: TestCaseTreeProps) {
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
@@ -620,7 +703,10 @@ export function TestCaseTree(props: TestCaseTreeProps) {
               {t('testCase.emptyState')}
             </div>
           ) : (
-            root.children.map((child) =>
+            <>
+            {/* 头部放置区：拖到最顶部空白时插入到根层级首位 */}
+            {hasContent && <HeadDropZone active={!!activeId} />}
+            {root.children.map((child) =>
               isCommand(child) ? (
                 <DraggableCommandRow
                   key={child.id}
@@ -634,7 +720,7 @@ export function TestCaseTree(props: TestCaseTreeProps) {
                   onUpdateCommand={(patch) => onUpdateCommand(root.id, child.id, patch)}
                   onRun={shared.onRunCommand ? () => shared.onRunCommand?.(root.id, child.id) : undefined}
                   isRunning={shared.isRunning}
-                  dropIndicator={dropIndicator}
+                  projected={projected}
                 />
               ) : (
                 <DraggableCaseNode
@@ -643,13 +729,16 @@ export function TestCaseTree(props: TestCaseTreeProps) {
                   parentId={root.id}
                   level={0}
                   shared={shared}
-                  dropIndicator={dropIndicator}
+                  projected={projected}
                   onEditCase={onEditCase}
                   onEditCommand={onEditCommand}
                   onUpdateCommand={onUpdateCommand}
                 />
               ),
-            )
+            )}
+            {/* 尾部放置区：拖到最底部空白时插入到根层级末尾 */}
+            <TailDropZone active={!!activeId} />
+            </>
           )}
         </div>
       </SortableContext>

@@ -731,3 +731,188 @@ export function isStandardError(response: string): boolean {
   return STANDARD_ERROR.test(response);
 }
 
+// ============ 拖拽投影计算（支持 X+Y 双维度层级检测） ============
+
+/** 扁平化节点（用于拖拽位置计算） */
+export interface FlatNode {
+  id: string;
+  type: 'case' | 'command';
+  depth: number;              // 层级深度（0 = 根层级的直接子项）
+  parentId: string | null;    // 父节点 ID（根层级子项的 parentId 是 root.id）
+  index: number;              // 在父节点 children 中的索引
+  canHaveChildren: boolean;   // 是否可作为容器（命令不可以）
+  isExpanded: boolean;        // 是否展开（影响可见性）
+}
+
+/** 投影位置（拖拽时计算的精确目标位置） */
+export interface ProjectedPosition {
+  parentId: string;           // 目标父节点 ID
+  index: number;              // 在父节点 children 中的插入索引
+  depth: number;              // 目标深度（用于显示插入线缩进）
+  overId: string;             // 锚点节点 ID（用于显示插入线位置）
+  offsetY: number;            // 插入线相对于锚点的 Y 偏移（像素）
+}
+
+/**
+ * 将树扁平化为线性列表（仅包含可见节点）
+ * @param children 根用例的 children（或任意用例的 children）
+ * @param depth 起始深度（根层级的直接子项 = 0）
+ * @param parentId 父节点 ID
+ */
+export function flattenTree(
+  children: CaseChild[],
+  depth = 0,
+  parentId: string | null = null,
+): FlatNode[] {
+  const result: FlatNode[] = [];
+  children.forEach((child, index) => {
+    if (isCase(child)) {
+      result.push({
+        id: child.id,
+        type: 'case',
+        depth,
+        parentId,
+        index,
+        canHaveChildren: true,
+        isExpanded: child.isExpanded,
+      });
+      // 只有展开的用例才扁平化其子项
+      if (child.isExpanded && child.children.length > 0) {
+        result.push(...flattenTree(child.children, depth + 1, child.id));
+      }
+    } else {
+      result.push({
+        id: child.id,
+        type: 'command',
+        depth,
+        parentId,
+        index,
+        canHaveChildren: false,
+        isExpanded: false,
+      });
+    }
+  });
+  return result;
+}
+
+/**
+ * 计算拖拽投影位置（基于 X+Y 坐标）
+ * @param flatNodes 扁平化的可见节点列表
+ * @param activeId 被拖动的节点 ID
+ * @param overId 鼠标悬停的节点 ID
+ * @param pointerX 鼠标 X 坐标（相对于视口）
+ * @param pointerY 鼠标 Y 坐标（相对于视口）
+ * @param overRect over 节点的 DOMRect
+ * @param indentWidth 每层缩进宽度（像素，默认 24）
+ */
+export function getProjectedPosition(
+  flatNodes: FlatNode[],
+  activeId: string,
+  overId: string,
+  pointerX: number,
+  pointerY: number,
+  overRect: DOMRect,
+  indentWidth = 24,
+): ProjectedPosition | null {
+  const activeNode = flatNodes.find((n) => n.id === activeId);
+  const overNode = flatNodes.find((n) => n.id === overId);
+  if (!activeNode || !overNode) return null;
+
+  // 计算鼠标相对于 over 节点的位置
+  const relativeY = pointerY - overRect.top;
+  const relativeX = pointerX - overRect.left;
+  const percent = relativeY / overRect.height;
+
+  // 根据水平偏移计算目标深度
+  const projectedDepth = Math.floor(relativeX / indentWidth);
+
+  // 深度限制：
+  // - 最小 = 0（根层级）
+  // - 最大 = overNode.depth + 1（嵌套到 over 内部，仅当 over 可以有子项时）
+  const maxDepth = overNode.canHaveChildren ? overNode.depth + 1 : overNode.depth;
+  const targetDepth = Math.max(0, Math.min(projectedDepth, maxDepth));
+
+  // 根据 Y 坐标百分比判断相对位置
+  // over 节点的上半部分 = before，下半部分 = after
+  // 如果 targetDepth 比 overNode.depth 深 1 层，强制为 inside（嵌套到 over 内部）
+  const isBefore = percent < 0.5;
+
+  if (targetDepth === overNode.depth + 1 && overNode.canHaveChildren) {
+    // 嵌套到 over 节点内部（成为第一个子项）
+    return {
+      parentId: overId,
+      index: 0,
+      depth: targetDepth,
+      overId,
+      offsetY: isBefore ? 0 : overRect.height,
+    };
+  } else if (targetDepth === overNode.depth) {
+    // 与 over 同层级，插入为兄弟
+    return {
+      parentId: overNode.parentId!,
+      index: isBefore ? overNode.index : overNode.index + 1,
+      depth: targetDepth,
+      overId,
+      offsetY: isBefore ? 0 : overRect.height,
+    };
+  } else {
+    // 提升到更浅的层级
+    // 需要向上查找目标深度的祖先节点
+    const overIndex = flatNodes.findIndex((n) => n.id === overId);
+    if (overIndex === -1) return null;
+
+    // 向上查找第一个深度 <= targetDepth 的节点
+    for (let i = overIndex; i >= 0; i--) {
+      const node = flatNodes[i];
+      if (node.depth === targetDepth) {
+        // 找到同深度的节点，插入到它后面
+        return {
+          parentId: node.parentId!,
+          index: node.index + 1,
+          depth: targetDepth,
+          overId: node.id,
+          offsetY: overRect.height, // 插入线在找到的节点下方
+        };
+      } else if (node.depth < targetDepth) {
+        // 深度已经小于目标，说明目标深度在 over 之上
+        // 插入到这个更浅节点的后面
+        return {
+          parentId: node.parentId!,
+          index: node.index + 1,
+          depth: node.depth,
+          overId: node.id,
+          offsetY: overRect.height,
+        };
+      }
+    }
+
+    // 兜底：插入到根层级末尾（根层级子项的 parentId 即根用例 ID）
+    const rootParentId = flatNodes[0]?.parentId;
+    if (!rootParentId) return null;
+    return {
+      parentId: rootParentId,
+      index: flatNodes.filter((n) => n.depth === 0).length,
+      depth: 0,
+      overId,
+      offsetY: overRect.height,
+    };
+  }
+}
+
+/**
+ * 获取深度约束（用于限制拖拽深度范围）
+ * @param flatNodes 扁平化节点列表
+ * @param overId 悬停节点 ID
+ * @returns { min: 最小深度, max: 最大深度 }
+ */
+export function getDepthConstraints(
+  flatNodes: FlatNode[],
+  overId: string,
+): { min: number; max: number } {
+  const overNode = flatNodes.find((n) => n.id === overId);
+  if (!overNode) return { min: 0, max: 0 };
+
+  const maxDepth = overNode.canHaveChildren ? overNode.depth + 1 : overNode.depth;
+  return { min: 0, max: maxDepth };
+}
+

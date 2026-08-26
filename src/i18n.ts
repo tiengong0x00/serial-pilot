@@ -787,6 +787,8 @@ const resources = {
         addUrc: "添加 URC",
         addScript: "添加脚本",
         deleteCase: "删除用例",
+        promoteLevel: "提升层级（移到父级后）",
+        demoteLevel: "降级（移入上一个用例）",
       },
       confirm: {
         cancel: "取消",
@@ -1580,6 +1582,8 @@ const resources = {
         addUrc: "Add URC",
         addScript: "Add Script",
         deleteCase: "Delete Case",
+        promoteLevel: "Promote (move after parent)",
+        demoteLevel: "Demote (move into previous case)",
       },
       confirm: {
         cancel: "Cancel",

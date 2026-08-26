@@ -37,6 +37,7 @@ export function TestCaseManager() {
     updateCase,
     toggleExpanded,
     addCommand,
+    addCommandRelative,
     removeCommand,
     updateCommand,
     selectCase,
@@ -47,6 +48,9 @@ export function TestCaseManager() {
     markClean,
     getRootCase,
     moveChildRelative,
+    moveChildToPosition,
+    promoteCase,
+    demoteCase,
     reset,
   } = useTestCaseStore();
 
@@ -139,37 +143,96 @@ export function TestCaseManager() {
     };
   }, []);
 
-  // 计算添加目标：选中的用例，否则根用例
+  // 计算添加目标：优先选中的用例，其次根用例
   const resolveTargetCaseId = useCallback((): string | null => {
     const root = getRootCase();
     if (!root) return null;
     return selectedCaseId ?? root.id;
   }, [getRootCase, selectedCaseId]);
 
-  // 统一的添加操作
+  // Bug 3 修复：智能插入逻辑
+  // - 选中命令：在该命令同级下方插入新命令
+  // - 选中用例：在用例内部末尾插入（方案 B）
+  // - 无选中：根末尾新增
   const handleAddCommand = useCallback(() => {
-    const target = resolveTargetCaseId();
-    if (target) addCommand(target, 'command');
+    const root = getRootCase();
+    if (!root) return;
+
+    let newId: string | null = null;
+
+    if (selectedCommandId) {
+      // 选中命令：需找到命令所属父用例，在命令下方插入
+      const parent = findCase([root], selectedCaseId || root.id);
+      if (parent) {
+        newId = addCommandRelative(parent.id, selectedCommandId, 'command');
+      }
+    } else if (selectedCaseId) {
+      // 选中用例：在用例内部末尾插入，并展开
+      newId = addCommandRelative(selectedCaseId, null, 'command');
+      updateCase(selectedCaseId, { isExpanded: true });
+    } else {
+      // 无选中：根末尾新增
+      newId = addCommandRelative(root.id, null, 'command');
+    }
+
+    // 自动选中新建的命令
+    if (newId) selectCommand(newId);
     setAddMenuOpen(false);
-  }, [resolveTargetCaseId, addCommand]);
+  }, [getRootCase, selectedCommandId, selectedCaseId, addCommandRelative, updateCase, selectCommand]);
 
   const handleAddCase = useCallback(() => {
     const target = resolveTargetCaseId();
-    if (target) addCase(target);
+    if (target) {
+      addCase(target);
+      // 展开目标用例以显示新建的子用例
+      updateCase(target, { isExpanded: true });
+    }
     setAddMenuOpen(false);
-  }, [resolveTargetCaseId, addCase]);
+  }, [resolveTargetCaseId, addCase, updateCase]);
 
   const handleAddUrcGuard = useCallback(() => {
-    const target = resolveTargetCaseId();
-    if (target) addCommand(target, 'urc-guard');
+    const root = getRootCase();
+    if (!root) return;
+
+    let newId: string | null = null;
+
+    if (selectedCommandId) {
+      const parent = findCase([root], selectedCaseId || root.id);
+      if (parent) {
+        newId = addCommandRelative(parent.id, selectedCommandId, 'urc-guard');
+      }
+    } else if (selectedCaseId) {
+      newId = addCommandRelative(selectedCaseId, null, 'urc-guard');
+      updateCase(selectedCaseId, { isExpanded: true });
+    } else {
+      newId = addCommandRelative(root.id, null, 'urc-guard');
+    }
+
+    if (newId) selectCommand(newId);
     setAddMenuOpen(false);
-  }, [resolveTargetCaseId, addCommand]);
+  }, [getRootCase, selectedCommandId, selectedCaseId, addCommandRelative, updateCase, selectCommand]);
 
   const handleAddScript = useCallback(() => {
-    const target = resolveTargetCaseId();
-    if (target) addCommand(target, 'script');
+    const root = getRootCase();
+    if (!root) return;
+
+    let newId: string | null = null;
+
+    if (selectedCommandId) {
+      const parent = findCase([root], selectedCaseId || root.id);
+      if (parent) {
+        newId = addCommandRelative(parent.id, selectedCommandId, 'script');
+      }
+    } else if (selectedCaseId) {
+      newId = addCommandRelative(selectedCaseId, null, 'script');
+      updateCase(selectedCaseId, { isExpanded: true });
+    } else {
+      newId = addCommandRelative(root.id, null, 'script');
+    }
+
+    if (newId) selectCommand(newId);
     setAddMenuOpen(false);
-  }, [resolveTargetCaseId, addCommand]);
+  }, [getRootCase, selectedCommandId, selectedCaseId, addCommandRelative, updateCase, selectCommand]);
 
   // 未保存修改确认对话框
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -597,6 +660,7 @@ export function TestCaseManager() {
           onEditCommand={handleEditCommand}
           onUpdateCommand={updateCommand}
           onMoveChildRelative={moveChildRelative}
+          onMoveChildToPosition={moveChildToPosition}
           onRunCase={handleRunCase}
           onRunCommand={handleRunCommand}
           isRunning={isRunning}
@@ -667,6 +731,8 @@ export function TestCaseManager() {
           onToggleSelected={handleToggleSelected}
           onEditCase={handleEditCase}
           onEditCommand={handleEditCommand}
+          onPromoteCase={contextMenu.commandId ? undefined : promoteCase}
+          onDemoteCase={contextMenu.commandId ? undefined : demoteCase}
         />
       )}
 

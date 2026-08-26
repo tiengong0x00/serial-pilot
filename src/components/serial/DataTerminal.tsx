@@ -241,12 +241,28 @@ function VirtualTerminalView({
 
   const items = virtualizer.getVirtualItems();
 
+  // Ctrl/Cmd+A：将全选范围限制在当前终端输出区，避免选中整个页面
+  const handleSelectAll = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+      e.preventDefault();
+      const el = parentRef.current;
+      const selection = window.getSelection();
+      if (!el || !selection) return;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }, []);
+
   return (
     <div
       ref={parentRef}
-      className="flex-1 min-h-0 overflow-y-auto custom-scrollbar terminal-output py-3 font-mono text-xs"
+      tabIndex={0}
+      className="flex-1 min-h-0 overflow-y-auto custom-scrollbar terminal-output py-3 font-mono text-xs outline-none"
       style={style}
       onContextMenu={onContextMenu}
+      onKeyDown={handleSelectAll}
     >
       {messages.length === 0 ? (
         <div className="text-muted-foreground/50 text-center mt-8">—</div>

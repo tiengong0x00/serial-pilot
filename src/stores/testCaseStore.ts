@@ -37,6 +37,13 @@ interface TestCaseState {
 
   // 命令操作
   addCommand: (caseId: string, type?: CommandType) => void;
+  /**
+   * 相对位置新建命令（Bug 3）：
+   * - anchorCommandId 非空：在该命令所属父容器中，插入到该命令的正下方（同级兄弟）
+   * - anchorCommandId 为空：退化为在 caseId 内部末尾追加（等价 addCommand）
+   * 返回新命令 ID（供选中/滚动）。
+   */
+  addCommandRelative: (caseId: string, anchorCommandId: string | null, type?: CommandType) => string | null;
   removeCommand: (caseId: string, cmdId: string) => void;
   updateCommand: (caseId: string, cmdId: string, patch: Partial<CaseChild>) => void;
 
@@ -69,6 +76,17 @@ interface TestCaseState {
    * 封装了跨层级移动 + 精确排序，供树形拖拽统一调用。
    */
   moveChildRelative: (childId: string, overId: string, position: 'before' | 'after' | 'inside') => void;
+
+  /**
+   * 精确移动子项到指定父节点的指定索引（用于 X+Y 双维度拖拽投影）
+   * 支持跨层级移动，自动处理提取后索引偏移
+   */
+  moveChildToPosition: (childId: string, targetParentId: string, targetIndex: number) => void;
+
+  /** 提升节点层级：移到其父级的后面（保底右键菜单用） */
+  promoteCase: (childId: string) => void;
+  /** 降级节点：移入上一个兄弟用例的末尾（保底右键菜单用） */
+  demoteCase: (childId: string) => void;
 
   // 兼容旧 API（内部映射到统一接口）
   reorderCases: (parentId: string | null, fromIndex: number, toIndex: number) => void;
@@ -260,6 +278,34 @@ export const useTestCaseStore = create<TestCaseState>()(
         }
       }),
 
+    addCommandRelative: (caseId, anchorCommandId, type = 'command') => {
+      let newId: string | null = null;
+      set((state) => {
+        const c = findCase(state.cases, caseId);
+        if (!c) return;
+
+        const newCmd = createCommand(type);
+        newId = newCmd.id;
+
+        if (!anchorCommandId) {
+          // 无锚点：追加到末尾
+          c.children.push(newCmd);
+        } else {
+          // 有锚点：插入到锚点命令的正下方（同级兄弟）
+          const anchorIdx = c.children.findIndex((ch) => isCommand(ch) && ch.id === anchorCommandId);
+          if (anchorIdx === -1) {
+            // 锚点未找到，退化为追加
+            c.children.push(newCmd);
+          } else {
+            // 插入到锚点后一位
+            c.children.splice(anchorIdx + 1, 0, newCmd);
+          }
+        }
+        state.isDirty = true;
+      });
+      return newId;
+    },
+
     removeCommand: (caseId, cmdId) =>
       set((state) => {
         const c = findCase(state.cases, caseId);
@@ -296,11 +342,15 @@ export const useTestCaseStore = create<TestCaseState>()(
     selectCase: (id) =>
       set((state) => {
         state.selectedCaseId = id;
+        // Bug 2 修复：选中用例时清除命令选中状态（单选互斥）
+        state.selectedCommandId = null;
       }),
 
     selectCommand: (id) =>
       set((state) => {
         state.selectedCommandId = id;
+        // Bug 2 修复：选中命令时清除用例选中状态（单选互斥）
+        state.selectedCaseId = null;
       }),
 
     exportJson: (filename) => {
@@ -433,6 +483,74 @@ export const useTestCaseStore = create<TestCaseState>()(
         }
         const insertAt = position === 'before' ? anchorIdx : anchorIdx + 1;
         parent.children.splice(insertAt, 0, child);
+        state.isDirty = true;
+      }),
+
+    moveChildToPosition: (childId, targetParentId, targetIndex) =>
+      set((state) => {
+        // 防止自引用循环
+        if (childId === targetParentId) return;
+
+        // 若被拖动的是用例，禁止移入自身或后代
+        const draggedCase = findCase(state.cases, childId);
+        if (draggedCase && isSelfOrDescendant(draggedCase, targetParentId)) return;
+
+        // 提取子项
+        const child = extractChildInPlace(state.cases, childId);
+        if (!child) return;
+
+        // 定位目标父节点
+        const targetParent = findCase(state.cases, targetParentId);
+        if (!targetParent) return;
+
+        // 插入到目标位置（限制索引范围）
+        const safeIndex = Math.max(0, Math.min(targetIndex, targetParent.children.length));
+        targetParent.children.splice(safeIndex, 0, child);
+        targetParent.isExpanded = true;
+        state.isDirty = true;
+      }),
+
+    promoteCase: (childId) =>
+      set((state) => {
+        // 找到节点的父和祖父
+        const parentInfo = findParentAndIndex(state.cases, childId);
+        if (!parentInfo) return;
+
+        const { parent } = parentInfo;
+        const grandParentInfo = findParentAndIndex(state.cases, parent.id);
+        if (!grandParentInfo) return; // 已经是根层级，无法提升
+
+        // 提取节点
+        const child = extractChildInPlace(state.cases, childId);
+        if (!child) return;
+
+        // 插入到父级的后面（祖父的 children 中）
+        const grandParent = grandParentInfo.parent;
+        const insertIndex = grandParentInfo.index + 1;
+        grandParent.children.splice(insertIndex, 0, child);
+        state.isDirty = true;
+      }),
+
+    demoteCase: (childId) =>
+      set((state) => {
+        // 找到节点的父和索引
+        const info = findParentAndIndex(state.cases, childId);
+        if (!info) return;
+
+        const { parent, index } = info;
+        if (index === 0) return; // 是第一个子项，没有上一个兄弟
+
+        // 找到上一个兄弟
+        const prevSibling = parent.children[index - 1];
+        if (!isCase(prevSibling)) return; // 上一个兄弟必须是用例才能降级进去
+
+        // 提取节点
+        const child = extractChildInPlace(state.cases, childId);
+        if (!child) return;
+
+        // 插入到上一个兄弟的末尾
+        prevSibling.children.push(child);
+        prevSibling.isExpanded = true;
         state.isDirty = true;
       }),
 

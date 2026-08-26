@@ -46,6 +46,25 @@ pub fn classify_io_error(e: &std::io::Error) -> (SerialErrorKind, Severity) {
     }
 }
 
+/// 分类写入上下文的 I/O 错误
+///
+/// 与通用 `classify_io_error` 的区别：写入路径已用动态超时保证正常数据能发完，
+/// 因此 `WriteZero`（write_all 部分写入）和超时类错误视为**可恢复告警**而非致命，
+/// 避免因瞬时缓冲拥塞/流控阻塞误断连。真设备断开仍会以 BrokenPipe/NotConnected 呈现。
+pub fn classify_write_error(e: &std::io::Error) -> (SerialErrorKind, Severity) {
+    use std::io::ErrorKind::*;
+    match e.kind() {
+        // 部分写入：动态超时窗口内仍未发完，多为流控阻塞/瞬时拥塞，可恢复
+        WriteZero => (SerialErrorKind::WriteError, Severity::Warning),
+        TimedOut | WouldBlock => (SerialErrorKind::WriteError, Severity::Warning),
+        // 设备真断开 / 权限丢失：致命
+        BrokenPipe | NotConnected => (SerialErrorKind::DeviceRemoved, Severity::Fatal),
+        ConnectionReset => (SerialErrorKind::ConnectionReset, Severity::Fatal),
+        PermissionDenied => (SerialErrorKind::PermissionDenied, Severity::Fatal),
+        _ => (SerialErrorKind::Unknown, Severity::Fatal),
+    }
+}
+
 /// 生成当前毫秒级 Unix 时间戳
 fn now_millis() -> u64 {
     std::time::SystemTime::now()
@@ -269,9 +288,42 @@ impl SerialManager {
 
         let data_len = data.len();
 
+        // ── 动态写超时 ──────────────────────────────────────────────
+        // 背景：serialport 在 Windows 上用固定总超时（打开时设的 100ms）。
+        // 该超时是"防死锁的上限"，非"限速"。同步阻塞的 write_all 若在超时窗口内
+        // 没发完，会返回部分写入 → WriteZero，被误判为致命错误导致断连。
+        //
+        // 9600 波特率下 100ms 只够发约 96 字节，故 192+ 字节必然超时。
+        //
+        // 解法：按数据量和波特率算出理论发送时间，临时把写超时放大到
+        // "理论时间 × 3 + 200ms 余量"，写完立即恢复原超时。
+        // 数据真发完就返回，无任何人为延迟，性能时序保持真实；
+        // 只有真异常（设备卡死/流控阻塞）超过放大后的上限才触发超时。
+        let baud = port_guard.baud_rate().unwrap_or(9600).max(1);
+        // 每字节按 10 位估算（8N1；含起始/停止位），理论发送时间(ms)
+        let theoretical_ms = (data_len as u64 * 10 * 1000) / baud as u64;
+        // 放大 3 倍 + 200ms 余量，并夹取到 [100ms, 30s]
+        let dynamic_timeout_ms = ((theoretical_ms * 3) + 200).clamp(100, 30_000);
+        let dynamic_timeout = std::time::Duration::from_millis(dynamic_timeout_ms);
+
+        // 保存原超时以便写后恢复（获取失败则回退到 100ms 基线）
+        let original_timeout = port_guard.timeout();
+        // 仅当放大后的超时更大时才临时调整，避免缩小基线超时
+        let adjusted = dynamic_timeout > original_timeout;
+        if adjusted {
+            if let Err(e) = port_guard.set_timeout(dynamic_timeout) {
+                eprintln!("[{}] Failed to set dynamic write timeout: {}", label, e);
+            }
+        }
+
         // 使用 write_all 确保所有字节都被写入（循环写入直到完成）
         // 移除 flush() 以避免 Windows FlushFileBuffers 在 COM 口上的异常行为
         let write_result = port_guard.write_all(data);
+
+        // 恢复原超时（无论成功失败都恢复，避免污染后续读/写）
+        if adjusted {
+            let _ = port_guard.set_timeout(original_timeout);
+        }
 
         // 处理写入结果
         match write_result {
@@ -280,8 +332,10 @@ impl SerialManager {
                 Ok(data_len)
             }
             Err(e) => {
-                // 分类错误
-                let (kind, severity) = classify_io_error(&e);
+                // 写上下文错误分类：WriteZero（部分写入）和超时类不再当致命错误。
+                // 动态超时已保证正常数据发得完；仍失败通常是流控阻塞/瞬时拥塞，
+                // 属可恢复告警，保持连接。真断开会表现为 BrokenPipe/NotConnected。
+                let (kind, severity) = classify_write_error(&e);
                 let is_fatal = matches!(severity, Severity::Fatal);
 
                 if is_fatal {
