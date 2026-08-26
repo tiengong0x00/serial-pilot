@@ -46,8 +46,11 @@ export function useSerialListener() {
       // 数据事件监听
       unlistenData = await listen<SerialDataPayload>('serial_data', (event) => {
         const t0 = performance.now();
+        const receiveTs = Date.now();
         if (!isMounted) return;
         const payload = event.payload;
+
+        console.log(`[PERF] serial_data event: label=${payload.port_label}, bytes=${payload.data.length}, backend_ts=${payload.timestamp}, receive_ts=${receiveTs}, backend_to_frontend=${receiveTs - payload.timestamp}ms`);
 
         // ✅ 接收时验证连接状态：状态不符则丢弃僵尸数据
         const { connectionStatus } = useSerialStore.getState();

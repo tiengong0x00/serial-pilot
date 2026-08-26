@@ -42,9 +42,10 @@ async fn connect_serial_port(
     port_label: String,
     port_name: String,
     config: SerialConfig,
+    file_packet_size: u32,
     state: State<'_, AppState>,
 ) -> Result<(), SerialError> {
-    state.serial_manager.connect(&port_label, &port_name, &config)
+    state.serial_manager.connect(&port_label, &port_name, &config, file_packet_size)
 }
 
 #[tauri::command]
@@ -64,6 +65,8 @@ async fn get_connection_status(state: State<'_, AppState>) -> Result<ConnectionS
 async fn write_serial_data(
     port_label: String,
     data: Vec<u8>,
+    file_packet_size: u32,
+    file_packet_interval: u32,
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WriteResult, SerialError> {
@@ -79,11 +82,22 @@ async fn write_serial_data(
     eprintln!("[PERF] write_serial_data entry: label={}, size={}, timestamp_gen={}μs",
         port_label, data.len(), (t1 - t0).as_micros());
 
-    let bytes_written = state.serial_manager.write(&port_label, &data, &app_handle)?;
+    let bytes_written = state.serial_manager.write(
+        &port_label,
+        &data,
+        file_packet_size,
+        file_packet_interval,
+        &app_handle,
+    )?;
 
     let t2 = std::time::Instant::now();
-    eprintln!("[PERF] write_serial_data exit: label={}, write_call={}μs, total={}μs",
-        port_label, (t2 - t1).as_micros(), (t2 - t0).as_micros());
+    let write_done_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    eprintln!("[PERF] write_serial_data exit: label={}, write_call={}μs, total={}μs, write_done_ts={}",
+        port_label, (t2 - t1).as_micros(), (t2 - t0).as_micros(), write_done_ts);
 
     Ok(WriteResult {
         bytes_written,

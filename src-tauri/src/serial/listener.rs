@@ -79,14 +79,18 @@ pub fn start_listener(
             match port.read(&mut buffer) {
                 Ok(n) if n > 0 => {
                     // 零延迟：收到字节立即转发，不累积、不等待
+                    let read_ts = now_millis();
+                    let emit_start = Instant::now();
                     let payload = SerialDataPayload {
                         port_label: port_label.clone(),
                         data: buffer[..n].to_vec(),
-                        timestamp: now_millis(),
+                        timestamp: read_ts,
                     };
                     if let Err(e) = app_handle.emit("serial_data", payload) {
                         eprintln!("Failed to emit serial data [{}]: {}", port_label, e);
                     }
+                    eprintln!("[PERF] listener read: label={}, bytes={}, read_ts={}, emit={}μs",
+                        port_label, n, read_ts, emit_start.elapsed().as_micros());
                 }
                 Ok(_) => {
                     // 读到 0 字节，忽略

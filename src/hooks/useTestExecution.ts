@@ -105,7 +105,14 @@ async function writeSerial(
   portLabel: PortLabel,
   data: Uint8Array,
 ): Promise<{ bytes_written: number; timestamp: number }> {
-  return invoke('write_serial_data', { portLabel, data: Array.from(data) });
+  // 从设置读取分包参数
+  const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
+  return invoke('write_serial_data', {
+    portLabel,
+    data: Array.from(data),
+    filePacketSize,
+    filePacketInterval,
+  });
 }
 
 export function useTestExecution() {

@@ -144,7 +144,11 @@ impl SerialManager {
     }
 
     /// 连接串口
-    pub fn connect(&self, label: &str, name: &str, cfg: &SerialConfig) -> Result<(), SerialError> {
+    ///
+    /// `file_packet_size`：单包最大字节数（前端设置项）。用于计算一个足够大的
+    /// 固定写超时：一次 write_all 最多写一个包，超时 = 该包理论发送时间 × 3 + 500ms 余量。
+    /// 连接后固定不变，写入路径不再动态调整超时（避免 Windows SetCommTimeouts 的高开销）。
+    pub fn connect(&self, label: &str, name: &str, cfg: &SerialConfig, file_packet_size: u32) -> Result<(), SerialError> {
         // 检查是否已连接
         {
             let guard = self.connections.lock()
@@ -186,13 +190,27 @@ impl SerialManager {
             _ => return Err(SerialError::ConfigInvalid(format!("Invalid flow control: {}", cfg.flow_control))),
         };
 
+        // 计算固定写超时：按单包最大字节数 + 波特率
+        // 理论发送时间(ms) = (file_packet_size × 10位) / 波特率 × 1000
+        // 实际超时 = 理论时间 × 3 + 500ms 余量，下限 100ms
+        let baud = cfg.baud_rate.max(110); // 防止除零，最低110波特率
+        let packet_size = file_packet_size.max(1) as u64; // 防止除零，最小1字节
+        let theoretical_ms = (packet_size * 10 * 1000) / baud as u64;
+        let write_timeout_ms = ((theoretical_ms * 3) + 500).max(100);
+        let write_timeout = std::time::Duration::from_millis(write_timeout_ms);
+
+        eprintln!(
+            "[{}] Calculated write timeout: baud={}, packet_size={}, theoretical={}ms, timeout={}ms",
+            label, baud, packet_size, theoretical_ms, write_timeout_ms
+        );
+
         // 打开串口
         let mut port = serialport::new(name, cfg.baud_rate)
             .parity(parity)
             .stop_bits(stop_bits)
             .data_bits(data_bits)
             .flow_control(flow_control)
-            .timeout(std::time::Duration::from_millis(100))
+            .timeout(write_timeout)
             .open()
             .map_err(|e| SerialError::OpenFailed(format!("{}: {}", name, e)))?;
 
@@ -276,7 +294,14 @@ impl SerialManager {
     }
 
     /// 写入数据到串口
-    pub fn write(&self, label: &str, data: &[u8], app_handle: &tauri::AppHandle) -> Result<usize, SerialError> {
+    pub fn write(
+        &self,
+        label: &str,
+        data: &[u8],
+        file_packet_size: u32,
+        file_packet_interval: u32,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<usize, SerialError> {
         let t0 = std::time::Instant::now();
 
         // ── 全局锁最小化 ────────────────────────────────────────────
@@ -307,94 +332,58 @@ impl SerialManager {
         eprintln!("[PERF] write[{}]: port_lock_wait={}μs", label, (t2 - t1).as_micros());
 
         let data_len = data.len();
+        let packet_size = file_packet_size.max(1) as usize; // 防止除零
 
-        // ── 动态写超时 ──────────────────────────────────────────────
-        // 背景：serialport 在 Windows 上用固定总超时（打开时设的 100ms）。
-        // 该超时是"防死锁的上限"，非"限速"。同步阻塞的 write_all 若在超时窗口内
-        // 没发完，会返回部分写入 → WriteZero，被误判为致命错误导致断连。
-        //
-        // 9600 波特率下 100ms 只够发约 96 字节，故 192+ 字节必然超时。
-        //
-        // 解法：按数据量和波特率算出理论发送时间，临时把写超时放大到
-        // "理论时间 × 3 + 200ms 余量"，写完立即恢复原超时。
-        // 数据真发完就返回，无任何人为延迟，性能时序保持真实；
-        // 只有真异常（设备卡死/流控阻塞）超过放大后的上限才触发超时。
+        // 计算理论发送时间（用于日志）
         let baud = port_guard.baud_rate().unwrap_or(9600).max(1);
-        // 每字节按 10 位估算（8N1；含起始/停止位），理论发送时间(ms)
         let theoretical_ms = (data_len as u64 * 10 * 1000) / baud as u64;
-        // 放大 3 倍 + 200ms 余量，并夹取到 [100ms, 30s]
-        let dynamic_timeout_ms = ((theoretical_ms * 3) + 200).clamp(100, 30_000);
-        let dynamic_timeout = std::time::Duration::from_millis(dynamic_timeout_ms);
-
-        // 保存原超时以便写后恢复（获取失败则回退到 100ms 基线）
-        let original_timeout = port_guard.timeout();
-        // 仅当放大后的超时更大时才临时调整，避免缩小基线超时
-        let adjusted = dynamic_timeout > original_timeout;
-        if adjusted {
-            if let Err(e) = port_guard.set_timeout(dynamic_timeout) {
-                eprintln!("[{}] Failed to set dynamic write timeout: {}", label, e);
-            }
-        }
 
         let t3 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: setup={}μs, data_len={}, baud={}, theoretical={}ms",
-            label, (t3 - t2).as_micros(), data_len, baud, theoretical_ms);
+        eprintln!("[PERF] write[{}]: setup={}μs, data_len={}, baud={}, theoretical={}ms, packet_size={}",
+            label, (t3 - t2).as_micros(), data_len, baud, theoretical_ms, packet_size);
 
-        // 使用 write_all 确保所有字节都被写入（循环写入直到完成）
-        // 移除 flush() 以避免 Windows FlushFileBuffers 在 COM 口上的异常行为
-        let write_result = port_guard.write_all(data);
+        // ── 分包发送 ──────────────────────────────────────────────
+        // 按 file_packet_size 切分数据，循环发送每个包。
+        // 包间延时 file_packet_interval（可能为 0 或 1ms）。
+        // 超时已在连接时按单包大小设置，此处无需调整。
+        let mut total_written = 0;
+        let chunks = data.chunks(packet_size);
+        let chunk_count = chunks.len();
+
+        for (i, chunk) in chunks.enumerate() {
+            let t_chunk_start = std::time::Instant::now();
+
+            // 写入当前包
+            let write_result = port_guard.write_all(chunk);
+
+            let t_chunk_end = std::time::Instant::now();
+            eprintln!("[PERF] write[{}]: chunk {}/{}, size={}, write_all={}μs",
+                label, i + 1, chunk_count, chunk.len(), (t_chunk_end - t_chunk_start).as_micros());
+
+            // 处理写入结果
+            match write_result {
+                Ok(_) => {
+                    total_written += chunk.len();
+                }
+                Err(e) => {
+                    let (kind, _severity) = classify_io_error(&e);
+                    eprintln!("[PERF] write[{}]: chunk {}/{} failed: kind={:?}, error={}",
+                        label, i + 1, chunk_count, kind, e);
+                    return Err(SerialError::WriteFailed(format!("{}", e)));
+                }
+            }
+
+            // 包间延时（最后一包无需等待）
+            if i + 1 < chunk_count && file_packet_interval > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(file_packet_interval as u64));
+            }
+        }
 
         let t4 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: write_all={}μs", label, (t4 - t3).as_micros());
+        eprintln!("[PERF] write[{}]: total={}μs, total_written={}", label, (t4 - t0).as_micros(), total_written);
 
-        // 恢复原超时（无论成功失败都恢复，避免污染后续读/写）
-        if adjusted {
-            let _ = port_guard.set_timeout(original_timeout);
-        }
-
-        let t5 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: total={}μs", label, (t5 - t0).as_micros());
-
-        // 处理写入结果
-        match write_result {
-            Ok(()) => {
-                // write_all 成功表示全部写入完成
-                Ok(data_len)
-            }
-            Err(e) => {
-                // 写上下文错误分类：WriteZero（部分写入）和超时类不再当致命错误。
-                // 动态超时已保证正常数据发得完；仍失败通常是流控阻塞/瞬时拥塞，
-                // 属可恢复告警，保持连接。真断开会表现为 BrokenPipe/NotConnected。
-                let (kind, severity) = classify_write_error(&e);
-                let is_fatal = matches!(severity, Severity::Fatal);
-
-                if is_fatal {
-                    eprintln!("[{}] Write encountered fatal error: {}", label, e);
-
-                    // 发送错误事件
-                    let payload = SerialErrorPayload {
-                        port_label: label.to_string(),
-                        kind: kind.clone(),
-                        severity,
-                        message: format!("Write failed: {}", e),
-                        timestamp: now_millis(),
-                    };
-
-                    // 释放端口锁（全局锁已在查表后提前释放）
-                    drop(port_guard);
-
-                    // 发送事件
-                    if let Err(emit_err) = app_handle.emit("serial_error", payload) {
-                        eprintln!("[{}] Failed to emit serial_error event: {}", label, emit_err);
-                    }
-
-                    // 清理连接
-                    self.force_cleanup(label);
-                }
-
-                Err(SerialError::WriteFailed(format!("{}: {}", label, e)))
-            }
-        }
+        // 分包发送全部成功
+        Ok(total_written)
     }
 
     /// 强制清理连接（供后端异常路径调用）
