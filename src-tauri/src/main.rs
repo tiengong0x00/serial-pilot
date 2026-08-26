@@ -67,11 +67,12 @@ async fn write_serial_data(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WriteResult, SerialError> {
-    let bytes_written = state.serial_manager.write(&port_label, &data, &app_handle)?;
+    // 在写入开始前记录时间戳，确保 TX 时序早于其触发的 RX 响应
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
+    let bytes_written = state.serial_manager.write(&port_label, &data, &app_handle)?;
     Ok(WriteResult {
         bytes_written,
         timestamp,
