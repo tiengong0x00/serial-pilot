@@ -351,6 +351,9 @@ const DataTerminal = () => {
   const [autoSendInterval, setAutoSendInterval] = useState(1000); // ms, 范围 10-60000
   const autoSendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // 发送队列计数（方案 A 视觉反馈）：显示正在进行中的发送请求数量
+  const [pendingSendCount, setPendingSendCount] = useState(0);
+
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: 'output' | 'input' } | null>(null);
 
@@ -574,6 +577,8 @@ const DataTerminal = () => {
       return;
     }
 
+    // 进入发送：计数 +1，供 UI 显示"发送中/排队中"
+    setPendingSendCount((c) => c + 1);
     try {
       // 向每个目标端口发送
       for (const target of targets) {
@@ -593,6 +598,9 @@ const DataTerminal = () => {
     } catch (e) {
       const err = e as { message?: string };
       setErrorMsg(err.message ?? String(e));
+    } finally {
+      // 无论成败，完成后计数 -1
+      setPendingSendCount((c) => Math.max(0, c - 1));
     }
   }, [input, isConnected, lineFeed, resolveTargets, writeSerialData, addMessage, t]);
 
@@ -1033,17 +1041,21 @@ const DataTerminal = () => {
             {t("terminal.autoSend")}
           </label>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className="w-20 h-7 px-1.5 text-xs rounded-md border border-input bg-background disabled:opacity-50"
             value={autoSendInterval}
             onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!isNaN(val) && val >= 10 && val <= 60000) {
-                setAutoSendInterval(val);
+              // 只做数字校验（仅保留纯数字输入），不做范围限制
+              const raw = e.target.value;
+              if (raw === "") {
+                setAutoSendInterval(0);
+                return;
+              }
+              if (/^\d+$/.test(raw)) {
+                setAutoSendInterval(parseInt(raw, 10));
               }
             }}
-            min={10}
-            max={60000}
             disabled={!isConnected || autoSend || !!pendingFile}
             placeholder="ms"
           />
@@ -1141,6 +1153,11 @@ const DataTerminal = () => {
               <>
                 <Send className="w-4 h-4" />
                 {pendingFile ? t("terminal.sendFile") : t("terminal.send")}
+                {pendingSendCount > 0 && (
+                  <span className="ml-1 min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-primary-foreground/20 text-[10px] leading-none">
+                    {pendingSendCount}
+                  </span>
+                )}
               </>
             )}
           </button>

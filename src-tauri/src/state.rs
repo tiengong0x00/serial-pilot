@@ -277,13 +277,20 @@ impl SerialManager {
 
     /// 写入数据到串口
     pub fn write(&self, label: &str, data: &[u8], app_handle: &tauri::AppHandle) -> Result<usize, SerialError> {
-        let guard = self.connections.lock()
-            .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+        // ── 全局锁最小化 ────────────────────────────────────────────
+        // 只在"查表拿端口句柄"期间持有全局 connections 锁：克隆出端口的
+        // Arc<Mutex> 后立即释放全局锁。这样 write_all 的阻塞只作用于当前
+        // 端口自己的锁，不再卡住其他端口的读写、状态查询与连接管理，
+        // 消除"连点发送时全局串行排队"的瓶颈。
+        let port_arc = {
+            let guard = self.connections.lock()
+                .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+            let handle = guard.get(label)
+                .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
+            Arc::clone(&handle.port)
+        }; // ← 全局锁在此释放
 
-        let handle = guard.get(label)
-            .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
-
-        let mut port_guard = handle.port.lock()
+        let mut port_guard = port_arc.lock()
             .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
 
         let data_len = data.len();
@@ -350,9 +357,8 @@ impl SerialManager {
                         timestamp: now_millis(),
                     };
 
-                    // 释放锁
+                    // 释放端口锁（全局锁已在查表后提前释放）
                     drop(port_guard);
-                    drop(guard);
 
                     // 发送事件
                     if let Err(emit_err) = app_handle.emit("serial_error", payload) {
