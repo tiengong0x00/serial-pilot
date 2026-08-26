@@ -81,30 +81,16 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
         };
       }
 
-      // 未超限，正常添加
+      // 未超限，直接追加。
+      // 新架构下：TX 乐观渲染立即入列，RX 由监听器按到达顺序入列，
+      // 消息的添加顺序即显示顺序，无需再排序。
       const messageWithSeq = {
         ...message,
         sequence: state.sequenceCounter,
       };
 
-      // 插入排序：按 timestamp 升序，timestamp 相同时 TX 优先于 RX
-      const newMessages = [...state.messages, messageWithSeq].sort((a, b) => {
-        if (a.timestamp !== b.timestamp) {
-          return a.timestamp - b.timestamp;
-        }
-        // 时间戳相同时，按消息类型排序：TX < RX < SYS
-        const typeOrder = { TX: 0, RX: 1, SYS: 2 };
-        const orderA = typeOrder[a.type] ?? 999;
-        const orderB = typeOrder[b.type] ?? 999;
-        if (orderA !== orderB) {
-          return orderA - orderB;
-        }
-        // 类型也相同时，按序列号排序（保持添加顺序）
-        return (a.sequence ?? 0) - (b.sequence ?? 0);
-      });
-
       return {
-        messages: newMessages,
+        messages: [...state.messages, messageWithSeq],
         sequenceCounter: state.sequenceCounter + 1,
       };
     }),

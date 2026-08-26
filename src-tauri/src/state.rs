@@ -277,21 +277,34 @@ impl SerialManager {
 
     /// 写入数据到串口
     pub fn write(&self, label: &str, data: &[u8], app_handle: &tauri::AppHandle) -> Result<usize, SerialError> {
+        let t0 = std::time::Instant::now();
+
         // ── 全局锁最小化 ────────────────────────────────────────────
         // 只在"查表拿端口句柄"期间持有全局 connections 锁：克隆出端口的
         // Arc<Mutex> 后立即释放全局锁。这样 write_all 的阻塞只作用于当前
         // 端口自己的锁，不再卡住其他端口的读写、状态查询与连接管理，
         // 消除"连点发送时全局串行排队"的瓶颈。
         let port_arc = {
+            let t_lock_start = std::time::Instant::now();
             let guard = self.connections.lock()
                 .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+            let t_lock_acquired = std::time::Instant::now();
             let handle = guard.get(label)
                 .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
-            Arc::clone(&handle.port)
+            let arc = Arc::clone(&handle.port);
+            let t_lock_released = std::time::Instant::now();
+            eprintln!("[PERF] write[{}]: global_lock_wait={}μs, lookup={}μs",
+                label,
+                (t_lock_acquired - t_lock_start).as_micros(),
+                (t_lock_released - t_lock_acquired).as_micros());
+            arc
         }; // ← 全局锁在此释放
 
+        let t1 = std::time::Instant::now();
         let mut port_guard = port_arc.lock()
             .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
+        let t2 = std::time::Instant::now();
+        eprintln!("[PERF] write[{}]: port_lock_wait={}μs", label, (t2 - t1).as_micros());
 
         let data_len = data.len();
 
@@ -323,14 +336,24 @@ impl SerialManager {
             }
         }
 
+        let t3 = std::time::Instant::now();
+        eprintln!("[PERF] write[{}]: setup={}μs, data_len={}, baud={}, theoretical={}ms",
+            label, (t3 - t2).as_micros(), data_len, baud, theoretical_ms);
+
         // 使用 write_all 确保所有字节都被写入（循环写入直到完成）
         // 移除 flush() 以避免 Windows FlushFileBuffers 在 COM 口上的异常行为
         let write_result = port_guard.write_all(data);
+
+        let t4 = std::time::Instant::now();
+        eprintln!("[PERF] write[{}]: write_all={}μs", label, (t4 - t3).as_micros());
 
         // 恢复原超时（无论成功失败都恢复，避免污染后续读/写）
         if adjusted {
             let _ = port_guard.set_timeout(original_timeout);
         }
+
+        let t5 = std::time::Instant::now();
+        eprintln!("[PERF] write[{}]: total={}μs", label, (t5 - t0).as_micros());
 
         // 处理写入结果
         match write_result {

@@ -69,68 +69,30 @@ pub fn start_listener(
 
     tokio::task::spawn_blocking(move || {
         let mut buffer = [0u8; 1024];
-        // 累积中的数据包
-        let mut acc: Vec<u8> = Vec::with_capacity(256);
-        // 包内第一个字节到达时间（作为该包的时间戳来源）
-        let mut packet_started_at: u64 = 0;
-        // 最近一次收到字节的时刻（用于计算静默间隙）
-        let mut last_byte_at = Instant::now();
-
-        // 把累积缓冲区作为一包发出并清空
-        let flush = |acc: &mut Vec<u8>, ts: u64, app: &AppHandle, label: &str| {
-            if acc.is_empty() {
-                return;
-            }
-            let payload = SerialDataPayload {
-                port_label: label.to_string(),
-                data: std::mem::take(acc),
-                timestamp: ts,
-            };
-            if let Err(e) = app.emit("serial_data", payload) {
-                eprintln!("Failed to push serial data [{}]: {}", label, e);
-            }
-        };
 
         loop {
-            // 检查取消信号：退出前把残留数据发出，避免丢最后一包
+            // 检查取消信号
             if *cancel_rx.borrow() {
-                flush(&mut acc, packet_started_at, &app_handle, &port_label);
                 break;
             }
 
             match port.read(&mut buffer) {
-                Ok(0) => {
-                    // 读到 0 字节：若已有累积数据且静默超过帧超时，则分包
-                    if !acc.is_empty() && last_byte_at.elapsed() >= frame_timeout {
-                        flush(&mut acc, packet_started_at, &app_handle, &port_label);
+                Ok(n) if n > 0 => {
+                    // 零延迟：收到字节立即转发，不累积、不等待
+                    let payload = SerialDataPayload {
+                        port_label: port_label.clone(),
+                        data: buffer[..n].to_vec(),
+                        timestamp: now_millis(),
+                    };
+                    if let Err(e) = app_handle.emit("serial_data", payload) {
+                        eprintln!("Failed to emit serial data [{}]: {}", port_label, e);
                     }
                 }
-                Ok(n) => {
-                    let now = Instant::now();
-
-                    // 若与上一字节的间隔已超过帧超时，先把上一包结算掉，再开新包
-                    if !acc.is_empty() && now.duration_since(last_byte_at) >= frame_timeout {
-                        flush(&mut acc, packet_started_at, &app_handle, &port_label);
-                    }
-
-                    // 新包起点：记录首字节时间戳
-                    if acc.is_empty() {
-                        packet_started_at = now_millis();
-                    }
-
-                    acc.extend_from_slice(&buffer[..n]);
-                    last_byte_at = now;
-
-                    // 超长保护：持续不断的数据流强制分包
-                    if acc.len() >= MAX_PACKET_BYTES {
-                        flush(&mut acc, packet_started_at, &app_handle, &port_label);
-                    }
+                Ok(_) => {
+                    // 读到 0 字节，忽略
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    // 静默超时：这是纯超时组包的主要分包触发点
-                    if !acc.is_empty() && last_byte_at.elapsed() >= frame_timeout {
-                        flush(&mut acc, packet_started_at, &app_handle, &port_label);
-                    }
+                    // 读超时，继续循环（仅用于驱动取消检查）
                 }
                 Err(e) => {
                     // 分类错误：警告级重试，致命级退出
@@ -148,9 +110,8 @@ pub fn start_listener(
                             continue;
                         }
                         Severity::Fatal => {
-                            // 致命错误：刷新残留数据，通知前端，退出循环
+                            // 致命错误：通知前端，退出循环
                             eprintln!("Serial read fatal error [{}]: {}", port_label, e);
-                            flush(&mut acc, packet_started_at, &app_handle, &port_label);
 
                             let payload = SerialErrorPayload {
                                 port_label: port_label.clone(),

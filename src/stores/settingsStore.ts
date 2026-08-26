@@ -45,6 +45,9 @@ interface SettingsStore {
   // 发送配置
   enterToSend: boolean; // 手动发送框：回车键是否直接发送（默认 true）
 
+  // 终端时间戳显示（默认开启）
+  showTimestamp: boolean;
+
   // Actions
   setLanguage: (lang: Language) => void;
   setThemeMode: (mode: ThemeMode) => void;
@@ -62,6 +65,7 @@ interface SettingsStore {
   setFilePacketSize: (size: number) => void;
   setFilePacketInterval: (interval: number) => void;
   setSerialFrameTimeout: (timeout: number) => void;
+  setShowTimestamp: (show: boolean) => void;
   setTerminalFontSize: (size: number) => void;
   setTerminalLineHeight: (height: number) => void;
   setTerminalMaxMessages: (max: number) => void;
@@ -113,6 +117,8 @@ export const useSettingsStore = create<SettingsStore>()(
       testCaseButtonContent: 'auto', // 默认根据宽度自动判断（保持当前行为）
       // 手动发送框默认回车即发送
       enterToSend: true,
+      // 终端时间戳默认显示
+      showTimestamp: true,
 
       setLanguage: (lang) => set({ language: lang }),
       setThemeMode: (mode) => set({ themeMode: mode }),
@@ -130,6 +136,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setFilePacketSize: (size) => set({ filePacketSize: size }),
       setFilePacketInterval: (interval) => set({ filePacketInterval: interval }),
       setSerialFrameTimeout: (timeout) => set({ serialFrameTimeout: timeout }),
+      setShowTimestamp: (show) => set({ showTimestamp: show }),
       setTerminalFontSize: (size) => set({ terminalFontSize: size }),
       setTerminalLineHeight: (height) => set({ terminalLineHeight: height }),
       setTerminalMaxMessages: (max) => set({ terminalMaxMessages: max }),

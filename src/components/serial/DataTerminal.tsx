@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square } from "lucide-react";
+import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -144,17 +144,23 @@ function MessageRow({
   format,
   showPort,
   highlightRules,
+  showTimestamp,
 }: {
   msg: TerminalMessage;
   format: DisplayFormat;
   showPort: boolean;
   highlightRules: HighlightRule[];
+  showTimestamp: boolean;
 }) {
   const contentClass = msg.type === "TX" ? "terminal-sent" : "terminal-text";
   const content = renderContent(msg, format);
   return (
     <div className="whitespace-pre-wrap break-all">
-      <span className="text-muted-foreground/60">[{formatTimestamp(msg.timestamp)}]</span>{" "}
+      {showTimestamp && (
+        <>
+          <span className="text-muted-foreground/60">[{formatTimestamp(msg.timestamp)}]</span>{" "}
+        </>
+      )}
       {showPort && msg.port_label && (
         <>
           <span className={portLabelClass(msg.port_label)}>[{msg.port_label}]</span>{" "}
@@ -194,6 +200,7 @@ function VirtualTerminalView({
   autoScroll,
   style,
   onContextMenu,
+  showTimestamp,
 }: {
   messages: TerminalMessage[];
   format: DisplayFormat;
@@ -201,6 +208,7 @@ function VirtualTerminalView({
   autoScroll: boolean;
   style?: React.CSSProperties;
   onContextMenu?: (e: React.MouseEvent) => void;
+  showTimestamp: boolean;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -270,7 +278,7 @@ function VirtualTerminalView({
         // 测试环境：完整渲染所有消息
         <div ref={scrollRef} className="px-3">
           {messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} format={format} showPort={showPort} highlightRules={highlightRules} />
+            <MessageRow key={msg.id} msg={msg} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} />
           ))}
         </div>
       ) : (
@@ -290,7 +298,7 @@ function VirtualTerminalView({
               }}
               className="px-3"
             >
-              <MessageRow msg={messages[virtualItem.index]} format={format} showPort={showPort} highlightRules={highlightRules} />
+              <MessageRow msg={messages[virtualItem.index]} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} />
             </div>
           ))}
         </div>
@@ -304,6 +312,8 @@ const DataTerminal = () => {
   const { messages, clearMessages, addMessage } = useTerminalStore();
   const { connectionStatus } = useSerialStore();
   const { filePacketSize, filePacketInterval, terminalFontSize, terminalLineHeight, terminalMaxMessages, enterToSend } = useSettingsStore();
+  const showTimestamp = useSettingsStore((s) => s.showTimestamp);
+  const setShowTimestamp = useSettingsStore((s) => s.setShowTimestamp);
   const setMaxMessages = useTerminalStore((s) => s.setMaxMessages);
   const { writeSerialData } = useSerialCommands();
   const { success, error: notifyError } = useNotify();
@@ -556,6 +566,10 @@ const DataTerminal = () => {
   }, [contextMenu, messages.length, input, handleExport, clearMessages, success, notifyError]);
 
   const handleSend = useCallback(async () => {
+    const sendId = Math.random().toString(36).substr(2, 6);
+    const t0 = performance.now();
+    console.log(`[PERF] handleSend[${sendId}] entry`);
+
     if (!input) {
       setErrorMsg(t("terminal.emptyInput"));
       return;
@@ -579,28 +593,43 @@ const DataTerminal = () => {
 
     // 进入发送：计数 +1，供 UI 显示"发送中/排队中"
     setPendingSendCount((c) => c + 1);
+
+    // 1. 立即显示 TX（乐观渲染）
+    const txTimestamp = Date.now();
+    for (const target of targets) {
+      const txMsg: TerminalMessage = {
+        id: `${txTimestamp}-${Math.random().toString(36).substr(2, 9)}`,
+        type: 'TX',
+        port_label: target,
+        data: bytes,
+        timestamp: txTimestamp,
+        text: payload,
+      };
+      addMessage(txMsg);
+    }
+
+    const t1 = performance.now();
+    console.log(`[PERF] handleSend[${sendId}] optimistic_render=${(t1-t0).toFixed(2)}ms`);
+
+    // 2. 后台发送（不阻塞界面）
     try {
-      // 向每个目标端口发送
       for (const target of targets) {
-        const result = await writeSerialData(target, bytes);
-        addMessage({
-          id: `${result.timestamp}-${Math.random().toString(36).substr(2, 9)}`,
-          type: "TX",
-          port_label: target,
-          data: bytes,
-          timestamp: result.timestamp,
-          // 存实际发送内容（含行尾符），使 TX 显示与真实发送一致，
-          // CRLF 在 whitespace-pre-wrap 下渲染为换行，与 RX 之间自然分隔
-          text: payload,
-        });
+        const t2 = performance.now();
+        await writeSerialData(target, bytes);
+        const t3 = performance.now();
+        console.log(`[PERF] handleSend[${sendId}] writeSerialData[${target}]=${(t3-t2).toFixed(2)}ms`);
+        // 成功：无需任何操作（TX 已显示）
       }
       // 发送成功后保留输入内容（不清空），用户可直接覆盖或修改
     } catch (e) {
       const err = e as { message?: string };
+      // 失败：TX 保持显示（符合常见软件行为），仅设置错误提示
       setErrorMsg(err.message ?? String(e));
     } finally {
       // 无论成败，完成后计数 -1
       setPendingSendCount((c) => Math.max(0, c - 1));
+      const t5 = performance.now();
+      console.log(`[PERF] handleSend[${sendId}] total=${(t5-t0).toFixed(2)}ms`);
     }
   }, [input, isConnected, lineFeed, resolveTargets, writeSerialData, addMessage, t]);
 
@@ -938,6 +967,16 @@ const DataTerminal = () => {
         </span>
         <button
           type="button"
+          className={`h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-secondary ${
+            showTimestamp ? "bg-secondary" : ""
+          }`}
+          onClick={() => setShowTimestamp(!showTimestamp)}
+          title={t("terminal.toggleTimestamp")}
+        >
+          <Clock className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
           className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"
           onClick={handleExport}
           disabled={messages.length === 0}
@@ -965,6 +1004,7 @@ const DataTerminal = () => {
           autoScroll={autoScroll}
           style={terminalStyle}
           onContextMenu={handleOutputContextMenu}
+          showTimestamp={showTimestamp}
         />
       ) : (
         // 分栏模式：P1 左、P2 右，独立滚动
@@ -980,6 +1020,7 @@ const DataTerminal = () => {
               autoScroll={autoScroll}
               style={terminalStyle}
               onContextMenu={handleOutputContextMenu}
+              showTimestamp={showTimestamp}
             />
           </div>
           <div className="flex-1 flex flex-col min-w-0">
@@ -993,6 +1034,7 @@ const DataTerminal = () => {
               autoScroll={autoScroll}
               style={terminalStyle}
               onContextMenu={handleOutputContextMenu}
+              showTimestamp={showTimestamp}
             />
           </div>
         </div>

@@ -30,7 +30,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByRole('textbox');
+    const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     await user.type(input, 'TEST');
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
@@ -52,7 +52,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByRole('textbox');
+    const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     fireEvent.change(input, { target: { value: 'LOOP' } });
 
     // 修改间隔为 500ms
@@ -84,7 +84,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByRole('textbox');
+    const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     fireEvent.change(input, { target: { value: 'STOP' } });
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
@@ -110,7 +110,7 @@ describe('DataTerminal - 自动发送功能', () => {
 
     render(<DataTerminal />);
 
-    const input = screen.getByRole('textbox');
+    const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     fireEvent.change(input, { target: { value: 'OLD' } });
 
     const intervalInput = screen.getByDisplayValue('1000');
@@ -150,24 +150,24 @@ describe('DataTerminal - 自动发送功能', () => {
     expect(autoSendCheckbox).toBeDisabled();
   });
 
-  it('间隔输入框限制范围 10-60000ms', () => {
+  it('间隔输入框只接受纯数字', () => {
     render(<DataTerminal />);
 
     const intervalInput = screen.getByDisplayValue('1000') as HTMLInputElement;
 
-    // 合法值应正常更新
+    // 纯数字应正常更新
     fireEvent.change(intervalInput, { target: { value: '100' } });
     expect(intervalInput.value).toBe('100');
 
     fireEvent.change(intervalInput, { target: { value: '60000' } });
     expect(intervalInput.value).toBe('60000');
 
-    // 低于下限 10，onChange 拒绝更新，保持上一个有效值 60000
-    fireEvent.change(intervalInput, { target: { value: '5' } });
+    // 非数字字符，onChange 拒绝更新，保持上一个有效值 60000
+    fireEvent.change(intervalInput, { target: { value: 'abc' } });
     expect(intervalInput.value).toBe('60000');
 
-    // 高于上限 60000，onChange 拒绝更新
-    fireEvent.change(intervalInput, { target: { value: '70000' } });
+    // 小数点，onChange 拒绝更新
+    fireEvent.change(intervalInput, { target: { value: '123.45' } });
     expect(intervalInput.value).toBe('60000');
   });
 });
