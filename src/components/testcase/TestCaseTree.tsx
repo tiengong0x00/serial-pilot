@@ -40,31 +40,33 @@ const INDENT_WIDTH = 12;
 const HEAD_DROP_ID = '__head_drop_zone__';
 const TAIL_DROP_ID = '__tail_drop_zone__';
 
-// 头部放置区：占据树顶部空白，为"拖到最开头作为根层级第一项"提供落点
+// 头部放置区：平时几乎无高度，仅拖拽激活时扩展为可命中的感应区
 function HeadDropZone({ active }: { active: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: HEAD_DROP_ID });
   return (
-    <div ref={setNodeRef} className="relative" style={{ minHeight: 32 }}>
+    <div
+      ref={setNodeRef}
+      className="relative"
+      style={{ height: active ? 8 : 1 }}
+    >
       {active && isOver && (
-        <div
-          className="absolute left-0 right-0 h-0.5 bg-blue-500 bottom-1 z-10"
-          style={{ left: `${6}px` }}
-        />
+        <div className="absolute right-0 h-0.5 bg-blue-500 bottom-0 z-10" style={{ left: 6 }} />
       )}
     </div>
   );
 }
 
-// 尾部放置区：占据树底部空白，为"拖到最末尾作为根层级最后一项"提供落点
+// 尾部放置区：平时几乎无高度，仅拖拽激活时扩展为可命中的感应区
 function TailDropZone({ active }: { active: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: TAIL_DROP_ID });
   return (
-    <div ref={setNodeRef} className="relative" style={{ minHeight: 32 }}>
+    <div
+      ref={setNodeRef}
+      className="relative"
+      style={{ height: active ? 8 : 1 }}
+    >
       {active && isOver && (
-        <div
-          className="absolute left-0 right-0 h-0.5 bg-blue-500 top-1 z-10"
-          style={{ left: `${6}px` }}
-        />
+        <div className="absolute right-0 h-0.5 bg-blue-500 top-0 z-10" style={{ left: 6 }} />
       )}
     </div>
   );
