@@ -486,16 +486,19 @@ export function useTestExecution() {
               }
 
               const chunk = fileBytes.slice(i, i + chunkSize);
-              const { timestamp } = await writeSerial(txPort, chunk);
 
+              // 乐观渲染：先显示 TX 再发送
+              const txTimestamp = Date.now();
               addMessage({
-                id: `tx_${timestamp}_${i}`,
+                id: `tx_${txTimestamp}_${i}`,
                 type: 'TX',
                 port_label: txPort,
                 data: chunk,
-                timestamp,
+                timestamp: txTimestamp,
                 text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
               });
+
+              await writeSerial(txPort, chunk);
 
               // 包间延时（最后一包无需等待）
               if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
@@ -595,15 +598,19 @@ export function useTestExecution() {
           let sendError: unknown = null;
           const sendCommand = async () => {
             try {
-              const { timestamp } = await writeSerial(txPort, data);
+              // 乐观渲染：立即显示 TX
+              const txTimestamp = Date.now();
               addMessage({
-                id: `tx_${timestamp}`,
+                id: `tx_${txTimestamp}`,
                 type: 'TX',
                 port_label: txPort,
                 data,
-                timestamp,
+                timestamp: txTimestamp,
                 text: new TextDecoder().decode(data),
               });
+
+              // 后台发送
+              await writeSerial(txPort, data);
               // 不再记录详细日志：addLog('info', `Sent: ${content}`, cmd.id, caseId);
             } catch (error) {
               sendError = error;
@@ -1284,16 +1291,19 @@ export function useTestExecution() {
           // 分包发送（不校验响应）
           for (let i = 0; i < fileBytes.length; i += chunkSize) {
             const chunk = fileBytes.slice(i, i + chunkSize);
-            const { timestamp } = await writeSerial(targetPort, chunk);
 
+            // 乐观渲染：先显示 TX 再发送
+            const txTimestamp = Date.now();
             addMessage({
-              id: `tx_${timestamp}_${i}`,
+              id: `tx_${txTimestamp}_${i}`,
               type: 'TX',
               port_label: targetPort,
               data: chunk,
-              timestamp,
+              timestamp: txTimestamp,
               text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
             });
+
+            await writeSerial(targetPort, chunk);
 
             // 包间延时（最后一包无需等待）
             if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
@@ -1319,15 +1329,18 @@ export function useTestExecution() {
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 
-          const { timestamp } = await writeSerial(targetPort, data);
+          // 乐观渲染：先显示 TX 再发送
+          const txTimestamp = Date.now();
           addMessage({
-            id: `tx_${timestamp}`,
+            id: `tx_${txTimestamp}`,
             type: 'TX',
             port_label: targetPort,
             data,
-            timestamp,
+            timestamp: txTimestamp,
             text: new TextDecoder().decode(data),
           });
+
+          await writeSerial(targetPort, data);
 
           addLog('info', `Quick sent: ${content}`);
         }
