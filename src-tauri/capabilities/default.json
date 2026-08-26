@@ -16,6 +16,8 @@
     "updater:allow-download",
     "updater:allow-install",
     "process:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "dialog:default",
+    "dialog:allow-save"
   ]
 }

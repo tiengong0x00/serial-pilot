@@ -2,7 +2,7 @@ use crate::error::SerialError;
 use crate::state::{classify_io_error, SerialErrorKind, SerialErrorPayload, Severity};
 use serialport::SerialPort;
 use std::io::Read;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::watch;
 
@@ -24,12 +24,6 @@ const READ_TIMEOUT_MS: u64 = 5;
 ///
 /// 帧超时必须大于读超时，否则单次读返回的间隔就可能超过帧超时导致误判。
 const MIN_FRAME_TIMEOUT_MS: u64 = READ_TIMEOUT_MS + 1;
-
-/// 单包最大累积字节数
-///
-/// 持续不断的数据流（字节间隔始终小于帧超时）不会触发超时分包，
-/// 达到该上限时强制分包，防止缓冲区无限增长、单条消息过大拖垮前端。
-const MAX_PACKET_BYTES: usize = 4096;
 
 /// 生成当前毫秒级 Unix 时间戳
 fn now_millis() -> u64 {
@@ -59,7 +53,7 @@ pub fn start_listener(
     frame_timeout_ms: u64,
 ) -> Result<(), SerialError> {
     // 夹取帧超时下限，保证 frame_timeout > read_timeout
-    let frame_timeout = Duration::from_millis(frame_timeout_ms.max(MIN_FRAME_TIMEOUT_MS));
+    let _frame_timeout = Duration::from_millis(frame_timeout_ms.max(MIN_FRAME_TIMEOUT_MS));
 
     // 将读超时收紧到较小值，以提高静默间隙的检测分辨率。
     // try_clone 出的句柄独立设置超时，不影响写入路径。
@@ -79,18 +73,14 @@ pub fn start_listener(
             match port.read(&mut buffer) {
                 Ok(n) if n > 0 => {
                     // 零延迟：收到字节立即转发，不累积、不等待
-                    let read_ts = now_millis();
-                    let emit_start = Instant::now();
                     let payload = SerialDataPayload {
                         port_label: port_label.clone(),
                         data: buffer[..n].to_vec(),
-                        timestamp: read_ts,
+                        timestamp: now_millis(),
                     };
                     if let Err(e) = app_handle.emit("serial_data", payload) {
                         eprintln!("Failed to emit serial data [{}]: {}", port_label, e);
                     }
-                    eprintln!("[PERF] listener read: label={}, bytes={}, read_ts={}, emit={}μs",
-                        port_label, n, read_ts, emit_start.elapsed().as_micros());
                 }
                 Ok(_) => {
                     // 读到 0 字节，忽略

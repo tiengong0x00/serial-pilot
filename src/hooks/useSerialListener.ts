@@ -45,12 +45,8 @@ export function useSerialListener() {
     const setupListeners = async () => {
       // 数据事件监听
       unlistenData = await listen<SerialDataPayload>('serial_data', (event) => {
-        const t0 = performance.now();
-        const receiveTs = Date.now();
         if (!isMounted) return;
         const payload = event.payload;
-
-        console.log(`[PERF] serial_data event: label=${payload.port_label}, bytes=${payload.data.length}, backend_ts=${payload.timestamp}, receive_ts=${receiveTs}, backend_to_frontend=${receiveTs - payload.timestamp}ms`);
 
         // ✅ 接收时验证连接状态：状态不符则丢弃僵尸数据
         const { connectionStatus } = useSerialStore.getState();
@@ -66,7 +62,6 @@ export function useSerialListener() {
           return;
         }
 
-        const t1 = performance.now();
         const data = new Uint8Array(payload.data);
 
         // 尝试 UTF-8 解码
@@ -77,7 +72,6 @@ export function useSerialListener() {
           // 解码失败，保持 undefined
         }
 
-        const t2 = performance.now();
         const now = Date.now();
         const lastRx = lastRxRef.current;
 
@@ -118,10 +112,6 @@ export function useSerialListener() {
               messageId: lastRx.messageId,
             };
 
-            const t3 = performance.now();
-            console.log(
-              `[PERF] serial_data[${payload.port_label}] MERGE: validation=${(t1 - t0).toFixed(2)}ms, decode=${(t2 - t1).toFixed(2)}ms, merge=${(t3 - t2).toFixed(2)}ms, total=${(t3 - t0).toFixed(2)}ms`
-            );
             return;
           }
         }
@@ -129,7 +119,6 @@ export function useSerialListener() {
         // 新起一行
         // 使用前端接收时刻 now，而非后端 payload.timestamp，
         // 保证与 TX（用户点击时刻）在同一时间基准下正确排序
-        const t3 = performance.now();
         const message: TerminalMessage = {
           id: `${now}-${Math.random().toString(36).substr(2, 9)}`,
           type: 'RX',
@@ -139,9 +128,7 @@ export function useSerialListener() {
           text,
         };
 
-        const t4 = performance.now();
         addMessage(message);
-        const t5 = performance.now();
 
         // 更新追踪
         lastRxRef.current = {
@@ -149,10 +136,6 @@ export function useSerialListener() {
           timestamp: now,
           messageId: message.id,
         };
-
-        console.log(
-          `[PERF] serial_data[${payload.port_label}] NEW: validation=${(t1 - t0).toFixed(2)}ms, decode=${(t2 - t1).toFixed(2)}ms, prepare=${(t4 - t3).toFixed(2)}ms, addMessage=${(t5 - t4).toFixed(2)}ms, total=${(t5 - t0).toFixed(2)}ms`
-        );
       });
 
       // 异常事件监听

@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
 use tokio::sync::watch;
 
 /// 串口异常事件负载
@@ -101,6 +100,9 @@ pub struct ConnectionStatus {
 pub struct PortHandle {
     pub port: Arc<Mutex<Box<dyn SerialPort>>>,
     pub cancel_tx: watch::Sender<bool>,
+    /// 缓存的波特率，避免每次 write 时调用 port.baud_rate()（Windows 下是系统调用）
+    #[allow(dead_code)]
+    pub baud_rate: u32,
 }
 
 impl Drop for PortHandle {
@@ -199,11 +201,6 @@ impl SerialManager {
         let write_timeout_ms = ((theoretical_ms * 3) + 500).max(100);
         let write_timeout = std::time::Duration::from_millis(write_timeout_ms);
 
-        eprintln!(
-            "[{}] Calculated write timeout: baud={}, packet_size={}, theoretical={}ms, timeout={}ms",
-            label, baud, packet_size, theoretical_ms, write_timeout_ms
-        );
-
         // 打开串口
         let mut port = serialport::new(name, cfg.baud_rate)
             .parity(parity)
@@ -225,6 +222,7 @@ impl SerialManager {
         let handle = PortHandle {
             port: Arc::new(Mutex::new(port)),
             cancel_tx,
+            baud_rate: cfg.baud_rate, // 缓存波特率
         };
 
         // 存入连接池
@@ -300,47 +298,25 @@ impl SerialManager {
         data: &[u8],
         file_packet_size: u32,
         file_packet_interval: u32,
-        app_handle: &tauri::AppHandle,
+        _app_handle: &tauri::AppHandle,
     ) -> Result<usize, SerialError> {
-        let t0 = std::time::Instant::now();
-
         // ── 全局锁最小化 ────────────────────────────────────────────
         // 只在"查表拿端口句柄"期间持有全局 connections 锁：克隆出端口的
         // Arc<Mutex> 后立即释放全局锁。这样 write_all 的阻塞只作用于当前
         // 端口自己的锁，不再卡住其他端口的读写、状态查询与连接管理，
         // 消除"连点发送时全局串行排队"的瓶颈。
         let port_arc = {
-            let t_lock_start = std::time::Instant::now();
             let guard = self.connections.lock()
                 .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
-            let t_lock_acquired = std::time::Instant::now();
             let handle = guard.get(label)
                 .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
-            let arc = Arc::clone(&handle.port);
-            let t_lock_released = std::time::Instant::now();
-            eprintln!("[PERF] write[{}]: global_lock_wait={}μs, lookup={}μs",
-                label,
-                (t_lock_acquired - t_lock_start).as_micros(),
-                (t_lock_released - t_lock_acquired).as_micros());
-            arc
+            Arc::clone(&handle.port)
         }; // ← 全局锁在此释放
 
-        let t1 = std::time::Instant::now();
         let mut port_guard = port_arc.lock()
             .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
-        let t2 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: port_lock_wait={}μs", label, (t2 - t1).as_micros());
 
-        let data_len = data.len();
         let packet_size = file_packet_size.max(1) as usize; // 防止除零
-
-        // 计算理论发送时间（用于日志）
-        let baud = port_guard.baud_rate().unwrap_or(9600).max(1);
-        let theoretical_ms = (data_len as u64 * 10 * 1000) / baud as u64;
-
-        let t3 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: setup={}μs, data_len={}, baud={}, theoretical={}ms, packet_size={}",
-            label, (t3 - t2).as_micros(), data_len, baud, theoretical_ms, packet_size);
 
         // ── 分包发送 ──────────────────────────────────────────────
         // 按 file_packet_size 切分数据，循环发送每个包。
@@ -351,14 +327,8 @@ impl SerialManager {
         let chunk_count = chunks.len();
 
         for (i, chunk) in chunks.enumerate() {
-            let t_chunk_start = std::time::Instant::now();
-
             // 写入当前包
             let write_result = port_guard.write_all(chunk);
-
-            let t_chunk_end = std::time::Instant::now();
-            eprintln!("[PERF] write[{}]: chunk {}/{}, size={}, write_all={}μs",
-                label, i + 1, chunk_count, chunk.len(), (t_chunk_end - t_chunk_start).as_micros());
 
             // 处理写入结果
             match write_result {
@@ -366,9 +336,6 @@ impl SerialManager {
                     total_written += chunk.len();
                 }
                 Err(e) => {
-                    let (kind, _severity) = classify_io_error(&e);
-                    eprintln!("[PERF] write[{}]: chunk {}/{} failed: kind={:?}, error={}",
-                        label, i + 1, chunk_count, kind, e);
                     return Err(SerialError::WriteFailed(format!("{}", e)));
                 }
             }
@@ -378,9 +345,6 @@ impl SerialManager {
                 std::thread::sleep(std::time::Duration::from_millis(file_packet_interval as u64));
             }
         }
-
-        let t4 = std::time::Instant::now();
-        eprintln!("[PERF] write[{}]: total={}μs, total_written={}", label, (t4 - t0).as_micros(), total_written);
 
         // 分包发送全部成功
         Ok(total_written)

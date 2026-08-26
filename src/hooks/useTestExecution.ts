@@ -9,6 +9,8 @@
 import { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
+import i18n from '@/i18n';
 import { useExecutionStore } from '@/stores/executionStore';
 import type { CriticalEvent } from '@/stores/executionStore';
 import { useTestCaseStore } from '@/stores/testCaseStore';
@@ -1239,6 +1241,14 @@ export function useTestExecution() {
         return;
       }
 
+      // 检查目标端口连接状态
+      const { connectionStatus } = useSerialStore.getState();
+      const isConnected = targetPort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
+      if (!isConnected) {
+        toast.error(i18n.t('terminal.portNotConnected', { port: targetPort }));
+        return;
+      }
+
       // 重置该命令状态为 pending
       if (found.command.status !== 'pending') {
         updateCommand(caseId, commandId, { status: 'pending' });
@@ -1288,6 +1298,14 @@ export function useTestExecution() {
    */
   const quickSendCommand = useCallback(
     async (cmd: StandardCommand, targetPort: PortLabel) => {
+      // 检查目标端口连接状态
+      const { connectionStatus } = useSerialStore.getState();
+      const isConnected = targetPort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
+      if (!isConnected) {
+        toast.error(i18n.t('terminal.portNotConnected', { port: targetPort }));
+        return;
+      }
+
       try {
         if (cmd.fileData) {
           // ============ 文件快速发送 ============

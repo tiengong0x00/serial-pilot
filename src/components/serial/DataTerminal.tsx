@@ -11,7 +11,7 @@ import { useNotify } from "@/hooks/useNotify";
 import { useShortcutAction } from "@/hooks/useShortcuts";
 import { useAtAutocomplete } from "@/hooks/useAtAutocomplete";
 import { cn } from "@/lib/utils";
-import { formatMessagesToText, generateLogFilename, saveLogToFile } from "@/lib/logExport";
+import { formatMessagesToText, generateLogFilename, saveLogToPath, getLaunchDir } from "@/lib/logExport";
 import { TerminalContextMenu, type TerminalMenuItem } from "./TerminalContextMenu";
 import { AtAutocompletePanel } from "./AtAutocompletePanel";
 import { HighlightedText } from "./HighlightedText";
@@ -422,31 +422,71 @@ const DataTerminal = () => {
   }, [sendTarget, connectionStatus]);
 
   // 导出日志
+  // - 每次都弹出对话框选择保存位置
+  // - 首次：默认路径为工具启动目录下的 logs/
+  // - 后续：默认路径为上次选择的目录
   // - 合并模式 / 单串口：导出全部消息到一个文件
-  // - 分栏模式（P1+P2 都连接）：P1、P2 各导出一个文件
+  // - 分栏模式（P1+P2 都连接）：P1、P2 各导出一个文件到同一目录
   const handleExport = useCallback(async () => {
     if (messages.length === 0) return;
 
     try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { lastExportDir, setLastExportDir } = useSettingsStore.getState();
+
+      // 确定默认目录：上次选择的目录 或 启动目录/logs
+      let defaultDir: string;
+      if (lastExportDir) {
+        defaultDir = lastExportDir;
+      } else {
+        const launchDir = await getLaunchDir();
+        defaultDir = `${launchDir}/logs`;
+      }
+
+      // 生成默认文件名
+      const defaultFilename = generateLogFilename(effectiveMode === "split" ? "P1" : undefined);
+
+      // 弹出保存对话框
+      const selectedPath = await save({
+        defaultPath: `${defaultDir}/${defaultFilename}`,
+        filters: [{
+          name: 'Text',
+          extensions: ['txt', 'log']
+        }]
+      });
+
+      if (!selectedPath) return; // 用户取消
+
+      // 提取并记住目录
+      const pathObj = selectedPath.replace(/\\/g, '/');
+      const exportDir = pathObj.substring(0, pathObj.lastIndexOf('/'));
+      setLastExportDir(exportDir);
+
+      // 执行导出
       if (effectiveMode === "split") {
-        // 分栏模式：分别导出 P1 和 P2（单端口内容不再重复标注端口）
+        // 分栏模式：分别导出 P1 和 P2 到同一目录
         const p1 = messages.filter((m) => m.port_label === "P1");
         const p2 = messages.filter((m) => m.port_label === "P2");
         let count = 0;
         let lastPath = "";
+
         if (p1.length > 0) {
-          lastPath = await saveLogToFile(formatMessagesToText(p1, false), generateLogFilename("P1"));
+          const filename = generateLogFilename("P1");
+          lastPath = await saveLogToPath(exportDir, filename, formatMessagesToText(p1, false));
           count++;
         }
         if (p2.length > 0) {
-          lastPath = await saveLogToFile(formatMessagesToText(p2, false), generateLogFilename("P2"));
+          const filename = generateLogFilename("P2");
+          lastPath = await saveLogToPath(exportDir, filename, formatMessagesToText(p2, false));
           count++;
         }
+
         success(t("terminal.exportSuccess", { count }), { toast: true, log: true });
         if (lastPath) success(lastPath, { toast: false, log: true });
       } else {
-        // 合并模式 / 单串口：一个文件，包含端口标识
-        const path = await saveLogToFile(formatMessagesToText(messages, showPortLabel), generateLogFilename());
+        // 合并模式 / 单串口：一个文件
+        const filename = generateLogFilename();
+        const path = await saveLogToPath(exportDir, filename, formatMessagesToText(messages, showPortLabel));
         success(t("terminal.exportSuccess", { count: 1 }), { toast: true, log: true });
         success(path, { toast: false, log: true });
       }
@@ -967,8 +1007,8 @@ const DataTerminal = () => {
         </span>
         <button
           type="button"
-          className={`h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-secondary ${
-            showTimestamp ? "bg-secondary" : ""
+          className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary transition-colors ${
+            showTimestamp ? "text-primary" : ""
           }`}
           onClick={() => setShowTimestamp(!showTimestamp)}
           title={t("terminal.toggleTimestamp")}
@@ -977,7 +1017,7 @@ const DataTerminal = () => {
         </button>
         <button
           type="button"
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"
+          className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary disabled:opacity-50 transition-colors"
           onClick={handleExport}
           disabled={messages.length === 0}
           title={t("terminal.exportLog")}
@@ -986,7 +1026,7 @@ const DataTerminal = () => {
         </button>
         <button
           type="button"
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-secondary"
+          className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary transition-colors"
           onClick={clearMessages}
           title={t("terminal.clear")}
         >

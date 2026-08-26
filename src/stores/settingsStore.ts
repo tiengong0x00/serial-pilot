@@ -48,6 +48,9 @@ interface SettingsStore {
   // 终端时间戳显示（默认开启）
   showTimestamp: boolean;
 
+  // 日志导出路径记忆
+  lastExportDir?: string;
+
   // Actions
   setLanguage: (lang: Language) => void;
   setThemeMode: (mode: ThemeMode) => void;
@@ -76,6 +79,7 @@ interface SettingsStore {
   setTestCaseButtonDisplay: (mode: 'hover' | 'always') => void;
   setTestCaseButtonContent: (mode: 'icon' | 'text' | 'auto') => void;
   setEnterToSend: (enabled: boolean) => void;
+  setLastExportDir: (dir: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -147,6 +151,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setTestCaseButtonDisplay: (mode) => set({ testCaseButtonDisplay: mode }),
       setTestCaseButtonContent: (mode) => set({ testCaseButtonContent: mode }),
       setEnterToSend: (enabled) => set({ enterToSend: enabled }),
+      setLastExportDir: (dir) => set({ lastExportDir: dir }),
     }),
     {
       name: 'serial-pilot-settings', // localStorage key

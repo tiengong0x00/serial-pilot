@@ -1,6 +1,6 @@
 [package]
 name = "serial-pilot"
-version = "0.2.4"
+version = "0.2.5"
 description = "A Tauri-based serial port debugging tool"
 authors = ["Serial-Pilot Team"]
 license = ""
@@ -19,6 +19,7 @@ serialport = "4.6"
 include_dir = "0.7"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

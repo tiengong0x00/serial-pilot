@@ -70,17 +70,11 @@ async fn write_serial_data(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WriteResult, SerialError> {
-    let t0 = std::time::Instant::now();
-
     // 在写入开始前记录时间戳，确保 TX 时序早于其触发的 RX 响应
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-
-    let t1 = std::time::Instant::now();
-    eprintln!("[PERF] write_serial_data entry: label={}, size={}, timestamp_gen={}μs",
-        port_label, data.len(), (t1 - t0).as_micros());
 
     let bytes_written = state.serial_manager.write(
         &port_label,
@@ -89,15 +83,6 @@ async fn write_serial_data(
         file_packet_interval,
         &app_handle,
     )?;
-
-    let t2 = std::time::Instant::now();
-    let write_done_ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-
-    eprintln!("[PERF] write_serial_data exit: label={}, write_call={}μs, total={}μs, write_done_ts={}",
-        port_label, (t2 - t1).as_micros(), (t2 - t0).as_micros(), write_done_ts);
 
     Ok(WriteResult {
         bytes_written,
@@ -296,6 +281,31 @@ fn save_log_file(filename: String, content: String) -> Result<String, String> {
 
     // 返回完整路径供前端显示
     Ok(path.to_string_lossy().to_string())
+}
+
+/// 获取工具启动目录（exe 所在目录）
+#[tauri::command]
+fn get_launch_dir() -> Result<String, String> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .ok_or_else(|| "Failed to get launch directory".to_string())
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+/// 保存日志到用户指定的完整路径（用于对话框选择后的路径）
+#[tauri::command]
+fn save_log_to_path(path: String, content: String) -> Result<(), String> {
+    // 确保目录存在
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+    }
+
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to save log: {}", e))
 }
 
 /// 列出 testcases/ 目录下所有 JSON 文件
@@ -499,6 +509,7 @@ fn main() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .setup(|app| {
             // 启动时释放内嵌的种子测试用例（目录不存在才创建）
@@ -534,6 +545,8 @@ fn main() {
             delete_test_case_file,
             rename_test_case_file,
             save_log_file,
+            get_launch_dir,
+            save_log_to_path,
             load_command_libraries,
             toolbox::open_toolbox_window,
             tcp_connect,

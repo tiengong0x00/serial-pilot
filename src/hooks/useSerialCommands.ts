@@ -81,10 +81,6 @@ export function useSerialCommands() {
       throw new Error(`${portLabel} not connected`);
     }
 
-    const tInvoke = performance.now();
-    const callTs = Date.now();
-    console.log(`[PERF] writeSerialData invoke: label=${portLabel}, size=${data.length}, call_ts=${callTs}`);
-
     // 从设置读取分包参数
     const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
 
@@ -94,7 +90,6 @@ export function useSerialCommands() {
       filePacketSize,
       filePacketInterval,
     });
-    console.log(`[PERF] writeSerialData done: label=${portLabel}, ipc_rtt=${(performance.now() - tInvoke).toFixed(2)}ms, backend_ts=${result.timestamp}`);
     return result;
   }, []);
 

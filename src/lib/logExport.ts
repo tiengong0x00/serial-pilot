@@ -84,3 +84,16 @@ export function downloadTextFile(content: string, filename: string): void {
 export async function saveLogToFile(content: string, filename: string): Promise<string> {
   return await invoke<string>("save_log_file", { filename, content });
 }
+
+/** 获取工具启动目录（exe 所在目录） */
+export async function getLaunchDir(): Promise<string> {
+  return await invoke<string>("get_launch_dir");
+}
+
+/** 保存日志到指定目录下的文件 */
+export async function saveLogToPath(dir: string, filename: string, content: string): Promise<string> {
+  // 拼接完整路径（后端会规范化分隔符）
+  const path = `${dir}/${filename}`;
+  await invoke("save_log_to_path", { path, content });
+  return path;
+}
