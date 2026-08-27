@@ -316,28 +316,55 @@ impl SerialManager {
         let mut port_guard = port_arc.lock()
             .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
 
-        let packet_size = file_packet_size.max(1) as usize; // 防止除零
+        // packet_size == 0 表示“不分包”：整包一次性发送。
+        let packet_size = if file_packet_size == 0 {
+            data.len().max(1)
+        } else {
+            file_packet_size as usize
+        };
 
-        // ── 分包发送 ──────────────────────────────────────────────
-        // 按 file_packet_size 切分数据，循环发送每个包。
-        // 包间延时 file_packet_interval（可能为 0 或 1ms）。
-        // 超时已在连接时按单包大小设置，此处无需调整。
+        // ── 驱动队列背压参数 ──────────────────────────────────────
+        // 问题：write_all 只把数据塞进 Windows 串口驱动的发送队列即返回，
+        // 硬件按波特率逐字节发出（9600 下 128B 需 ~133ms）。若连续写入速度
+        // 快于硬件发送速度，队列会积压；一旦 WriteFile 在写超时内无法把整包
+        // 塞进队列，就返回部分写入 → write_all 报 "failed to write whole buffer"。
+        //
+        // 对策：写每一小片前，用 bytes_to_write()（Windows COMSTAT.cbOutQue，
+        // 只读状态、不清缓冲、无丢数据风险）查询队列积压，超过阈值就轮询等待
+        // 硬件排空。等待时间自适应（取决于实际积压），不固定延时、不做全量 flush。
+        const WRITE_CHUNK: usize = 64;        // 单次物理写片大小
+        const QUEUE_THRESHOLD: u32 = 64;      // 队列积压超过此值先等待（最坏积压 64+64=128，远小于驱动队列容量）
+        const DRAIN_TIMEOUT_MS: u64 = 3000;   // 单片排空最大等待，防串口异常时死锁
+
         let mut total_written = 0;
         let chunks = data.chunks(packet_size);
         let chunk_count = chunks.len();
 
         for (i, chunk) in chunks.enumerate() {
-            // 写入当前包
-            let write_result = port_guard.write_all(chunk);
+            // 逻辑包内再按 WRITE_CHUNK 细分，逐片背压写入
+            let mut offset = 0;
+            while offset < chunk.len() {
+                // 队列积压过高则轮询等待硬件排空（单层循环 + 超时兜底）
+                let drain_start = std::time::Instant::now();
+                loop {
+                    let pending = port_guard.bytes_to_write().unwrap_or(0);
+                    if pending <= QUEUE_THRESHOLD {
+                        break;
+                    }
+                    if drain_start.elapsed().as_millis() as u64 > DRAIN_TIMEOUT_MS {
+                        return Err(SerialError::WriteFailed(
+                            "write queue drain timeout (device not transmitting)".to_string(),
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
 
-            // 处理写入结果
-            match write_result {
-                Ok(_) => {
-                    total_written += chunk.len();
-                }
-                Err(e) => {
-                    return Err(SerialError::WriteFailed(format!("{}", e)));
-                }
+                let end = (offset + WRITE_CHUNK).min(chunk.len());
+                port_guard
+                    .write_all(&chunk[offset..end])
+                    .map_err(|e| SerialError::WriteFailed(format!("{}", e)))?;
+                total_written += end - offset;
+                offset = end;
             }
 
             // 包间延时（最后一包无需等待）
