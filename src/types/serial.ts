@@ -33,8 +33,11 @@ export interface SerialError {
 // 串口数据事件负载（后端推送）
 export interface SerialDataPayload {
   port_label: PortLabel;
-  data: number[];
-  timestamp: number;
+  data: number[]; // 本次新增的增量字节（非整帧全量）
+  timestamp: number; // 本帧首字节到达时刻（整条 RX 消息共用）
+  frame_id: number; // 帧唯一 id：同帧的增量事件相同，用于前端拼接
+  seq: number; // 帧内增量序号（0,1,2...）
+  is_final: boolean; // 该帧是否已结束（闭合后下一事件属新帧）
 }
 
 // 串口异常类型
@@ -69,5 +72,7 @@ export interface TerminalMessage {
   timestamp: number;
   text?: string; // UTF-8 解码后的文本（如果解码成功）
   sequence?: number; // 序列号，用于时间戳相同时的排序
+  frameId?: number; // RX 融合模式：后端帧 id，用于把增量事件拼到同一条消息
+  isFinal?: boolean; // RX 融合模式：该帧是否已闭合（false=仍在流式接收）
 }
 

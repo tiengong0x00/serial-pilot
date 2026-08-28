@@ -231,7 +231,11 @@ function VirtualTerminalView({
     getItemKey: (index) => messages[index].id,
   });
 
-  // 自动滚动到底部：消息变化且开启自动滚动时触发
+  // 最后一条消息的字节数：RX 融合模式下增量追加会让最后一条 data 变长而条数不变，
+  // 单靠 messages.length 无法触发自动滚动。以此作为额外依赖，覆盖"边收边长"场景。
+  const lastMsgBytes = messages.length > 0 ? messages[messages.length - 1].data.length : 0;
+
+  // 自动滚动到底部：消息新增或最后一条内容增长，且开启自动滚动时触发
   useEffect(() => {
     if (isTestEnv) {
       // 测试环境用传统方式滚动
@@ -245,7 +249,7 @@ function VirtualTerminalView({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, autoScroll, isTestEnv]);
+  }, [messages.length, lastMsgBytes, autoScroll, isTestEnv]);
 
   const items = virtualizer.getVirtualItems();
 

@@ -1,14 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../stores/terminalStore';
 import { useSerialStore } from '../stores/serialStore';
-import { useSettingsStore } from '../stores/settingsStore';
 import { toast } from 'sonner';
 import type {
   SerialDataPayload,
   SerialErrorPayload,
-  TerminalMessage,
   PortLabel,
 } from '../types/serial';
 
@@ -26,16 +24,8 @@ import type {
  * - 否则：新起一行
  */
 export function useSerialListener() {
-  const addMessage = useTerminalStore((s) => s.addMessage);
+  const appendFrame = useTerminalStore((s) => s.appendFrame);
   const { setConnectionStatus, setPortName } = useSerialStore();
-  const serialFrameTimeout = useSettingsStore((s) => s.serialFrameTimeout);
-
-  // 追踪最后一条 RX 消息，用于智能追加判断
-  const lastRxRef = useRef<{
-    portLabel: PortLabel;
-    timestamp: number;
-    messageId: string;
-  } | null>(null);
 
   useEffect(() => {
     let unlistenData: UnlistenFn | undefined;
@@ -62,80 +52,25 @@ export function useSerialListener() {
           return;
         }
 
-        const data = new Uint8Array(payload.data);
-
-        // 尝试 UTF-8 解码
-        let text: string | undefined;
-        try {
-          text = new TextDecoder('utf-8', { fatal: true }).decode(data);
-        } catch {
-          // 解码失败，保持 undefined
-        }
-
-        const now = Date.now();
-        const lastRx = lastRxRef.current;
-
-        // 智能追加判断：与上一条 RX 间隔 < serialFrameTimeout 则追加
-        const shouldMerge =
-          lastRx !== null &&
-          lastRx.portLabel === payload.port_label &&
-          now - lastRx.timestamp < serialFrameTimeout;
-
-        if (shouldMerge) {
-          // 追加到上一条 RX 消息的末尾
-          const messages = useTerminalStore.getState().messages;
-          const targetIdx = messages.findIndex((m) => m.id === lastRx.messageId);
-          if (targetIdx !== -1) {
-            const target = messages[targetIdx];
-            // 合并数据和文本
-            const mergedData = new Uint8Array(target.data.length + data.length);
-            mergedData.set(target.data);
-            mergedData.set(data, target.data.length);
-            const mergedText = (target.text || '') + (text || '');
-
-            useTerminalStore.setState({
-              messages: [
-                ...messages.slice(0, targetIdx),
-                {
-                  ...target,
-                  data: mergedData,
-                  text: mergedText || undefined,
-                },
-                ...messages.slice(targetIdx + 1),
-              ],
-            });
-
-            // 更新追踪（时间戳更新为当前，ID 保持不变）
-            lastRxRef.current = {
-              portLabel: payload.port_label,
-              timestamp: now,
-              messageId: lastRx.messageId,
-            };
-
-            return;
+        // 融合模式：payload.data 是本帧的**增量字节**，按 frame_id 拼到同一条消息。
+        // text 对"整条累积数据"重解码，保证多字节 UTF-8 跨增量边界仍正确。
+        const chunk = new Uint8Array(payload.data);
+        const decode = (full: Uint8Array): string | undefined => {
+          try {
+            return new TextDecoder('utf-8', { fatal: true }).decode(full);
+          } catch {
+            return undefined;
           }
-        }
-
-        // 新起一行
-        // 使用前端接收时刻 now，而非后端 payload.timestamp，
-        // 保证与 TX（用户点击时刻）在同一时间基准下正确排序
-        const message: TerminalMessage = {
-          id: `${now}-${Math.random().toString(36).substr(2, 9)}`,
-          type: 'RX',
-          port_label: payload.port_label,
-          data,
-          timestamp: now,
-          text,
         };
 
-        addMessage(message);
-
-        // 更新追踪
-        lastRxRef.current = {
+        appendFrame({
           portLabel: payload.port_label,
-          timestamp: now,
-          messageId: message.id,
-        };
+          frameId: payload.frame_id,
+          timestamp: payload.timestamp,
+          chunk,
+          isFinal: payload.is_final,
+          decode,
+        });
       });
 
       // 异常事件监听
@@ -179,7 +114,7 @@ export function useSerialListener() {
       if (unlistenData) void unlistenData();
       if (unlistenError) void unlistenError();
     };
-  }, [addMessage, setConnectionStatus, setPortName, serialFrameTimeout]);
+  }, [appendFrame, setConnectionStatus, setPortName]);
 }
 
 // 供其他模块引用的端口标签类型（保持导出一致性）

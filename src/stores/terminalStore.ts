@@ -29,6 +29,19 @@ interface TerminalStore {
 
   // Actions
   addMessage: (message: TerminalMessage) => void;
+  /**
+   * RX 融合模式：把一帧的增量字节拼到同一条消息。
+   * 若 (port_label, frameId) 已存在对应 RX 消息则追加其 data 尾部并更新 text/isFinal，
+   * 否则新建一条。decode 由调用方对"整条累积数据"重做，保证多字节 UTF-8 跨增量正确。
+   */
+  appendFrame: (args: {
+    portLabel: TerminalMessage['port_label'];
+    frameId: number;
+    timestamp: number;
+    chunk: Uint8Array;
+    isFinal: boolean;
+    decode: (full: Uint8Array) => string | undefined;
+  }) => void;
   clearMessages: () => void;
   clearSystemLogs: () => void;
   setMaxMessages: (max: number) => void;
@@ -91,6 +104,75 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
 
       return {
         messages: [...state.messages, messageWithSeq],
+        sequenceCounter: state.sequenceCounter + 1,
+      };
+    }),
+
+  appendFrame: ({ portLabel, frameId, timestamp, chunk, isFinal, decode }) =>
+    set((state) => {
+      // 从尾部找同 (port, frameId) 且尚未闭合的 RX 消息（帧进行中才追加）
+      const idx = (() => {
+        for (let i = state.messages.length - 1; i >= 0; i--) {
+          const m = state.messages[i];
+          if (m.type === 'RX' && m.port_label === portLabel && m.frameId === frameId) {
+            return i;
+          }
+          // 越过更早的帧无需继续找（frameId 单调递增）
+          if (m.type === 'RX' && m.frameId !== undefined && m.frameId < frameId) break;
+        }
+        return -1;
+      })();
+
+      // 已存在：就地追加增量到该消息 data 尾部，重算 text（整条重解码）
+      if (idx >= 0) {
+        const prev = state.messages[idx];
+        const merged = new Uint8Array(prev.data.length + chunk.length);
+        merged.set(prev.data, 0);
+        merged.set(chunk, prev.data.length);
+        const updated: TerminalMessage = {
+          ...prev,
+          data: merged,
+          text: decode(merged),
+          isFinal,
+        };
+        const nextMessages = state.messages.slice();
+        nextMessages[idx] = updated;
+        return { messages: nextMessages };
+      }
+
+      // 不存在：新建一条 RX 消息（复用 addMessage 的超限/序列号语义）
+      const newMsg: TerminalMessage = {
+        id: `${timestamp}-${frameId}-${Math.random().toString(36).substr(2, 6)}`,
+        type: 'RX',
+        port_label: portLabel,
+        data: chunk,
+        timestamp,
+        text: decode(chunk),
+        frameId,
+        isFinal,
+      };
+
+      // 超限：先落盘再清空（与 addMessage 一致）
+      if (state.messages.length >= state.maxMessages) {
+        const filename = generateLogFilename('auto');
+        const content = formatMessagesToText(state.messages, true);
+        saveLogToFile(content, filename)
+          .then((path) => {
+            autoSaveNotifier?.({ success: true, path });
+            console.log(`Terminal log auto-saved to: ${path}`);
+          })
+          .catch((err) => {
+            autoSaveNotifier?.({ success: false, error: err });
+            console.error('Failed to auto-save log:', err);
+          });
+        return {
+          messages: [{ ...newMsg, sequence: 0 }],
+          sequenceCounter: 1,
+        };
+      }
+
+      return {
+        messages: [...state.messages, { ...newMsg, sequence: state.sequenceCounter }],
         sequenceCounter: state.sequenceCounter + 1,
       };
     }),

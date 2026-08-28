@@ -147,10 +147,12 @@ impl SerialManager {
 
     /// 连接串口
     ///
-    /// `file_packet_size`：单包最大字节数（前端设置项）。用于计算一个足够大的
-    /// 固定写超时：一次 write_all 最多写一个包，超时 = 该包理论发送时间 × 3 + 500ms 余量。
-    /// 连接后固定不变，写入路径不再动态调整超时（避免 Windows SetCommTimeouts 的高开销）。
+    /// 固定写超时按"覆盖一大块缓冲的理论发送时间 + 余量"设定，连接后不再变。
+    /// 写超时只是等待上限（WriteFile 能写就立即返回，设大无副作用、不增加延迟），
+    /// 唯有设备卡死才触发。给足可根治大数据 write_all 部分写入（"failed to write
+    /// whole buffer"）。`file_packet_size` 参数保留（调用方兼容），此处不再参与计算。
     pub fn connect(&self, label: &str, name: &str, cfg: &SerialConfig, file_packet_size: u32) -> Result<(), SerialError> {
+        let _ = file_packet_size; // 不再按单包算超时，保留签名兼容
         // 检查是否已连接
         {
             let guard = self.connections.lock()
@@ -192,13 +194,13 @@ impl SerialManager {
             _ => return Err(SerialError::ConfigInvalid(format!("Invalid flow control: {}", cfg.flow_control))),
         };
 
-        // 计算固定写超时：按单包最大字节数 + 波特率
-        // 理论发送时间(ms) = (file_packet_size × 10位) / 波特率 × 1000
-        // 实际超时 = 理论时间 × 3 + 500ms 余量，下限 100ms
+        // 计算固定写超时：覆盖一大块缓冲(64KB)在当前波特率下的理论发送时间 + 1s 余量。
+        // write_all 只在 OS 发送缓冲填满时才阻塞，超时给足即可保证整包塞入不被截断；
+        // 小命令写入瞬时返回，超时多大都不影响其延迟。
         let baud = cfg.baud_rate.max(110); // 防止除零，最低110波特率
-        let packet_size = file_packet_size.max(1) as u64; // 防止除零，最小1字节
-        let theoretical_ms = (packet_size * 10 * 1000) / baud as u64;
-        let write_timeout_ms = ((theoretical_ms * 3) + 500).max(100);
+        const TIMEOUT_COVER_BYTES: u64 = 64 * 1024;
+        let theoretical_ms = (TIMEOUT_COVER_BYTES * 10 * 1000) / baud as u64;
+        let write_timeout_ms = (theoretical_ms + 1000).max(1000);
         let write_timeout = std::time::Duration::from_millis(write_timeout_ms);
 
         // 打开串口
@@ -323,49 +325,24 @@ impl SerialManager {
             file_packet_size as usize
         };
 
-        // ── 驱动队列背压参数 ──────────────────────────────────────
-        // 问题：write_all 只把数据塞进 Windows 串口驱动的发送队列即返回，
-        // 硬件按波特率逐字节发出（9600 下 128B 需 ~133ms）。若连续写入速度
-        // 快于硬件发送速度，队列会积压；一旦 WriteFile 在写超时内无法把整包
-        // 塞进队列，就返回部分写入 → write_all 报 "failed to write whole buffer"。
+        // 每个逻辑包整包一次 write_all，让驱动内部流式排入 OS 发送缓冲。
         //
-        // 对策：写每一小片前，用 bytes_to_write()（Windows COMSTAT.cbOutQue，
-        // 只读状态、不清缓冲、无丢数据风险）查询队列积压，超过阈值就轮询等待
-        // 硬件排空。等待时间自适应（取决于实际积压），不固定延时、不做全量 flush。
-        const WRITE_CHUNK: usize = 64;        // 单次物理写片大小
-        const QUEUE_THRESHOLD: u32 = 64;      // 队列积压超过此值先等待（最坏积压 64+64=128，远小于驱动队列容量）
-        const DRAIN_TIMEOUT_MS: u64 = 3000;   // 单片排空最大等待，防串口异常时死锁
-
+        // 不再在包内按小片细分：小片会产生多次 WriteFile 系统调用，且每次阻塞
+        // 都会被 Windows 调度量子(~15.6ms)向上取整，凭空放大延迟；整包单次写入
+        // 只阻塞 1~2 个量子，贴近物理传输地板。
+        //
+        // 不再做 bytes_to_write() 背压轮询：部分 USB 转串口驱动(如 XR21V1412)
+        // 的 cbOutQue 恒返回 0，轮询是死代码；且写超时已按大缓冲给足，
+        // write_all 会阻塞到整包塞入 OS 缓冲，不会出现部分写入。
         let mut total_written = 0;
         let chunks = data.chunks(packet_size);
         let chunk_count = chunks.len();
 
         for (i, chunk) in chunks.enumerate() {
-            // 逻辑包内再按 WRITE_CHUNK 细分，逐片背压写入
-            let mut offset = 0;
-            while offset < chunk.len() {
-                // 队列积压过高则轮询等待硬件排空（单层循环 + 超时兜底）
-                let drain_start = std::time::Instant::now();
-                loop {
-                    let pending = port_guard.bytes_to_write().unwrap_or(0);
-                    if pending <= QUEUE_THRESHOLD {
-                        break;
-                    }
-                    if drain_start.elapsed().as_millis() as u64 > DRAIN_TIMEOUT_MS {
-                        return Err(SerialError::WriteFailed(
-                            "write queue drain timeout (device not transmitting)".to_string(),
-                        ));
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-
-                let end = (offset + WRITE_CHUNK).min(chunk.len());
-                port_guard
-                    .write_all(&chunk[offset..end])
-                    .map_err(|e| SerialError::WriteFailed(format!("{}", e)))?;
-                total_written += end - offset;
-                offset = end;
-            }
+            port_guard
+                .write_all(chunk)
+                .map_err(|e| SerialError::WriteFailed(format!("{}", e)))?;
+            total_written += chunk.len();
 
             // 包间延时（最后一包无需等待）
             if i + 1 < chunk_count && file_packet_interval > 0 {
