@@ -49,9 +49,9 @@ jobs:
           if (Test-Path $portableExe) {
             Copy-Item $portableExe $portableOut
 
-            # 创建 .portable 标记文件（临时，用于后续打包）
+            # 创建 .portable 标记文件（写入提示信息避免 GitHub 0 字节限制）
             $markerPath = "src-tauri/target/release/.portable"
-            New-Item -ItemType File -Path $markerPath -Force | Out-Null
+            Set-Content -Path $markerPath -Value "Serial Pilot Portable Version Marker" -NoNewline
             Write-Host "✓ Portable executable prepared with marker"
           } else {
             Write-Error "Portable executable not found"
