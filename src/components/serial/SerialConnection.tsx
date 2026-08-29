@@ -82,16 +82,22 @@ interface PortConfigProps {
 /** 单个串口配置面板（P1 或 P2 复用） */
 function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh, onConnect, onDisconnect }: PortConfigProps) {
   const { t } = useTranslation();
-  const { p1Config, p2Config, setConfig } = useSerialStore();
+  const { p1Config, p2Config, setConfig, p1SelectedPort, p2SelectedPort, setSelectedPort: setSelectedPortInStore } = useSerialStore();
   const { setSerialDtr, setSerialRts } = useSerialCommands();
 
   // 根据 portLabel 选择对应的持久化配置
   const savedConfig = portLabel === 'P1' ? p1Config : p2Config;
   const connectedPortName = portLabel === 'P1' ? useSerialStore((s) => s.p1PortName) : useSerialStore((s) => s.p2PortName);
+  const persistedSelectedPort = portLabel === 'P1' ? p1SelectedPort : p2SelectedPort;
 
   const { success, error } = useNotify();
-  // ✅ 已连接时使用 store 中的端口名，未连接时使用本地状态
-  const [selectedPort, setSelectedPort] = useState<string>("");
+  // ✅ 本地选中端口初始化自持久化值；变更时同步回 store，切换标签页/断开后仍保留用户选择
+  const [selectedPort, setSelectedPortLocal] = useState<string>(persistedSelectedPort ?? "");
+  // 统一的端口选择设置器：同时更新本地状态和持久化 store
+  const setSelectedPort = useCallback((port: string) => {
+    setSelectedPortLocal(port);
+    setSelectedPortInStore(portLabel, port || null);
+  }, [portLabel, setSelectedPortInStore]);
   const [baudRate, setBaudRate] = useState<number>(savedConfig.baud_rate);
   const [dataBits, setDataBits] = useState<5 | 6 | 7 | 8>(savedConfig.data_bits);
   const [parity, setParity] = useState<"none" | "even" | "odd">(savedConfig.parity);
@@ -123,19 +129,22 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
       if (ports.length === 0) {
         // 无端口时清空选择
         setSelectedPort('');
-      } else if (selectedPort) {
-        // 检查当前选中的端口是否还在列表中
-        const portExists = ports.some(p => p.port_name === selectedPort);
-        if (!portExists) {
-          // 不存在则自动选择第一个
+      } else if (persistedSelectedPort) {
+        // 优先使用持久化的选择
+        const portExists = ports.some(p => p.port_name === persistedSelectedPort);
+        if (portExists) {
+          // 持久化端口仍存在，恢复该选择
+          setSelectedPortLocal(persistedSelectedPort);
+        } else {
+          // 持久化端口已不存在，回退到第一个可用端口
           setSelectedPort(ports[0].port_name);
         }
-      } else {
-        // 没有选择时自动选第一个
+      } else if (!selectedPort || !ports.some(p => p.port_name === selectedPort)) {
+        // 本地无选择或已失效，选第一个
         setSelectedPort(ports[0].port_name);
       }
     }
-  }, [ports, isConnected, selectedPort]);
+  }, [ports, isConnected, persistedSelectedPort, selectedPort, setSelectedPort]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);

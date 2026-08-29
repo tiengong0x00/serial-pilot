@@ -19,7 +19,9 @@ function QuickConfigDropdown({
   portLabel,
   isConnected,
   portName,
+  selectedPort,
   baudRate,
+  onConnect,
   onDisconnect,
   onSelectPort,
   onSelectBaudRate,
@@ -27,7 +29,9 @@ function QuickConfigDropdown({
   portLabel: PortLabel;
   isConnected: boolean;
   portName: string | null;
+  selectedPort: string | null;
   baudRate: number;
+  onConnect: () => void;
   onDisconnect: () => void;
   onSelectPort: (port: string) => void;
   onSelectBaudRate: (baud: number) => void;
@@ -71,15 +75,24 @@ function QuickConfigDropdown({
 
   const commonBaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 1500000, 2000000];
 
+  // 显示端口：已连接用实际端口名，未连接用持久化选择；波特率始终显示
+  const displayPort = isConnected && portName ? portName : selectedPort;
+  // 是否可切换/连接（有可用端口）
+  const canConnect = !isConnected && !!selectedPort;
+
   return (
     <div className="relative inline-flex items-center gap-1" ref={dropdownRef}>
-      {/* 连接灯（点击断开） */}
+      {/* 连接灯 + P1/P2 标签（合并为大点击区：已连接→断开，未连接→连接） */}
       <button
         type="button"
-        onClick={isConnected ? onDisconnect : undefined}
-        disabled={!isConnected}
-        className={`${isConnected ? 'cursor-pointer hover:opacity-70' : 'cursor-default'}`}
-        title={isConnected ? t('statusFooter.clickToDisconnect') : ''}
+        onClick={isConnected ? onDisconnect : (canConnect ? onConnect : undefined)}
+        disabled={!isConnected && !canConnect}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+          isConnected || canConnect
+            ? 'cursor-pointer hover:bg-muted/60'
+            : 'cursor-default'
+        }`}
+        title={isConnected ? t('statusFooter.clickToDisconnect') : (canConnect ? t('statusFooter.clickToConnect') : '')}
       >
         <Circle
           className={`w-2 h-2 ${
@@ -88,10 +101,8 @@ function QuickConfigDropdown({
               : "fill-muted-foreground/30 text-muted-foreground/30"
           }`}
         />
+        <span className="font-mono text-xs">{portLabel}:</span>
       </button>
-
-      {/* P1/P2 标签 */}
-      <span className="font-mono text-xs">{portLabel}:</span>
 
       {/* COM 口（点击切换） */}
       <button
@@ -100,20 +111,18 @@ function QuickConfigDropdown({
         className="font-mono text-xs hover:text-primary hover:underline cursor-pointer"
         title={t('statusFooter.clickToSwitchPort')}
       >
-        {isConnected && portName ? portName : t("app.disconnected")}
+        {displayPort || t("app.disconnected")}
       </button>
 
-      {/* 波特率（点击修改） */}
-      {isConnected && (
-        <button
-          type="button"
-          onClick={handleBaudClick}
-          className="font-mono text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-          title={t('statusFooter.clickToChangeBaud')}
-        >
-          {baudRate}
-        </button>
-      )}
+      {/* 波特率（点击修改，始终显示） */}
+      <button
+        type="button"
+        onClick={handleBaudClick}
+        className="font-mono text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+        title={t('statusFooter.clickToChangeBaud')}
+      >
+        {baudRate}
+      </button>
 
       {/* 下拉菜单 */}
       {open && menuType && (
@@ -171,7 +180,7 @@ function QuickConfigDropdown({
 
 const StatusFooter = () => {
   const { t } = useTranslation();
-  const { connectionStatus, p1PortName, p2PortName, p1Config, p2Config, setConfig } = useSerialStore();
+  const { connectionStatus, p1PortName, p2PortName, p1Config, p2Config, setConfig, p1SelectedPort, p2SelectedPort, setSelectedPort } = useSerialStore();
   const { connectSerialPort, disconnectSerialPort } = useSerialCommands();
   const systemLogs = useTerminalStore((s) => s.systemLogs);
   const clearSystemLogs = useTerminalStore((s) => s.clearSystemLogs);
@@ -203,23 +212,37 @@ const StatusFooter = () => {
     }
   }, [disconnectSerialPort]);
 
+  // 快速连接（未连接时点击标签区触发，使用持久化选中的端口）
+  const handleConnect = useCallback(async (portLabel: PortLabel) => {
+    try {
+      const config = portLabel === 'P1' ? p1Config : p2Config;
+      const port = portLabel === 'P1' ? p1SelectedPort : p2SelectedPort;
+      if (!port) return;
+      await connectSerialPort(portLabel, port, config);
+    } catch (err) {
+      console.error(`Failed to connect ${portLabel}:`, err);
+    }
+  }, [p1Config, p2Config, p1SelectedPort, p2SelectedPort, connectSerialPort]);
+
   // 快速切换端口
   const handleSelectPort = useCallback(async (portLabel: PortLabel, portName: string) => {
     try {
       const config = portLabel === 'P1' ? p1Config : p2Config;
       const isConnected = portLabel === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
 
-      // 如果已连接，先断开
-      if (isConnected) {
-        await disconnectSerialPort(portLabel);
-      }
+      // 记住用户选择（持久化）
+      setSelectedPort(portLabel, portName);
 
-      // 连接新端口
-      await connectSerialPort(portLabel, portName, config);
+      if (isConnected) {
+        // 已连接：先断开再连新端口
+        await disconnectSerialPort(portLabel);
+        await connectSerialPort(portLabel, portName, config);
+      }
+      // 未连接：仅记录选择，不自动连接（由用户点击标签区连接）
     } catch (err) {
       console.error(`Failed to switch port for ${portLabel}:`, err);
     }
-  }, [p1Config, p2Config, connectionStatus, disconnectSerialPort, connectSerialPort]);
+  }, [p1Config, p2Config, connectionStatus, setSelectedPort, disconnectSerialPort, connectSerialPort]);
 
   // 快速修改波特率
   const handleSelectBaudRate = useCallback(async (portLabel: PortLabel, baudRate: number) => {
@@ -228,7 +251,7 @@ const StatusFooter = () => {
       const portName = portLabel === 'P1' ? p1PortName : p2PortName;
       const newConfig = { ...config, baud_rate: baudRate };
 
-      // 更新配置
+      // 更新配置（无论是否连接都持久化）
       setConfig(portLabel, newConfig);
 
       // 如果已连接，重新连接以应用新波特率
@@ -237,6 +260,7 @@ const StatusFooter = () => {
         await disconnectSerialPort(portLabel);
         await connectSerialPort(portLabel, portName, newConfig);
       }
+      // 未连接时：仅更新配置，下次连接时生效
     } catch (err) {
       console.error(`Failed to change baud rate for ${portLabel}:`, err);
     }
@@ -252,7 +276,9 @@ const StatusFooter = () => {
             portLabel="P1"
             isConnected={connectionStatus.p1_connected}
             portName={p1PortName}
+            selectedPort={p1SelectedPort}
             baudRate={p1Config.baud_rate}
+            onConnect={() => handleConnect('P1')}
             onDisconnect={() => handleDisconnect('P1')}
             onSelectPort={(port) => handleSelectPort('P1', port)}
             onSelectBaudRate={(baud) => handleSelectBaudRate('P1', baud)}
@@ -263,7 +289,9 @@ const StatusFooter = () => {
             portLabel="P2"
             isConnected={connectionStatus.p2_connected}
             portName={p2PortName}
+            selectedPort={p2SelectedPort}
             baudRate={p2Config.baud_rate}
+            onConnect={() => handleConnect('P2')}
             onDisconnect={() => handleDisconnect('P2')}
             onSelectPort={(port) => handleSelectPort('P2', port)}
             onSelectBaudRate={(baud) => handleSelectBaudRate('P2', baud)}

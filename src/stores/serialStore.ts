@@ -12,12 +12,15 @@ interface SerialStore {
   // 持久化配置
   p1Config: SerialConfig;
   p2Config: SerialConfig;
+  p1SelectedPort: string | null; // P1 用户最后选择的端口（持久化，未连接时显示）
+  p2SelectedPort: string | null; // P2 用户最后选择的端口（持久化，未连接时显示）
 
   // Actions
   setPorts: (ports: PortInfo[]) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setPortName: (label: 'P1' | 'P2', name: string | null) => void;
   setConfig: (label: 'P1' | 'P2', config: SerialConfig) => void;
+  setSelectedPort: (label: 'P1' | 'P2', port: string | null) => void;
   reset: () => void;
 }
 
@@ -41,6 +44,8 @@ const initialState = {
   p2PortName: null,
   p1Config: defaultConfig,
   p2Config: defaultConfig,
+  p1SelectedPort: null,
+  p2SelectedPort: null,
 };
 
 export const useSerialStore = create<SerialStore>()(
@@ -58,15 +63,20 @@ export const useSerialStore = create<SerialStore>()(
       setConfig: (label, config) =>
         set(label === 'P1' ? { p1Config: config } : { p2Config: config }),
 
+      setSelectedPort: (label, port) =>
+        set(label === 'P1' ? { p1SelectedPort: port } : { p2SelectedPort: port }),
+
       reset: () => set(initialState),
     }),
     {
       name: 'serial-pilot-connection', // localStorage key
       version: 1,
-      // 只持久化配置，不持久化运行时状态（ports/connectionStatus/portName）
+      // 持久化配置和用户最后选择的端口
       partialize: (state) => ({
         p1Config: state.p1Config,
         p2Config: state.p2Config,
+        p1SelectedPort: state.p1SelectedPort,
+        p2SelectedPort: state.p2SelectedPort,
       }),
       // 迁移：老配置缺少 flow_control/dtr/rts 字段时补默认值
       merge: (persisted, current) => {
