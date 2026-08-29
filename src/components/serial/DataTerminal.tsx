@@ -16,7 +16,7 @@ import { TerminalContextMenu, type TerminalMenuItem } from "./TerminalContextMen
 import { AtAutocompletePanel } from "./AtAutocompletePanel";
 import { HighlightedText } from "./HighlightedText";
 import { useHighlightStore } from "@/stores/highlightStore";
-import type { TerminalMessage, PortLabel } from "@/types/serial";
+import type { TerminalMessage, PortLabel, FileSendProgressPayload } from "@/types/serial";
 import type { HighlightRule } from "@/types/terminal";
 
 type DisplayFormat = "text" | "hex";
@@ -315,11 +315,11 @@ const DataTerminal = () => {
   const { t } = useTranslation();
   const { messages, clearMessages, addMessage } = useTerminalStore();
   const { connectionStatus } = useSerialStore();
-  const { filePacketSize, filePacketInterval, terminalFontSize, terminalLineHeight, terminalMaxMessages, enterToSend } = useSettingsStore();
+  const { terminalFontSize, terminalLineHeight, terminalMaxMessages, enterToSend } = useSettingsStore();
   const showTimestamp = useSettingsStore((s) => s.showTimestamp);
   const setShowTimestamp = useSettingsStore((s) => s.setShowTimestamp);
   const setMaxMessages = useTerminalStore((s) => s.setMaxMessages);
-  const { writeSerialData } = useSerialCommands();
+  const { writeSerialData, saveAttachment, deleteAttachment, sendAttachment, cancelFileSend } = useSerialCommands();
   const { success, error: notifyError } = useNotify();
 
   // 同步日志上限设置到 terminalStore（实时生效）
@@ -354,19 +354,24 @@ const DataTerminal = () => {
   const [sendTarget, setSendTarget] = useState<SendTarget>(getStoredTarget);
 
   // 文件发送相关
-  const [pendingFile, setPendingFile] = useState<{ name: string; bytes: Uint8Array } | null>(null);
+  // 待发文件：拖入即上传到磁盘缓存，只留引用（id/name/size），不再常驻内存字节
+  const [pendingFile, setPendingFile] = useState<{ name: string; size: number; id: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState(0); // 0-100
-  const cancelSendRef = useRef(false); // 文件发送取消标志
+  // 文件发送进度详情：字节量 + 速率 + 剩余时间（由 file_send_progress 事件驱动）
+  const [sendStat, setSendStat] = useState<{
+    sent: number;
+    total: number;
+    bps: number;      // 瞬时字节/秒
+    etaSec: number;   // 剩余秒数
+  } | null>(null);
+  // 发送目标端口（用于取消命令）
+  const sendTargetRef = useRef<PortLabel | null>(null);
 
   // 自动循环发送
   const [autoSend, setAutoSend] = useState(false);
   const [autoSendInterval, setAutoSendInterval] = useState(1000); // ms, 范围 10-60000
-  const autoSendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // 发送队列计数（方案 A 视觉反馈）：显示正在进行中的发送请求数量
-  const [pendingSendCount, setPendingSendCount] = useState(0);
+  const autoSendActiveRef = useRef(false); // 串行循环运行标志
 
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: 'output' | 'input' } | null>(null);
@@ -635,9 +640,6 @@ const DataTerminal = () => {
       return;
     }
 
-    // 进入发送：计数 +1，供 UI 显示"发送中/排队中"
-    setPendingSendCount((c) => c + 1);
-
     // 1. 立即显示 TX（乐观渲染）
     const txTimestamp = Date.now();
     for (const target of targets) {
@@ -670,8 +672,6 @@ const DataTerminal = () => {
       // 失败：TX 保持显示（符合常见软件行为），仅设置错误提示
       setErrorMsg(err.message ?? String(e));
     } finally {
-      // 无论成败，完成后计数 -1
-      setPendingSendCount((c) => Math.max(0, c - 1));
       const t5 = performance.now();
       console.log(`[PERF] handleSend[${sendId}] total=${(t5-t0).toFixed(2)}ms`);
     }
@@ -691,38 +691,44 @@ const DataTerminal = () => {
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
 
-  // 自动发送控制：仅在开关/间隔/连接状态变化时启停定时器。
-  // input 变化不重启定时器——下一次触发时通过 ref 读到最新内容，实现"边改边发"。
+  // 自动发送：串行循环——发完上一条才等间隔再发下一条（不重叠、无排队）。
+  // input 变化不重启循环，下次迭代通过 ref 读到最新内容，实现"边改边发"。
   useEffect(() => {
-    if (autoSend && isConnected && !pendingFile) {
-      // 立即发送一次
-      void handleSendRef.current();
-      // 按固定间隔循环发送
-      autoSendTimerRef.current = setInterval(() => {
-        void handleSendRef.current();
-      }, autoSendInterval);
+    if (!(autoSend && isConnected && !pendingFile)) {
+      autoSendActiveRef.current = false;
+      return;
     }
 
-    // 清理：开关关闭、间隔变化、断开连接或组件卸载时停止
-    return () => {
-      if (autoSendTimerRef.current) {
-        clearInterval(autoSendTimerRef.current);
-        autoSendTimerRef.current = null;
+    autoSendActiveRef.current = true;
+    let stopped = false;
+
+    const loop = async () => {
+      while (autoSendActiveRef.current && !stopped) {
+        await handleSendRef.current(); // 等真正发完
+        if (!autoSendActiveRef.current || stopped) break;
+        await sleep(autoSendInterval); // 规定等待
       }
+    };
+    void loop();
+
+    // 清理：开关关闭、间隔变化、断开连接或卸载时终止循环
+    return () => {
+      stopped = true;
+      autoSendActiveRef.current = false;
     };
   }, [autoSend, isConnected, pendingFile, autoSendInterval]);
 
-  // 串口断开时自动中止文件发送
+  // 串口断开时自动中止文件发送（通知后端停止发送线程）
   useEffect(() => {
     const unlisten = listen<{ port_label: string }>("serial_error", () => {
-      if (isSending) {
-        cancelSendRef.current = true;
+      if (isSending && sendTargetRef.current) {
+        void cancelFileSend(sendTargetRef.current);
       }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [isSending]);
+  }, [isSending, cancelFileSend]);
 
   // AT 命令自动完成
   const autocomplete = useAtAutocomplete(input);
@@ -804,7 +810,8 @@ const DataTerminal = () => {
     [autocomplete, applyCandidate, pendingFile, handleSend, enterToSend]
   );
 
-  // 发送文件（分包）
+  // 发送文件：下沉后端流式发送，前端只订阅进度事件刷新单行进度条。
+  // 终端仅留开始/结束两条 SYS，不再逐片刷屏。多端口时依次发送。
   const handleSendFile = useCallback(async () => {
     if (!pendingFile) return;
     if (!isConnected) {
@@ -819,95 +826,118 @@ const DataTerminal = () => {
       return;
     }
 
+    const { name, size, id } = pendingFile;
+    const totalBytes = size;
+
     setIsSending(true);
-    setSendProgress(0);
-    cancelSendRef.current = false; // 重置取消标志
+    setSendStat({ sent: 0, total: totalBytes, bps: 0, etaSec: 0 });
 
+    let anyCancelled = false;
     try {
-      const { name, bytes } = pendingFile;
-      const totalBytes = bytes.length;
-
-      // 分包：0 表示不分包，一次性发送
-      const chunkSize = filePacketSize > 0 ? filePacketSize : totalBytes;
-      const chunks: Uint8Array[] = [];
-      for (let i = 0; i < totalBytes; i += chunkSize) {
-        chunks.push(bytes.slice(i, i + chunkSize));
-      }
-
-      // 向每个目标端口发送
       for (const target of targets) {
-        if (cancelSendRef.current) break; // 外层中断检查（多端口）
+        sendTargetRef.current = target;
 
-        for (let i = 0; i < chunks.length; i++) {
-          if (cancelSendRef.current) {
-            // 内层中断检查（分包）
-            addMessage({
-              id: `cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              type: "SYS",
-              port_label: target,
-              data: new Uint8Array(),
-              timestamp: Date.now(),
-              text: t("terminal.fileSendCancelled", { name }),
-            });
-            break;
-          }
+        // 开始 TX 消息
+        addMessage({
+          id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: "TX",
+          port_label: target,
+          data: new Uint8Array(),
+          timestamp: Date.now(),
+          text: t("terminal.fileSendStart", { name, size: formatBytes(totalBytes) }),
+        });
 
-          const chunk = chunks[i];
-          const result = await writeSerialData(target, chunk);
-          addMessage({
-            id: `${result.timestamp}-${Math.random().toString(36).substr(2, 9)}`,
-            type: "TX",
-            port_label: target,
-            data: chunk,
-            timestamp: result.timestamp,
-            text: t("terminal.fileChunk", { name, index: i + 1, total: chunks.length }),
+        // 订阅该端口进度事件，直到 done/cancelled
+        const startTs = performance.now();
+        let lastSent = 0;
+        let lastTs = startTs;
+        const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
+          let unlistenFn: (() => void) | null = null;
+          void listen<FileSendProgressPayload>("file_send_progress", (evt) => {
+            const p = evt.payload;
+            if (p.port_label !== target) return;
+
+            const now = performance.now();
+            const dt = (now - lastTs) / 1000;
+            const dBytes = p.sent_bytes - lastSent;
+            const bps = dt > 0 ? dBytes / dt : 0;
+            const remain = Math.max(0, p.total_bytes - p.sent_bytes);
+            const etaSec = bps > 0 ? remain / bps : 0;
+            lastSent = p.sent_bytes;
+            lastTs = now;
+
+            setSendStat({ sent: p.sent_bytes, total: p.total_bytes, bps, etaSec });
+
+            if (p.done || p.cancelled) {
+              if (unlistenFn) unlistenFn();
+              resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
+            }
+          }).then((fn) => { unlistenFn = fn; });
+
+          // 触发后端从缓存文件流式读盘发送
+          void sendAttachment(target, id).catch((e) => {
+            const err = e as { message?: string };
+            setErrorMsg(err.message ?? String(e));
+            if (unlistenFn) unlistenFn();
+            resolve({ cancelled: true, sent: lastSent });
           });
+        });
 
-          // 更新进度
-          setSendProgress(Math.floor(((i + 1) / chunks.length) * 100));
-
-          // 包间延时（最后一包无需等待）
-          if (i < chunks.length - 1 && filePacketInterval > 0) {
-            await sleep(filePacketInterval);
-          }
-        }
-
-        // 只有完整发完才记录汇总，中途取消不记录
-        if (!cancelSendRef.current) {
+        // 结束 TX 消息
+        const elapsedSec = (performance.now() - startTs) / 1000;
+        if (finished.cancelled) {
+          anyCancelled = true;
           addMessage({
-            id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            type: "SYS",
+            id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: "TX",
             port_label: target,
             data: new Uint8Array(),
             timestamp: Date.now(),
-            text: t("terminal.fileSent", {
+            text: t("terminal.fileSendCancelled", {
               name,
-              size: formatBytes(totalBytes),
-              packets: chunks.length,
+              sent: formatBytes(finished.sent),
+              total: formatBytes(totalBytes)
+            }),
+          });
+          break; // 取消后不再发往其他端口
+        } else {
+          const avgBps = elapsedSec > 0 ? totalBytes / elapsedSec : 0;
+          addMessage({
+            id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: "TX",
+            port_label: target,
+            data: new Uint8Array(),
+            timestamp: Date.now(),
+            text: t("terminal.fileSentV2", {
+              name,
+              sent: formatBytes(finished.sent),
+              total: formatBytes(totalBytes),
+              elapsed: elapsedSec.toFixed(1),
+              rate: formatBytes(avgBps),
             }),
           });
         }
       }
 
-      // 成功完成后才清空待发文件，取消后保留供重发
-      if (!cancelSendRef.current) {
+      // 完整发完才清空待发文件并删除缓存副本；取消后保留供重发
+      if (!anyCancelled) {
         setPendingFile(null);
+        void deleteAttachment(id);
       }
     } catch (e) {
       const err = e as { message?: string };
       setErrorMsg(err.message ?? String(e));
     } finally {
       setIsSending(false);
-      setSendProgress(0);
-      cancelSendRef.current = false; // 复位
+      setSendStat(null);
+      sendTargetRef.current = null;
     }
   }, [
     pendingFile,
     isConnected,
     resolveTargets,
-    filePacketSize,
-    filePacketInterval,
-    writeSerialData,
+    sendAttachment,
+    deleteAttachment,
     addMessage,
     t,
   ]);
@@ -938,14 +968,16 @@ const DataTerminal = () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
-        setPendingFile({ name: file.name, bytes });
+        // 上传到磁盘缓存,只保留引用(终端附件临时,发完/取消/移除即删)
+        const ref = await saveAttachment(bytes, file.name);
+        setPendingFile({ name: ref.name, size: ref.size, id: ref.id });
         setErrorMsg("");
       } catch (err) {
         const error = err as { message?: string };
         setErrorMsg(t("terminal.fileReadError", { error: error.message ?? String(err) }));
       }
     },
-    [t]
+    [saveAttachment, t]
   );
 
   return (
@@ -1167,18 +1199,43 @@ const DataTerminal = () => {
           )}
         </div>
 
-        {/* 文件芯片（待发送文件） */}
+        {/* 文件芯片（待发送文件）+ 单行进度条 */}
         {pendingFile && (
           <div className="flex items-center gap-2 px-2 py-1.5 bg-secondary/50 rounded-md border border-border">
-            <FileUp className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs flex-1 truncate">{pendingFile.name}</span>
-            <span className="text-xs text-muted-foreground">{formatBytes(pendingFile.bytes.length)}</span>
-            {isSending && <span className="text-xs text-primary">{sendProgress}%</span>}
-            {!isSending && (
+            <FileUp className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="text-xs truncate max-w-[140px]" title={pendingFile.name}>{pendingFile.name}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{formatBytes(pendingFile.size)}</span>
+
+            {isSending && sendStat ? (
+              <>
+                {/* 进度条 */}
+                <div className="flex-1 h-1.5 min-w-[80px] rounded-full bg-border overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-100"
+                    style={{ width: `${sendStat.total > 0 ? Math.floor((sendStat.sent / sendStat.total) * 100) : 0}%` }}
+                  />
+                </div>
+                <span className="text-xs text-primary shrink-0 tabular-nums">
+                  {sendStat.total > 0 ? Math.floor((sendStat.sent / sendStat.total) * 100) : 0}%
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                  {formatBytes(sendStat.sent)} / {formatBytes(sendStat.total)}
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                  {formatBytes(sendStat.bps)}/s
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                  {t("terminal.fileEta", { sec: Math.ceil(sendStat.etaSec) })}
+                </span>
+              </>
+            ) : (
               <button
                 type="button"
-                className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-destructive/20"
-                onClick={() => setPendingFile(null)}
+                className="h-5 w-5 inline-flex items-center justify-center rounded hover:bg-destructive/20 ml-auto shrink-0"
+                onClick={() => {
+                  void deleteAttachment(pendingFile.id);
+                  setPendingFile(null);
+                }}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1223,7 +1280,7 @@ const DataTerminal = () => {
             )}
             onClick={() => {
               if (isSending) {
-                cancelSendRef.current = true;
+                if (sendTargetRef.current) void cancelFileSend(sendTargetRef.current);
               } else {
                 void (pendingFile ? handleSendFile() : handleSend());
               }
@@ -1239,11 +1296,6 @@ const DataTerminal = () => {
               <>
                 <Send className="w-4 h-4" />
                 {pendingFile ? t("terminal.sendFile") : t("terminal.send")}
-                {pendingSendCount > 0 && (
-                  <span className="ml-1 min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-primary-foreground/20 text-[10px] leading-none">
-                    {pendingSendCount}
-                  </span>
-                )}
               </>
             )}
           </button>

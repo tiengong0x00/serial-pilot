@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback } from 'react';
 import { useSerialStore } from '../stores/serialStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import type { PortInfo, SerialConfig, ConnectionStatus, PortLabel } from '../types/serial';
+import type { PortInfo, SerialConfig, ConnectionStatus, PortLabel, AttachmentRef } from '../types/serial';
 
 /**
  * 封装 Tauri 串口命令调用的 Hook
@@ -94,6 +94,67 @@ export function useSerialCommands() {
   }, []);
 
   /**
+   * 保存附件到磁盘缓存,返回引用(id/name/size)。字节仅上传时走一次 IPC。
+   */
+  const saveAttachment = useCallback(async (
+    data: Uint8Array,
+    name: string
+  ): Promise<AttachmentRef> => {
+    return await invoke<AttachmentRef>('save_attachment', {
+      data: Array.from(data),
+      name,
+    });
+  }, []);
+
+  /**
+   * 检查附件是否存在(执行前校验)
+   */
+  const attachmentExists = useCallback(async (id: string): Promise<boolean> => {
+    return await invoke<boolean>('attachment_exists', { id });
+  }, []);
+
+  /**
+   * 删除附件(取消/移除文件时调用)
+   */
+  const deleteAttachment = useCallback(async (id: string): Promise<void> => {
+    await invoke('delete_attachment', { id });
+  }, []);
+
+  /**
+   * 发送附件:后端按 id 流式读盘分块发送并 emit 进度事件。
+   * 前端订阅 file_send_progress 更新进度条,不再逐片 invoke。
+   */
+  const sendAttachment = useCallback(async (
+    portLabel: PortLabel,
+    id: string
+  ): Promise<void> => {
+    const { connectionStatus } = useSerialStore.getState();
+    const isConnected = portLabel === 'P1'
+      ? connectionStatus.p1_connected
+      : connectionStatus.p2_connected;
+    if (!isConnected) {
+      throw new Error(`${portLabel} not connected`);
+    }
+
+    // filePacketSize 复用为"写入块大小",filePacketInterval 复用为"块间延时"
+    const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
+
+    await invoke('send_attachment', {
+      portLabel,
+      id,
+      blockSize: filePacketSize,
+      intervalMs: filePacketInterval,
+    });
+  }, []);
+
+  /**
+   * 取消指定端口正在进行的文件发送
+   */
+  const cancelFileSend = useCallback(async (portLabel: PortLabel): Promise<void> => {
+    await invoke('cancel_file_send', { portLabel });
+  }, []);
+
+  /**
    * 获取连接状态
    */
   const getConnectionStatus = useCallback(async (): Promise<ConnectionStatus> => {
@@ -121,6 +182,11 @@ export function useSerialCommands() {
     connectSerialPort,
     disconnectSerialPort,
     writeSerialData,
+    saveAttachment,
+    attachmentExists,
+    deleteAttachment,
+    sendAttachment,
+    cancelFileSend,
     getConnectionStatus,
     setSerialDtr,
     setSerialRts,

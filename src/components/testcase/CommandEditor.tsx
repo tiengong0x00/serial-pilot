@@ -6,21 +6,13 @@ import { FileUp, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { AtAutocompleteInput } from '@/components/serial/AtAutocompleteInput';
 import { useTestCaseStore } from '@/stores/testCaseStore';
 import { findCommand, isCommand, isUrcGuard } from '@/lib/testCaseUtils';
+import { useSerialCommands } from '@/hooks/useSerialCommands';
 
 /** 字节数格式化为可读文本 */
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-/** Uint8Array → base64 */
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 interface CommandEditorProps {
@@ -96,6 +88,7 @@ function StandardCommandFields({
   onChange: (patch: Partial<TestCommand>) => void;
 }) {
   const { t } = useTranslation();
+  const { saveAttachment, deleteAttachment } = useSerialCommands();
   const [fileError, setFileError] = useState('');
 
   const handleFileDrop = async (file: File) => {
@@ -103,8 +96,9 @@ function StandardCommandFields({
     try {
       const buf = await file.arrayBuffer();
       const bytes = new Uint8Array(buf);
+      const ref = await saveAttachment(bytes, file.name);
       onChange({
-        fileData: { name: file.name, size: bytes.length, base64: bytesToBase64(bytes) },
+        fileData: { name: ref.name, size: ref.size, id: ref.id },
       });
     } catch (err) {
       setFileError(String((err as { message?: string }).message ?? err));
@@ -131,7 +125,12 @@ function StandardCommandFields({
             <button
               type="button"
               className="text-muted-foreground hover:text-destructive transition-colors"
-              onClick={() => onChange({ fileData: undefined })}
+              onClick={() => {
+                if (command.fileData?.id) {
+                  void deleteAttachment(command.fileData.id);
+                }
+                onChange({ fileData: undefined });
+              }}
               title={t('testCase.fileRemove')}
             >
               <X className="w-3.5 h-3.5" />

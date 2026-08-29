@@ -9,6 +9,7 @@ pub enum SerialError {
     AlreadyConnected(String),
     NotConnected(String),
     ConfigInvalid(String),
+    NotFound(String),
     Internal(String),
 }
 
@@ -20,6 +21,7 @@ impl fmt::Display for SerialError {
             SerialError::AlreadyConnected(p) => write!(f, "Serial port already connected: {p}"),
             SerialError::NotConnected(p) => write!(f, "Serial port not connected: {p}"),
             SerialError::ConfigInvalid(m) => write!(f, "Invalid serial port config: {m}"),
+            SerialError::NotFound(m) => write!(f, "Not found: {m}"),
             SerialError::Internal(m) => write!(f, "Internal error: {m}"),
         }
     }

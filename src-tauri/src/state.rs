@@ -2,8 +2,23 @@ use crate::error::SerialError;
 use serde::{Deserialize, Serialize};
 use serialport::SerialPort;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 use tokio::sync::watch;
+
+/// 文件发送进度事件负载
+///
+/// 后端发送线程按时间片（约 33ms）或块数节流 emit，避免事件风暴。
+/// 速率/剩余时间由前端按相邻事件时间差自行计算，后端只报原始字节量。
+#[derive(Debug, Clone, Serialize)]
+pub struct FileSendProgressPayload {
+    pub port_label: String,
+    pub sent_bytes: u64,
+    pub total_bytes: u64,
+    pub done: bool,       // 全部发完
+    pub cancelled: bool,  // 被取消中止
+}
 
 /// 串口异常事件负载
 #[derive(Debug, Clone, Serialize)]
@@ -123,12 +138,15 @@ impl Drop for PortHandle {
 #[derive(Default)]
 pub struct SerialManager {
     connections: Arc<Mutex<HashMap<String, PortHandle>>>,
+    /// 文件发送取消标志（按端口独立，与监听器 cancel_tx 隔离，避免取消发送误杀监听）
+    send_cancels: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 }
 
 impl SerialManager {
     pub fn new() -> Self {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
+            send_cancels: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -387,6 +405,137 @@ impl SerialManager {
             .map_err(|e| SerialError::OpenFailed(format!("Failed to clone port: {}", e)))?;
 
         Ok((port_clone, cancel_rx))
+    }
+
+    /// 请求取消指定端口正在进行的文件发送
+    ///
+    /// 置位该端口的发送取消标志；发送线程在块循环里检测到后停止并 emit 取消事件。
+    /// 与监听器 cancel_tx 完全隔离，不影响 RX 监听。
+    pub fn cancel_file_send(&self, label: &str) {
+        if let Ok(guard) = self.send_cancels.lock() {
+            if let Some(flag) = guard.get(label) {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+
+    /// 后端流式发送附件（在独立线程执行，不阻塞 IPC）
+    ///
+    /// 按 `id` 打开磁盘附件文件，分块**读盘 → 背靠背 write_all**——内存恒定、
+    /// 支持大文件，且绝不整包一次写入，从根上消除 "failed to write whole buffer"。
+    /// `interval_ms==0` 即连续发送（块间零停顿，对齐 sscom "连续发送"语义）。
+    /// 进度按 ~33ms 时间片节流 emit。附件不存在时返回 NotFound。
+    pub fn send_attachment(
+        &self,
+        label: &str,
+        id: &str,
+        block_size: u32,
+        interval_ms: u32,
+        app_handle: tauri::AppHandle,
+    ) -> Result<(), SerialError> {
+        // 打开附件文件并取总大小（不存在 → NotFound）
+        let mut file = crate::attachments::open_attachment(id)?;
+        let total_bytes = file.metadata()
+            .map_err(|e| SerialError::Internal(format!("Failed to stat attachment: {}", e)))?
+            .len();
+
+        // 拿到端口 Arc（克隆句柄，释放全局锁后再发送）
+        let port_arc = {
+            let guard = self.connections.lock()
+                .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+            let handle = guard.get(label)
+                .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
+            Arc::clone(&handle.port)
+        };
+
+        // 注册/重置该端口的取消标志
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        {
+            let mut guard = self.send_cancels.lock()
+                .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+            guard.insert(label.to_string(), Arc::clone(&cancel_flag));
+        }
+
+        // 块大小：0 视为默认 256（永不整文件一次写）
+        let block = if block_size == 0 { 256 } else { block_size as usize };
+        let label_owned = label.to_string();
+
+        std::thread::spawn(move || {
+            use std::io::Read;
+            const EMIT_INTERVAL_MS: u128 = 33;
+            let mut sent: u64 = 0;
+            let mut last_emit = std::time::Instant::now();
+            let mut cancelled = false;
+
+            // 首个进度事件（0%），让前端立刻显示进度条
+            let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
+                port_label: label_owned.clone(),
+                sent_bytes: 0,
+                total_bytes,
+                done: false,
+                cancelled: false,
+            });
+
+            {
+                let mut port_guard = match port_arc.lock() {
+                    Ok(g) => g,
+                    Err(_) => return,
+                };
+
+                let mut buffer = vec![0u8; block];
+                loop {
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        cancelled = true;
+                        break;
+                    }
+
+                    // 从磁盘读一块
+                    let n = match file.read(&mut buffer) {
+                        Ok(0) => break, // EOF
+                        Ok(n) => n,
+                        Err(_) => {
+                            cancelled = true;
+                            break;
+                        }
+                    };
+
+                    // 背靠背写串口
+                    if port_guard.write_all(&buffer[..n]).is_err() {
+                        cancelled = true;
+                        break;
+                    }
+                    sent += n as u64;
+
+                    // 块间延时（最后一块由 EOF 判断，此处统一延时）
+                    if interval_ms > 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(interval_ms as u64));
+                    }
+
+                    // 时间片节流 emit 进度
+                    if last_emit.elapsed().as_millis() >= EMIT_INTERVAL_MS {
+                        let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
+                            port_label: label_owned.clone(),
+                            sent_bytes: sent,
+                            total_bytes,
+                            done: false,
+                            cancelled: false,
+                        });
+                        last_emit = std::time::Instant::now();
+                    }
+                }
+            } // 释放端口锁
+
+            // 终态事件
+            let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
+                port_label: label_owned.clone(),
+                sent_bytes: sent,
+                total_bytes,
+                done: !cancelled,
+                cancelled,
+            });
+        });
+
+        Ok(())
     }
 }
 

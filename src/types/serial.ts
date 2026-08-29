@@ -24,6 +24,22 @@ export interface ConnectionStatus {
 
 export type PortLabel = 'P1' | 'P2';
 
+/** 文件发送进度事件负载（后端 file_send_progress 事件） */
+export interface FileSendProgressPayload {
+  port_label: PortLabel;
+  sent_bytes: number;
+  total_bytes: number;
+  done: boolean;
+  cancelled: boolean;
+}
+
+/** 附件引用（save_attachment 返回） */
+export interface AttachmentRef {
+  id: string;
+  name: string;
+  size: number;
+}
+
 export interface SerialError {
   kind: 'PortNotFound' | 'OpenFailed' | 'WriteFailed' | 'ReadFailed' |
         'AlreadyConnected' | 'NotConnected' | 'ConfigInvalid' | 'Internal';

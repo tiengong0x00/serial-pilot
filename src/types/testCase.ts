@@ -127,7 +127,8 @@ export interface StandardCommand extends BaseCommand {
   fileData?: {
     name: string;       // 文件名（显示用）
     size: number;       // 字节数
-    base64: string;     // base64 编码的文件内容
+    id?: string;        // 新:附件 id（磁盘缓存文件名,流式读盘发送）
+    base64?: string;    // 旧:兼容已存老用例,只读不再新增
   };
 }
 

@@ -17,6 +17,7 @@ import { useTestCaseStore } from '@/stores/testCaseStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSerialStore } from '@/stores/serialStore';
+import { useSerialCommands } from './useSerialCommands';
 import type {
   TestCase,
   TestCommand,
@@ -130,6 +131,7 @@ export function useTestExecution() {
   } = useExecutionStore();
   const { cases, updateCase, updateCommand } = useTestCaseStore();
   const addMessage = useTerminalStore((s) => s.addMessage);
+  const { sendAttachment, attachmentExists } = useSerialCommands();
 
   // 执行统计（用于生成关键事件）
   const statsRef = useRef({
@@ -478,41 +480,56 @@ export function useTestExecution() {
         // 判断是文件发送还是普通命令
         if (cmd.fileData) {
           // ============ 文件发送模式 ============
-          // 解码 base64 → 按 filePacketSize 分包 → 逐包发送（不加行尾符）
           let sendError: unknown = null;
           try {
-            const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
-
-            // 从设置中读取分包参数
-            const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
-            const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
-
-            // 分包发送
-            for (let i = 0; i < fileBytes.length; i += chunkSize) {
-              if (abortRef.current) {
-                updateCommand(caseId, cmd.id, { status: 'interrupted' });
-                return 'interrupted';
+            if (cmd.fileData.id) {
+              // 新模式：从缓存文件流式发送
+              // 先检查附件是否存在
+              const exists = await attachmentExists(cmd.fileData.id);
+              if (!exists) {
+                throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
               }
 
-              const chunk = fileBytes.slice(i, i + chunkSize);
+              // 后端流式发送（sendAttachment 内部已处理分包、进度事件）
+              await sendAttachment(txPort, cmd.fileData.id);
 
-              // 乐观渲染：先显示 TX 再发送
-              const txTimestamp = Date.now();
-              addMessage({
-                id: `tx_${txTimestamp}_${i}`,
-                type: 'TX',
-                port_label: txPort,
-                data: chunk,
-                timestamp: txTimestamp,
-                text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
-              });
+            } else if (cmd.fileData.base64) {
+              // 旧模式兼容：前端解码 base64 → 按 filePacketSize 分包 → 逐包发送
+              const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
 
-              await writeSerial(txPort, chunk);
+              // 从设置中读取分包参数
+              const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
+              const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
 
-              // 包间延时（最后一包无需等待）
-              if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
-                await sleep(filePacketInterval);
+              // 分包发送
+              for (let i = 0; i < fileBytes.length; i += chunkSize) {
+                if (abortRef.current) {
+                  updateCommand(caseId, cmd.id, { status: 'interrupted' });
+                  return 'interrupted';
+                }
+
+                const chunk = fileBytes.slice(i, i + chunkSize);
+
+                // 乐观渲染：先显示 TX 再发送
+                const txTimestamp = Date.now();
+                addMessage({
+                  id: `tx_${txTimestamp}_${i}`,
+                  type: 'TX',
+                  port_label: txPort,
+                  data: chunk,
+                  timestamp: txTimestamp,
+                  text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
+                });
+
+                await writeSerial(txPort, chunk);
+
+                // 包间延时（最后一包无需等待）
+                if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
+                  await sleep(filePacketInterval);
+                }
               }
+            } else {
+              throw new Error('Invalid fileData: neither id nor base64 present');
             }
 
             // 记录文件发送完成事件
@@ -524,7 +541,7 @@ export function useTestExecution() {
                 commandId: cmd.id,
                 commandName: `File sent: ${cmd.fileData.name}`,
                 variable: 'file_size',
-                value: String(fileBytes.length),
+                value: String(cmd.fileData.size),
               },
             });
           } catch (error) {
@@ -1309,34 +1326,47 @@ export function useTestExecution() {
       try {
         if (cmd.fileData) {
           // ============ 文件快速发送 ============
-          const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
-          const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
-          const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
-
-          // 分包发送（不校验响应）
-          for (let i = 0; i < fileBytes.length; i += chunkSize) {
-            const chunk = fileBytes.slice(i, i + chunkSize);
-
-            // 乐观渲染：先显示 TX 再发送
-            const txTimestamp = Date.now();
-            addMessage({
-              id: `tx_${txTimestamp}_${i}`,
-              type: 'TX',
-              port_label: targetPort,
-              data: chunk,
-              timestamp: txTimestamp,
-              text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
-            });
-
-            await writeSerial(targetPort, chunk);
-
-            // 包间延时（最后一包无需等待）
-            if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
-              await sleep(filePacketInterval);
+          if (cmd.fileData.id) {
+            // 新模式：从缓存文件流式发送
+            const exists = await attachmentExists(cmd.fileData.id);
+            if (!exists) {
+              throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
             }
-          }
+            await sendAttachment(targetPort, cmd.fileData.id);
+            addLog('info', `Quick sent file: ${cmd.fileData.name} (${cmd.fileData.size} bytes)`);
+          } else if (cmd.fileData.base64) {
+            // 旧模式兼容：前端解码 base64 分包发送
+            const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
+            const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
+            const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
 
-          addLog('info', `Quick sent file: ${cmd.fileData.name} (${fileBytes.length} bytes)`);
+            // 分包发送（不校验响应）
+            for (let i = 0; i < fileBytes.length; i += chunkSize) {
+              const chunk = fileBytes.slice(i, i + chunkSize);
+
+              // 乐观渲染：先显示 TX 再发送
+              const txTimestamp = Date.now();
+              addMessage({
+                id: `tx_${txTimestamp}_${i}`,
+                type: 'TX',
+                port_label: targetPort,
+                data: chunk,
+                timestamp: txTimestamp,
+                text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
+              });
+
+              await writeSerial(targetPort, chunk);
+
+              // 包间延时（最后一包无需等待）
+              if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
+                await sleep(filePacketInterval);
+              }
+            }
+
+            addLog('info', `Quick sent file: ${cmd.fileData.name} (${fileBytes.length} bytes)`);
+          } else {
+            throw new Error('Invalid fileData: neither id nor base64 present');
+          }
         } else {
           // ============ 普通命令快速发送 ============
           const replaceResult = replaceVariables(

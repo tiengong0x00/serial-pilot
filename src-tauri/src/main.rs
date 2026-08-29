@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod attachments;
 mod error;
 mod network;
 mod power_monitor;
@@ -88,6 +89,51 @@ async fn write_serial_data(
         bytes_written,
         timestamp,
     })
+}
+
+/// 保存附件到磁盘缓存，返回引用（id/name/size）。字节仅上传时走一次 IPC。
+#[tauri::command]
+async fn save_attachment(
+    data: Vec<u8>,
+    name: String,
+) -> Result<attachments::AttachmentRef, SerialError> {
+    attachments::save_attachment(&data, &name)
+}
+
+/// 检查附件是否存在（执行前校验，缺失给明确提示）
+#[tauri::command]
+async fn attachment_exists(id: String) -> Result<bool, SerialError> {
+    Ok(attachments::attachment_exists(&id))
+}
+
+/// 删除附件（取消/移除文件时调用）
+#[tauri::command]
+async fn delete_attachment(id: String) -> Result<(), SerialError> {
+    attachments::delete_attachment(&id)
+}
+
+/// 后端流式发送附件：按 id 打开磁盘文件，分块背靠背读盘+发送并 emit 进度事件。
+/// block_size=0 按默认 256 处理；interval_ms=0 为连续发送（块间零停顿）。
+#[tauri::command]
+async fn send_attachment(
+    port_label: String,
+    id: String,
+    block_size: u32,
+    interval_ms: u32,
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), SerialError> {
+    state.serial_manager.send_attachment(&port_label, &id, block_size, interval_ms, app_handle)
+}
+
+/// 取消指定端口正在进行的文件发送
+#[tauri::command]
+async fn cancel_file_send(
+    port_label: String,
+    state: State<'_, AppState>,
+) -> Result<(), SerialError> {
+    state.serial_manager.cancel_file_send(&port_label);
+    Ok(())
 }
 
 #[tauri::command]
@@ -524,6 +570,10 @@ fn main() {
             if let Err(e) = ensure_scripts_seeded() {
                 eprintln!("[Seed] scripts failed: {}", e);
             }
+            // 启动时清理无引用的孤儿附件（崩溃残留、外部删用例等）
+            if let Err(e) = attachments::gc_orphaned_attachments(&get_test_cases_dir()) {
+                eprintln!("[Attachments GC] failed: {}", e);
+            }
 
             // 启动电源监听器（监听系统休眠/恢复事件）
             power_monitor::setup_power_monitor(app.handle().clone());
@@ -536,6 +586,11 @@ fn main() {
             disconnect_serial_port,
             get_connection_status,
             write_serial_data,
+            save_attachment,
+            attachment_exists,
+            delete_attachment,
+            send_attachment,
+            cancel_file_send,
             set_serial_dtr,
             set_serial_rts,
             start_serial_listener,
