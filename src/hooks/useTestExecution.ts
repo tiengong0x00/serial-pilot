@@ -25,7 +25,7 @@ import type {
   ScriptCommand,
   CaseStatus,
 } from '@/types/testCase';
-import type { PortLabel, SerialDataPayload } from '@/types/serial';
+import type { PortLabel, SerialDataPayload, FileSendProgressPayload } from '@/types/serial';
 import {
   isCase,
   isCommand,
@@ -47,6 +47,16 @@ type ExecResult = 'success' | 'failed' | 'interrupted' | 'end-round';
 /** 延时工具 */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+/**
+ * 格式化字节数为人类可读格式
+ */
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 /**
@@ -519,8 +529,75 @@ export function useTestExecution() {
                 throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
               }
 
-              // 后端流式发送（sendAttachment 内部已处理分包、进度事件）
-              await sendAttachment(txPort, cmd.fileData.id);
+              const { name, size, id } = cmd.fileData;
+
+              // 开始 TX 消息
+              addMessage({
+                id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'TX',
+                port_label: txPort,
+                data: new Uint8Array(),
+                timestamp: Date.now(),
+                text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
+              });
+
+              // 订阅进度事件，等待完成
+              const startTs = performance.now();
+              let lastSent = 0;
+              const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
+                let unlistenFn: (() => void) | null = null;
+                void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
+                  const p = evt.payload;
+                  if (p.port_label !== txPort) return;
+                  lastSent = p.sent_bytes;
+                  if (p.done || p.cancelled) {
+                    if (unlistenFn) unlistenFn();
+                    resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
+                  }
+                }).then((fn) => { unlistenFn = fn; });
+
+                // 触发后端流式发送
+                void sendAttachment(txPort, id).catch((e) => {
+                  if (unlistenFn) unlistenFn();
+                  resolve({ cancelled: true, sent: lastSent });
+                  throw e;
+                });
+              });
+
+              // 结束 TX 消息
+              const elapsedSec = (performance.now() - startTs) / 1000;
+              if (finished.cancelled) {
+                addMessage({
+                  id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'TX',
+                  port_label: txPort,
+                  data: new Uint8Array(),
+                  timestamp: Date.now(),
+                  text: i18n.t('terminal.fileSendCancelled', {
+                    name,
+                    sent: formatBytes(finished.sent),
+                    total: formatBytes(size),
+                  }),
+                });
+                throw new Error('File send cancelled');
+              } else {
+                const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
+                addMessage({
+                  id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'TX',
+                  port_label: txPort,
+                  data: new Uint8Array(),
+                  timestamp: Date.now(),
+                  text: i18n.t('terminal.fileSentV2', {
+                    name,
+                    sent: formatBytes(finished.sent),
+                    total: formatBytes(size),
+                    elapsed: elapsedSec.toFixed(1),
+                    rate: formatBytes(avgBps),
+                  }),
+                });
+              }
+
 
             } else if (cmd.fileData.base64) {
               // 旧模式兼容：前端解码 base64 → 按 filePacketSize 分包 → 逐包发送
@@ -1377,8 +1454,77 @@ export function useTestExecution() {
             if (!exists) {
               throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
             }
-            await sendAttachment(effectivePort, cmd.fileData.id);
-            addLog('info', `Quick sent file: ${cmd.fileData.name} (${cmd.fileData.size} bytes)`);
+
+            const { name, size, id } = cmd.fileData;
+
+            // 开始 TX 消息
+            addMessage({
+              id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              type: 'TX',
+              port_label: effectivePort,
+              data: new Uint8Array(),
+              timestamp: Date.now(),
+              text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
+            });
+
+            // 订阅进度事件，等待完成
+            const startTs = performance.now();
+            let lastSent = 0;
+            const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
+              let unlistenFn: (() => void) | null = null;
+              void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
+                const p = evt.payload;
+                if (p.port_label !== effectivePort) return;
+                lastSent = p.sent_bytes;
+                if (p.done || p.cancelled) {
+                  if (unlistenFn) unlistenFn();
+                  resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
+                }
+              }).then((fn) => { unlistenFn = fn; });
+
+              // 触发后端流式发送
+              void sendAttachment(effectivePort, id).catch((e) => {
+                if (unlistenFn) unlistenFn();
+                resolve({ cancelled: true, sent: lastSent });
+                throw e;
+              });
+            });
+
+            // 结束 TX 消息
+            const elapsedSec = (performance.now() - startTs) / 1000;
+            if (finished.cancelled) {
+              addMessage({
+                id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'TX',
+                port_label: effectivePort,
+                data: new Uint8Array(),
+                timestamp: Date.now(),
+                text: i18n.t('terminal.fileSendCancelled', {
+                  name,
+                  sent: formatBytes(finished.sent),
+                  total: formatBytes(size),
+                }),
+              });
+              throw new Error('File send cancelled');
+            } else {
+              const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
+              addMessage({
+                id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'TX',
+                port_label: effectivePort,
+                data: new Uint8Array(),
+                timestamp: Date.now(),
+                text: i18n.t('terminal.fileSentV2', {
+                  name,
+                  sent: formatBytes(finished.sent),
+                  total: formatBytes(size),
+                  elapsed: elapsedSec.toFixed(1),
+                  rate: formatBytes(avgBps),
+                }),
+              });
+            }
+
+            addLog('info', `Quick sent file: ${name} (${size} bytes)`);
           } else if (cmd.fileData.base64) {
             // 旧模式兼容：前端解码 base64 分包发送
             const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));

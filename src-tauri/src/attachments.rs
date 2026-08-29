@@ -92,12 +92,9 @@ pub fn gc_orphaned_attachments(testcases_dir: &PathBuf) -> Result<(), Box<dyn st
             if let Some(name) = entry.file_name().to_str() {
                 if name.ends_with(".json") {
                     if let Ok(content) = fs::read_to_string(entry.path()) {
-                        // 简单字符串匹配 "\"id\":\"xxx\"" 模式（避免完整 JSON 解析）
-                        for cap in content.match_indices("\"id\":\"") {
-                            let start = cap.0 + 6; // 跳过 "id":"
-                            if let Some(end) = content[start..].find('"') {
-                                referenced_ids.insert(content[start..start + end].to_string());
-                            }
+                        // 完整解析 JSON 并递归提取所有 "id" 字段（容忍格式化空白）
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                            extract_ids(&value, &mut referenced_ids);
                         }
                     }
                 }
@@ -122,4 +119,27 @@ pub fn gc_orphaned_attachments(testcases_dir: &PathBuf) -> Result<(), Box<dyn st
     }
 
     Ok(())
+}
+
+/// 递归提取 JSON 中所有 "id" 字段的字符串值
+fn extract_ids(value: &serde_json::Value, ids: &mut std::collections::HashSet<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            // 检查当前对象是否有 "id" 字段
+            if let Some(serde_json::Value::String(id)) = map.get("id") {
+                ids.insert(id.clone());
+            }
+            // 递归遍历所有子字段
+            for v in map.values() {
+                extract_ids(v, ids);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            // 递归遍历数组元素
+            for v in arr {
+                extract_ids(v, ids);
+            }
+        }
+        _ => {}
+    }
 }
