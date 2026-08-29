@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { check } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import {
@@ -79,51 +79,20 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
   const handleCheckUpdate = async () => {
     setUpdateState({ status: 'checking' });
     try {
-      const update = await check();
+      const updateInfo = await invoke<{ available: boolean; version?: string }>('check_update');
 
-      if (update?.available) {
+      if (updateInfo.available) {
         setUpdateState({
           status: 'available',
-          version: update.version,
-          body: update.body,
+          version: updateInfo.version ?? '',
           download: async () => {
-            // 使用 ref 保持变量在 setState 调用后不丢失
-            const progress = { total: 0, downloaded: 0 };
-            let lastUpdateTime = 0;
-            const UPDATE_INTERVAL = 100; // 节流：每 100ms 更新一次 UI
-
             setUpdateState({ status: 'downloading', percent: 0 });
 
             try {
-              await update.downloadAndInstall((event) => {
-                console.log('[Update Event]', event.event, event);
-                if (event.event === 'Started') {
-                  progress.total = event.data.contentLength ?? 0;
-                  progress.downloaded = 0;
-                  console.log('[Update] Started, total:', progress.total);
-                  setUpdateState({ status: 'downloading', percent: 0 });
-                } else if (event.event === 'Progress') {
-                  progress.downloaded += event.data.chunkLength;
-
-                  // 节流：避免过于频繁的 UI 更新
-                  const now = Date.now();
-                  if (now - lastUpdateTime >= UPDATE_INTERVAL) {
-                    const percent = progress.total > 0
-                      ? Math.round((progress.downloaded / progress.total) * 100)
-                      : 0;
-                    console.log('[Update] Progress:', progress.downloaded, '/', progress.total, `(${percent}%)`);
-                    setUpdateState({ status: 'downloading', percent });
-                    lastUpdateTime = now;
-                  }
-                } else if (event.event === 'Finished') {
-                  console.log('[Update] Finished');
-                  // 确保显示 100%
-                  setUpdateState({ status: 'downloading', percent: 100 });
-                  // 延迟 3 秒，等待安装程序完成
-                  setTimeout(() => {
-                    setUpdateState({ status: 'ready', relaunch: () => { void relaunch(); } });
-                  }, 3000);
-                }
+              await invoke('install_update');
+              setUpdateState({
+                status: 'ready',
+                relaunch: () => { void relaunch(); }
               });
             } catch (error) {
               console.error('[Update Error]', error);

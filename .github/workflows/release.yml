@@ -37,25 +37,57 @@ jobs:
           Write-Host "=== Listing build artifacts ==="
           Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -Recurse
           Get-ChildItem -Path "src-tauri/target/release" -Filter "*.sig" -Recurse
+          Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Recurse
           Write-Host "=== End of artifacts ==="
 
-      - name: Sign portable executable
+      - name: Prepare portable executable
+        run: |
+          # 复制绿色版并添加 .portable 标记
+          $portableExe = "src-tauri/target/release/serial-pilot.exe"
+          $portableOut = "src-tauri/target/release/serial-pilot-portable.exe"
+
+          if (Test-Path $portableExe) {
+            Copy-Item $portableExe $portableOut
+
+            # 创建 .portable 标记文件（临时，用于后续打包）
+            $markerPath = "src-tauri/target/release/.portable"
+            New-Item -ItemType File -Path $markerPath -Force | Out-Null
+            Write-Host "✓ Portable executable prepared with marker"
+          } else {
+            Write-Error "Portable executable not found"
+            exit 1
+          }
+
+      - name: Sign executables
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # 使用 tauri signer 手动签名绿色版
-          $portableExe = "src-tauri/target/release/serial-pilot.exe"
+          # 签名 NSIS 安装包
+          $nsisSetup = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" | Select-Object -First 1
+          if ($nsisSetup) {
+            Write-Host "Signing NSIS installer: $($nsisSetup.Name)"
+            npm run tauri signer sign $nsisSetup.FullName -- -k "$env:TAURI_SIGNING_PRIVATE_KEY" -p ""
+            if (Test-Path "$($nsisSetup.FullName).sig") {
+              Write-Host "✓ NSIS installer signed"
+            } else {
+              Write-Error "Failed to sign NSIS installer"
+              exit 1
+            }
+          } else {
+            Write-Error "NSIS installer not found"
+            exit 1
+          }
+
+          # 签名绿色版
+          $portableExe = "src-tauri/target/release/serial-pilot-portable.exe"
           if (Test-Path $portableExe) {
             Write-Host "Signing portable executable..."
             npm run tauri signer sign $portableExe -- -k "$env:TAURI_SIGNING_PRIVATE_KEY" -p ""
-            Write-Host "✓ Portable executable signed"
-
-            # 验证签名文件生成
             if (Test-Path "$portableExe.sig") {
-              Write-Host "✓ Signature file created: $portableExe.sig"
+              Write-Host "✓ Portable executable signed"
               Get-Content "$portableExe.sig"
             } else {
-              Write-Error "Failed to create signature file"
+              Write-Error "Failed to sign portable executable"
               exit 1
             }
           } else {
@@ -69,15 +101,17 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            src-tauri/target/release/serial-pilot.exe
-            src-tauri/target/release/serial-pilot.exe.sig
+            src-tauri/target/release/bundle/nsis/*setup.exe
+            src-tauri/target/release/bundle/nsis/*setup.exe.sig
+            src-tauri/target/release/serial-pilot-portable.exe
+            src-tauri/target/release/serial-pilot-portable.exe.sig
+            src-tauri/target/release/.portable
           generate_release_notes: true
 
-      - name: Generate and upload latest.json
+      - name: Generate and upload update manifests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取最新 release 信息生成 latest.json（仅绿色版）
           $tag = "${{ github.ref_name }}"
           $version = $tag -replace '^v',''
 
@@ -111,45 +145,69 @@ jobs:
           }
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-          # 生成绿色版 latest.json
-          $portable = Get-ChildItem -Path "src-tauri/target/release" -Filter "serial-pilot.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-          if ($portable) {
-            $portableUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/serial-pilot.exe"
-
-            # 查找对应的 .sig 签名文件并读取为 Base64
-            $sigFile = Get-ChildItem -Path "src-tauri/target/release" -Filter "serial-pilot.exe.sig" -ErrorAction SilentlyContinue | Select-Object -First 1
-            $signature = ""
-            if ($sigFile) {
-              # 读取签名文件内容（minisign 格式是文本）
-              $sigContent = Get-Content $sigFile.FullName -Raw -Encoding UTF8
-              $signature = $sigContent.Trim()
-              Write-Host "✓ Found signature file: $($sigFile.Name)"
-              Write-Host "Signature content length: $($signature.Length)"
-            } else {
-              Write-Host "⚠ Warning: No signature file found, update may not work"
+          # 生成 NSIS 安装版 latest-nsis.json
+          $nsisSetup = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*setup.exe" | Select-Object -First 1
+          if ($nsisSetup) {
+            $nsisUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$($nsisSetup.Name)"
+            $nsisSigFile = Get-Item "$($nsisSetup.FullName).sig" -ErrorAction SilentlyContinue
+            $nsisSignature = ""
+            if ($nsisSigFile) {
+              $nsisSignature = (Get-Content $nsisSigFile.FullName -Raw -Encoding UTF8).Trim()
+              Write-Host "✓ NSIS signature: $($nsisSignature.Length) chars"
             }
 
-            $latestJson = @{
+            $latestNsis = @{
               version = $version
               notes = [string]$releaseInfo
               pub_date = $pubDate
               platforms = @{
                 "windows-x86_64" = @{
-                  signature = $signature
+                  signature = $nsisSignature
+                  url = $nsisUrl
+                }
+              }
+            }
+
+            $json = $latestNsis | ConvertTo-Json -Depth 10 -Compress:$false
+            [System.IO.File]::WriteAllLines("latest-nsis.json", $json, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "✓ Generated latest-nsis.json"
+
+            gh release upload $tag latest-nsis.json --clobber
+          } else {
+            Write-Error "NSIS installer not found"
+            exit 1
+          }
+
+          # 生成绿色版 latest-portable.json
+          $portableExe = "src-tauri/target/release/serial-pilot-portable.exe"
+          if (Test-Path $portableExe) {
+            $portableUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/serial-pilot-portable.exe"
+            $portableSigFile = Get-Item "$portableExe.sig" -ErrorAction SilentlyContinue
+            $portableSignature = ""
+            if ($portableSigFile) {
+              $portableSignature = (Get-Content $portableSigFile.FullName -Raw -Encoding UTF8).Trim()
+              Write-Host "✓ Portable signature: $($portableSignature.Length) chars"
+            }
+
+            $latestPortable = @{
+              version = $version
+              notes = [string]$releaseInfo
+              pub_date = $pubDate
+              platforms = @{
+                "windows-x86_64" = @{
+                  signature = $portableSignature
                   url = $portableUrl
                 }
               }
             }
 
-            $json = $latestJson | ConvertTo-Json -Depth 10 -Compress:$false
-            [System.IO.File]::WriteAllLines("latest.json", $json, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "✓ Generated latest.json for portable version"
+            $json = $latestPortable | ConvertTo-Json -Depth 10 -Compress:$false
+            [System.IO.File]::WriteAllLines("latest-portable.json", $json, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "✓ Generated latest-portable.json"
 
-            # 上传 latest.json 到 release
-            gh release upload $tag latest.json --clobber
+            gh release upload $tag latest-portable.json --clobber
           } else {
-            Write-Error "未找到绿色版 serial-pilot.exe"
+            Write-Error "Portable executable not found"
             exit 1
           }
 

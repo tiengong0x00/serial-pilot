@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod attachments;
+mod dist_type;
 mod error;
 mod network;
+mod portable_updater;
 mod power_monitor;
 mod serial;
 mod script;
@@ -12,6 +14,7 @@ mod toolbox;
 use error::SerialError;
 use state::{AppState, ConnectionStatus, PortInfo, SerialConfig};
 use tauri::State;
+use tauri_plugin_updater::UpdaterExt;
 use include_dir::{include_dir, Dir};
 
 /// 编译期内嵌的种子测试用例目录
@@ -581,6 +584,90 @@ fn get_build_type() -> String {
     }
 }
 
+/// 统一更新入口：根据分发类型自动选择更新策略
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<portable_updater::UpdateInfo, String> {
+    let dist_type = dist_type::DistType::detect();
+
+    match dist_type {
+        dist_type::DistType::Nsis => {
+            // NSIS 安装版：使用 Tauri 内置 updater
+            check_update_nsis(app).await
+        }
+        dist_type::DistType::Portable => {
+            // 绿色版：持久化标记（更新后临时目录仍能识别），使用自定义更新器
+            let _ = dist_type.persist_marker();
+            portable_updater::check_update_portable(app).await
+        }
+    }
+}
+
+/// 安装更新：根据分发类型执行对应的安装流程
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let dist_type = dist_type::DistType::detect();
+
+    match dist_type {
+        dist_type::DistType::Nsis => {
+            // NSIS 安装版：使用 Tauri 内置 updater
+            install_update_nsis(app).await
+        }
+        dist_type::DistType::Portable => {
+            // 绿色版：使用自定义更新器
+            portable_updater::install_update_portable(app).await
+        }
+    }
+}
+
+/// NSIS 版本检查更新（Tauri 内置 updater）
+async fn check_update_nsis(app: tauri::AppHandle) -> Result<portable_updater::UpdateInfo, String> {
+    let endpoint = dist_type::DistType::Nsis.endpoint();
+
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![endpoint.parse().map_err(|e| format!("Invalid endpoint: {}", e))?])
+        .map_err(|e| format!("Failed to set endpoint: {}", e))?
+        .build()
+        .map_err(|e| format!("Failed to build updater: {}", e))?;
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            Ok(portable_updater::UpdateInfo {
+                available: true,
+                version: Some(update.version.clone()),
+            })
+        }
+        Ok(None) => {
+            Ok(portable_updater::UpdateInfo {
+                available: false,
+                version: None,
+            })
+        }
+        Err(e) => Err(format!("Update check failed: {}", e)),
+    }
+}
+
+/// NSIS 版本安装更新（Tauri 内置 updater）
+async fn install_update_nsis(app: tauri::AppHandle) -> Result<(), String> {
+    let endpoint = dist_type::DistType::Nsis.endpoint();
+
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![endpoint.parse().map_err(|e| format!("Invalid endpoint: {}", e))?])
+        .map_err(|e| format!("Failed to set endpoint: {}", e))?
+        .build()
+        .map_err(|e| format!("Failed to build updater: {}", e))?;
+
+    if let Some(update) = updater.check().await.map_err(|e| format!("Update check failed: {}", e))? {
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| format!("Update installation failed: {}", e))?;
+    }
+
+    Ok(())
+}
+
 fn main() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -642,7 +729,11 @@ fn main() {
             udp_send,
             net_disconnect,
             script::execute_script,
-            get_build_type
+            get_build_type,
+            check_update,
+            install_update,
+            portable_updater::check_update_portable,
+            portable_updater::install_update_portable
         ])
         .run(tauri::generate_context!())
     {
