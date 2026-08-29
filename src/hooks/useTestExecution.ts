@@ -50,6 +50,35 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * 智能解析目标端口
+ * - rootCase.targetPort 为 'P1' 或 'P2'：使用配置值（用户显式指定）
+ * - rootCase.targetPort 为 undefined/null：自动模式（智能解析）
+ *   - 单串口：使用已连接的端口（P1 或 P2）
+ *   - 双串口：跟随发送区选择（P2→P2，其余→P1）
+ *   - 都未连接：默认 P1
+ */
+function resolveTargetPort(rootCase: TestCase, connectionStatus: { p1_connected: boolean; p2_connected: boolean }): PortLabel {
+  // 如果用户显式配置了端口，使用配置值
+  if ('targetPort' in rootCase && (rootCase.targetPort === 'P1' || rootCase.targetPort === 'P2')) {
+    return rootCase.targetPort as PortLabel;
+  }
+
+  // 自动模式：智能解析
+  const p1Connected = connectionStatus.p1_connected;
+  const p2Connected = connectionStatus.p2_connected;
+
+  // 单串口：用已连接的那个
+  if (p1Connected && !p2Connected) return 'P1';
+  if (!p1Connected && p2Connected) return 'P2';
+
+  // 双串口或都未连接：读取发送区 sendTarget（localStorage）
+  const sendTarget = localStorage.getItem('serial_terminal_target') as 'P1' | 'P2' | 'ALL' | null;
+  if (sendTarget === 'P2' && p2Connected) return 'P2';
+  // ALL / P1 / 无值：默认 P1
+  return 'P1';
+}
+
+/**
  * 递归收集用例树中所有命令实际用到的端口。
  * txPort/rxPort/listenPort 未设置的按默认口计入。
  */
@@ -1076,7 +1105,7 @@ export function useTestExecution() {
 
   /** 启动执行（入口） */
   const startExecution = useCallback(
-    async (targetPort: PortLabel) => {
+    async (targetPort?: PortLabel) => {
       const rootCase = cases[0];
       if (!rootCase) {
         addLog('error', 'No test cases, please load or create a case first');
@@ -1089,9 +1118,12 @@ export function useTestExecution() {
         return;
       }
 
-      // 收集用例树中所有用到的端口，校验连接状态
-      const usedPorts = collectUsedPorts([rootCase], targetPort, targetPort);
+      // 智能解析目标端口（优先传参，其次根用例配置，最后智能选择）
       const { connectionStatus } = useSerialStore.getState();
+      const effectivePort = targetPort || resolveTargetPort(rootCase, connectionStatus);
+
+      // 收集用例树中所有用到的端口，校验连接状态
+      const usedPorts = collectUsedPorts([rootCase], effectivePort, effectivePort);
       const disconnectedPorts: PortLabel[] = [];
       for (const port of usedPorts) {
         const connected = port === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
@@ -1107,9 +1139,9 @@ export function useTestExecution() {
 
       // 如果 context 未初始化（或目标端口变了），重新初始化
       const ctx = getContext();
-      if (!ctx || ctx.targetPort !== targetPort) {
-        initExecution(targetPort);
-        addLog('info', `Initialize execution context, target port: ${targetPort}`);
+      if (!ctx || ctx.targetPort !== effectivePort) {
+        initExecution(effectivePort);
+        addLog('info', `Initialize execution context, target port: ${effectivePort}`);
       }
 
       abortRef.current = false;
@@ -1140,9 +1172,9 @@ export function useTestExecution() {
         },
       });
 
-      // 根用例有效收发口 = 根用例 txPort/rxPort（若设置）或工具栏选中口
-      const rootTx: PortLabel = rootCase.txPort ?? targetPort;
-      const rootRx: PortLabel = rootCase.rxPort ?? targetPort;
+      // 根用例有效收发口 = 根用例 txPort/rxPort（若设置）或解析的目标口
+      const rootTx: PortLabel = rootCase.txPort ?? effectivePort;
+      const rootRx: PortLabel = rootCase.rxPort ?? effectivePort;
 
       // 注册根级守护（全程监听），默认监听根接收口
       const rootGuards = rootCase.children.filter(isCommand).filter(isUrcGuard).filter((g) => g.scope === 'root');
@@ -1208,21 +1240,26 @@ export function useTestExecution() {
 
   /** 运行单个用例（不递归到父级，独立执行） */
   const runSingleCase = useCallback(
-    async (caseId: string, targetPort: PortLabel) => {
+    async (caseId: string, targetPort?: PortLabel) => {
       const targetCase = findCase(cases, caseId);
       if (!targetCase) {
         addLog('error', `Case not found: ${caseId}`);
         return;
       }
 
+      // 智能解析目标端口
+      const { connectionStatus } = useSerialStore.getState();
+      const rootCase = cases[0];
+      const effectivePort = targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1');
+
       // 重置目标用例子树状态为 pending
       resetCaseStatuses([targetCase]);
 
       // 初始化上下文
       const ctx = getContext();
-      if (!ctx || ctx.targetPort !== targetPort) {
-        initExecution(targetPort);
-        addLog('info', `Initialize execution context, target port: ${targetPort}`);
+      if (!ctx || ctx.targetPort !== effectivePort) {
+        initExecution(effectivePort);
+        addLog('info', `Initialize execution context, target port: ${effectivePort}`);
       }
 
       abortRef.current = false;
@@ -1232,7 +1269,7 @@ export function useTestExecution() {
       addLog('info', `Run single case: ${targetCase.name}`);
 
       try {
-        const result = await runCase(targetCase, targetPort, targetPort, null);
+        const result = await runCase(targetCase, effectivePort, effectivePort, null);
         if (result === 'success') {
           addLog('success', 'Case execution completed');
         } else if (result === 'interrupted') {
@@ -1251,18 +1288,22 @@ export function useTestExecution() {
 
   /** 运行单个命令（包装为临时用例执行） */
   const runSingleCommand = useCallback(
-    async (caseId: string, commandId: string, targetPort: PortLabel) => {
+    async (caseId: string, commandId: string, targetPort?: PortLabel) => {
       const found = findCommand(cases, commandId);
       if (!found) {
         addLog('error', `Command not found: ${commandId}`);
         return;
       }
 
-      // 检查目标端口连接状态
+      // 智能解析目标端口
       const { connectionStatus } = useSerialStore.getState();
-      const isConnected = targetPort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
+      const rootCase = cases[0];
+      const effectivePort = targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1');
+
+      // 检查目标端口连接状态
+      const isConnected = effectivePort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
       if (!isConnected) {
-        toast.error(i18n.t('terminal.portNotConnected', { port: targetPort }));
+        toast.error(i18n.t('terminal.portNotConnected', { port: effectivePort }));
         return;
       }
 
@@ -1273,9 +1314,9 @@ export function useTestExecution() {
 
       // 初始化上下文
       const ctx = getContext();
-      if (!ctx || ctx.targetPort !== targetPort) {
-        initExecution(targetPort);
-        addLog('info', `Initialize execution context, target port: ${targetPort}`);
+      if (!ctx || ctx.targetPort !== effectivePort) {
+        initExecution(effectivePort);
+        addLog('info', `Initialize execution context, target port: ${effectivePort}`);
       }
 
       abortRef.current = false;
@@ -1290,7 +1331,7 @@ export function useTestExecution() {
       addLog('info', `Run single command: ${cmdLabel}`);
 
       try {
-        const result = await runCommand(found.command, caseId, targetPort, targetPort);
+        const result = await runCommand(found.command, caseId, effectivePort, effectivePort);
         if (result === 'success') {
           addLog('success', 'Command execution completed');
         } else if (result === 'interrupted') {
@@ -1314,12 +1355,16 @@ export function useTestExecution() {
    * - 文件仍按分包设置发送，内容追加行结束符
    */
   const quickSendCommand = useCallback(
-    async (cmd: StandardCommand, targetPort: PortLabel) => {
-      // 检查目标端口连接状态
+    async (cmd: StandardCommand, targetPort?: PortLabel) => {
+      // 智能解析目标端口
       const { connectionStatus } = useSerialStore.getState();
-      const isConnected = targetPort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
+      const rootCase = cases[0];
+      const effectivePort = targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1');
+
+      // 检查目标端口连接状态
+      const isConnected = effectivePort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
       if (!isConnected) {
-        toast.error(i18n.t('terminal.portNotConnected', { port: targetPort }));
+        toast.error(i18n.t('terminal.portNotConnected', { port: effectivePort }));
         return;
       }
 
@@ -1332,7 +1377,7 @@ export function useTestExecution() {
             if (!exists) {
               throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
             }
-            await sendAttachment(targetPort, cmd.fileData.id);
+            await sendAttachment(effectivePort, cmd.fileData.id);
             addLog('info', `Quick sent file: ${cmd.fileData.name} (${cmd.fileData.size} bytes)`);
           } else if (cmd.fileData.base64) {
             // 旧模式兼容：前端解码 base64 分包发送
@@ -1349,13 +1394,13 @@ export function useTestExecution() {
               addMessage({
                 id: `tx_${txTimestamp}_${i}`,
                 type: 'TX',
-                port_label: targetPort,
+                port_label: effectivePort,
                 data: chunk,
                 timestamp: txTimestamp,
                 text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
               });
 
-              await writeSerial(targetPort, chunk);
+              await writeSerial(effectivePort, chunk);
 
               // 包间延时（最后一包无需等待）
               if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
@@ -1389,13 +1434,13 @@ export function useTestExecution() {
           addMessage({
             id: `tx_${txTimestamp}`,
             type: 'TX',
-            port_label: targetPort,
+            port_label: effectivePort,
             data,
             timestamp: txTimestamp,
             text: new TextDecoder().decode(data),
           });
 
-          await writeSerial(targetPort, data);
+          await writeSerial(effectivePort, data);
 
           addLog('info', `Quick sent: ${content}`);
         }

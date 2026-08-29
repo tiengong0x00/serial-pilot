@@ -41,7 +41,7 @@ Each `.json` file contains a root case, which can nest sub-cases and commands in
 |-------|------|----------|-------------|
 | `version` | `string` | ✅ | Format version, currently fixed at `"2.0"` |
 | `createdAt` | `string` | ❌ | ISO 8601 timestamp (optional) |
-| `rootCase` | `object` | ✅ | Root case object (must include `targetPort`) |
+| `rootCase` | `object` | ✅ | Root case object |
 
 ### Root case (rootCase) fields
 
@@ -50,7 +50,7 @@ Each `.json` file contains a root case, which can nest sub-cases and commands in
 | `id` | `string` | ❌ | Unique identifier (auto-reassigned on import, can omit) | Suggested format: `case_<timestamp>_<random>` |
 | `name` | `string` | ✅ | Case name (recommended; omit → `"Unnamed Case"`) | Any string |
 | `description` | `string` | ❌ | Case description (optional) | - |
-| `targetPort` | `string` | ❌ | **Target port** (root case only; recommended to set explicitly) | `"P1"` / `"P2"`, default `"P1"` |
+| `targetPort` | `string` | ❌ | **Target port** (root case only; omit = auto) | `"P1"` / `"P2"`, omit or leave empty = auto |
 | `runCount` | `number` | ❌ | Loop count | `≥1` (normal loop), `0` (infinite loop, manual stop required), default `1` |
 | `onFailure` | `string` | ❌ | Failure strategy (enum) | `"continue"` / `"end-round"` / `"retry-self"` / `"abort"`, default `"abort"` |
 | `maxSelfRetries` | `number` | ❌ | Retry limit for `retry-self` | Default `1`, falls back to `continue` when exhausted |
@@ -60,9 +60,10 @@ Each `.json` file contains a root case, which can nest sub-cases and commands in
 | `children` | `array` | ✅ | Child array (commands or sub-cases) | At least 1 child |
 
 **targetPort explanation:**
-- `"P1"` — First connected serial port (**recommended**)
-- `"P2"` — Second connected serial port
-- Must be specified in the root case (rootCase); sub-cases inherit this value
+- Omitted or empty — **Auto mode** (recommended): single port → use the connected port; dual port → follow the send-area selection (P1/P2/ALL→P1)
+- `"P1"` — Pin to the first serial port
+- `"P2"` — Pin to the second serial port
+- Only the root case needs this field; sub-cases inherit it automatically
 
 **onFailure strategy:**
 - `continue` — Skip failure, proceed to next sibling
@@ -268,7 +269,6 @@ On import the app auto-fills `dataFormat`/`lineEnding`/`repeatCount`/`timeout`/`
   "version": "2.0",
   "rootCase": {
     "name": "Minimal AT Test",
-    "targetPort": "P1",
     "children": [
       { "type": "command", "name": "AT Handshake", "content": "AT" }
     ]
@@ -276,7 +276,7 @@ On import the app auto-fills `dataFormat`/`lineEnding`/`repeatCount`/`timeout`/`
 }
 ```
 
-The command above is equivalent to: send `AT` once (CRLF ending), standard validation (pass if response contains `OK`), 2000ms timeout, abort on failure. Write out a field explicitly only when you need to override it.
+The command above is equivalent to: send `AT` once (CRLF ending), standard validation (pass if response contains `OK`), 2000ms timeout, abort on failure. Omitting `targetPort` means auto mode. Write out a field explicitly only when you need to override it.
 
 ### Example 1: Basic AT Handshake (full fields)
 
@@ -464,7 +464,7 @@ The command above is equivalent to: send `AT` once (CRLF ending), standard valid
 
 ### Q1: Does root case require targetPort?
 
-**A:** Not strictly. It defaults to `"P1"` when omitted, but **explicitly setting** `targetPort` (`"P1"` or `"P2"`) in the root case is recommended to avoid ambiguity. Sub-cases inherit this value.
+**A:** No. **Omitting it enables auto mode** (recommended): single port → use the connected port; dual port → follow the send-area selection (P1/P2/ALL→P1). Only set `"P1"` or `"P2"` explicitly when you need to **pin** a test case to a specific port. Sub-cases inherit the root value automatically.
 
 ### Q2: How to prevent command failure from affecting subsequent execution?
 
@@ -511,7 +511,7 @@ Provide this document along with your test requirements (manual, flowchart, text
 Based on the attached test requirements and the format spec in testcases/README_EN.md,
 generate a JSON test case file. Requirements:
 1. Strictly follow field types and enum values
-2. rootCase must include targetPort field ("P1" or "P2")
+2. rootCase targetPort may be omitted (omit = auto mode, recommended); only set "P1" or "P2" to pin a port
 3. All commands must specify type field ("command" or "urc-guard")
 4. validation and onFailure must use enum values listed in the spec
 5. Add description for key commands to explain intent
@@ -520,7 +520,7 @@ generate a JSON test case file. Requirements:
 
 **Post-generation checklist:**
 - ✅ Is `version` set to `"2.0"`?
-- ✅ Does `rootCase.targetPort` exist and equal `"P1"` or `"P2"`?
+- ✅ `rootCase.targetPort` is either omitted (auto mode, recommended) or `"P1"` / `"P2"`
 - ✅ Do all commands include `type` field?
 - ✅ Are enum fields like `validation` / `onFailure` / `matchMode` valid?
 - ✅ When `validation="custom"`, are `validationPattern` and `validationMode` specified?

@@ -41,7 +41,7 @@
 |------|------|------|------|
 | `version` | `string` | ✅ | 格式版本，当前固定为 `"2.0"` |
 | `createdAt` | `string` | ❌ | ISO 8601 时间戳（可选） |
-| `rootCase` | `object` | ✅ | 根用例对象（必须包含 `targetPort`） |
+| `rootCase` | `object` | ✅ | 根用例对象 |
 
 ### 根用例 (rootCase) 字段
 
@@ -50,7 +50,7 @@
 | `id` | `string` | ❌ | 唯一标识（导入时自动重新分配，可省略） | 建议格式：`case_<timestamp>_<random>` |
 | `name` | `string` | ✅ | 用例名称（建议填写，省略默认 `"Unnamed Case"`） | 任意字符串 |
 | `description` | `string` | ❌ | 用例说明（可选） | - |
-| `targetPort` | `string` | ❌ | **目标端口**（根用例特有，建议显式指定） | `"P1"` / `"P2"`，默认 `"P1"` |
+| `targetPort` | `string` | ❌ | **目标端口**（根用例特有，不填=自动） | `"P1"` / `"P2"`，省略或留空 = 自动 |
 | `runCount` | `number` | ❌ | 循环次数 | `≥1`（普通循环），`0`（无限循环，需手动停止），默认 `1` |
 | `onFailure` | `string` | ❌ | 失败策略（枚举） | `"continue"` / `"end-round"` / `"retry-self"` / `"abort"`，默认 `"abort"` |
 | `maxSelfRetries` | `number` | ❌ | `retry-self` 的重试上限 | 默认 `1`，耗尽后转 `continue` |
@@ -60,9 +60,10 @@
 | `children` | `array` | ✅ | 子项数组（命令或子用例） | 至少包含 1 个子项 |
 
 **targetPort 说明：**
-- `"P1"` —— 第一个已连接的串口（**建议使用**）
-- `"P2"` —— 第二个已连接的串口
-- 必须在根用例（rootCase）中指定，子用例不需要该字段
+- 省略或不填 —— **自动模式**（推荐）：单串口时使用已连接的口；双串口时跟随发送区选择（P1/P2/ALL）
+- `"P1"` —— 固定使用第一个串口
+- `"P2"` —— 固定使用第二个串口
+- 仅根用例需要该字段，子用例自动继承
 
 **onFailure 策略详解：**
 - `continue` —— 跳过失败，继续执行下一个兄弟节点
@@ -72,7 +73,7 @@
 
 ### 子用例 (sub-case) 字段
 
-子用例与根用例字段相同，**但无需 `targetPort`**（继承父用例的目标端口）。
+子用例与根用例字段相同，**但无需 `targetPort`**（继承根用例的目标端口）。
 
 ---
 
@@ -268,7 +269,6 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
   "version": "2.0",
   "rootCase": {
     "name": "Minimal AT Test",
-    "targetPort": "P1",
     "children": [
       { "type": "command", "name": "AT Handshake", "content": "AT" }
     ]
@@ -276,7 +276,7 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 }
 ```
 
-上面这条命令等价于：发一次 `AT`（CRLF 结尾），标准校验（响应含 `OK` 即通过），超时 2000ms，失败即中断。需要覆盖某项时再显式写出对应字段即可。
+上面这条命令等价于：发一次 `AT`（CRLF 结尾），标准校验（响应含 `OK` 即通过），超时 2000ms，失败即中断。省略 `targetPort` 即自动模式。需要覆盖某项时再显式写出对应字段即可。
 
 ### 示例 1：基础 AT 握手（完整字段）
 
@@ -464,7 +464,7 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 
 ### Q1: 根用例必须有 targetPort 吗？
 
-**A:** 不强制。省略时默认 `"P1"`，但**建议在根用例显式指定** `targetPort`（`"P1"` 或 `"P2"`）以免歧义。子用例会继承该值，无需重复指定。
+**A:** 不需要。**省略即自动模式**（推荐）：单串口时用已连接的口，双串口时跟随发送区选择（P1/P2/ALL→P1）。只有当你要把某个用例**固定**在特定串口时，才显式写 `"P1"` 或 `"P2"`。子用例会继承根用例的值，无需重复指定。
 
 ### Q2: 如何让命令失败后不影响后续执行？
 
@@ -510,7 +510,7 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 ```
 请根据附件中的测试需求和 testcases/README.md 中的格式规范，生成一个 JSON 格式的测试用例文件。要求：
 1. 严格遵守字段类型和枚举值
-2. rootCase 必须包含 targetPort 字段（"P1" 或 "P2"）
+2. rootCase 的 targetPort 可省略（省略=自动模式，推荐）；仅需固定串口时才写 "P1" 或 "P2"
 3. 所有命令必须指定 type 字段（"command" 或 "urc-guard"）
 4. validation 和 onFailure 必须使用文档中列出的枚举值
 5. 为关键命令添加 description 说明意图
@@ -519,7 +519,7 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 
 **AI 生成后的检查清单：**
 - ✅ `version` 是否为 `"2.0"`
-- ✅ `rootCase.targetPort` 是否存在且为 `"P1"` 或 `"P2"`
+- ✅ `rootCase.targetPort` 可省略（推荐自动模式）或为 `"P1"` / `"P2"`
 - ✅ 所有命令是否包含 `type` 字段
 - ✅ `validation` / `onFailure` / `matchMode` 等枚举字段是否合法
 - ✅ `validation="custom"` 时是否指定了 `validationPattern` 和 `validationMode`

@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MoreVertical, Edit, Trash2, Download, Upload, Save, Settings } from 'lucide-react';
+import { MoreVertical, Trash2, Download, Upload, Save, Settings } from 'lucide-react';
 
 interface CaseExtensionMenuProps {
   currentFile: string | null;
@@ -13,7 +13,6 @@ interface CaseExtensionMenuProps {
   isDirty?: boolean;
   onSave: () => void;
   onEditCase: () => void;
-  onRename: () => void;
   onDelete: () => void;
   onExport: () => void;
   onImport: () => void;
@@ -25,7 +24,6 @@ export function CaseExtensionMenu({
   isDirty,
   onSave,
   onEditCase,
-  onRename,
   onDelete,
   onExport,
   onImport,
@@ -84,15 +82,6 @@ export function CaseExtensionMenu({
           >
             <Settings className="h-4 w-4" />
             {t('testCase.editCaseProperties')}
-          </button>
-
-          <button
-            className="w-full px-3 py-2 flex items-center gap-2.5 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => handleAction(onRename)}
-            disabled={!currentFile}
-          >
-            <Edit className="h-4 w-4" />
-            {t('testCase.renameCaseFile')}
           </button>
 
           <button

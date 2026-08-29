@@ -18,11 +18,13 @@ function PortSelect({
   label,
   value,
   showInherit,
+  showAuto,
   onChange,
 }: {
   label: string;
   value?: PortLabel;
   showInherit: boolean;
+  showAuto?: boolean; // 根用例 targetPort 显示"自动"选项
   onChange: (v?: PortLabel) => void;
 }) {
   const { t } = useTranslation();
@@ -35,6 +37,7 @@ function PortSelect({
         onChange={(e) => onChange((e.target.value || undefined) as PortLabel | undefined)}
       >
         {showInherit && <option value="">{t('testCase.portInherit')}</option>}
+        {showAuto && <option value="">{t('testCase.portAuto')}</option>}
         <option value="P1">P1</option>
         <option value="P2">P2</option>
       </select>
@@ -54,14 +57,14 @@ function CasePortSection({
   isRoot: boolean;
   txPort?: PortLabel;
   rxPort?: PortLabel;
-  fallbackPort: PortLabel; // 根用例：targetPort 作为默认显示值
+  fallbackPort?: PortLabel; // 根用例：targetPort 作为默认显示值（可能是 undefined=AUTO）
   onChangeTx: (v?: PortLabel) => void;
   onChangeRx: (v?: PortLabel) => void;
 }) {
   const { t } = useTranslation();
   // 默认折叠，仅子用例设置了非继承端口时自动展开
   const [open, setOpen] = useState(!isRoot && Boolean(txPort || rxPort));
-  // 根用例是顶层，无"继承"选项，用 fallbackPort 兜底显示
+  // 根用例是顶层，显示 targetPort（可能为空=AUTO），子用例显示 txPort（空=继承）
   const txValue = isRoot ? (txPort ?? fallbackPort) : txPort;
   const rxValue = isRoot ? (rxPort ?? fallbackPort) : rxPort;
   return (
@@ -80,8 +83,8 @@ function CasePortSection({
             {isRoot ? t('testCase.casePortRootHint') : t('testCase.casePortHint')}
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <PortSelect label={t('testCase.txPortLabel')} value={txValue} showInherit={!isRoot} onChange={onChangeTx} />
-            <PortSelect label={t('testCase.rxPortLabel')} value={rxValue} showInherit={!isRoot} onChange={onChangeRx} />
+            <PortSelect label={t('testCase.txPortLabel')} value={txValue} showInherit={!isRoot} showAuto={isRoot} onChange={onChangeTx} />
+            <PortSelect label={t('testCase.rxPortLabel')} value={rxValue} showInherit={!isRoot} showAuto={isRoot} onChange={onChangeRx} />
           </div>
         </div>
       )}
@@ -177,10 +180,10 @@ export function CaseEditor({ case_, onChange }: CaseEditorProps) {
         isRoot={isRoot}
         txPort={case_.txPort}
         rxPort={case_.rxPort}
-        fallbackPort={isRoot ? (case_ as RootTestCase).targetPort : 'P1'}
+        fallbackPort={isRoot ? (case_ as RootTestCase).targetPort : undefined}
         onChangeTx={(v) =>
           isRoot
-            ? onChange({ txPort: v, targetPort: (v ?? 'P1') } as Partial<TestCase>)
+            ? onChange({ txPort: v, targetPort: v } as Partial<TestCase>)
             : onChange({ txPort: v })
         }
         onChangeRx={(v) => onChange({ rxPort: v })}

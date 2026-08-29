@@ -203,7 +203,7 @@ export interface TestCase {
 
 // ============ 根用例（额外字段） ============
 export interface RootTestCase extends TestCase {
-  targetPort: PortLabel;                // 目标串口（从已打开端口选择）
+  targetPort?: PortLabel;                // 目标串口（可选，未设置时智能选择）
 }
 
 // ============ 序列化格式（JSON 文件） ============

@@ -192,9 +192,9 @@ function ensureSingleRoot(cases: TestCase[], filename: string): RootTestCase {
     const root = cases[0];
     root.name = nameWithoutExt;
     root.selected = true; // 根用例始终选中（不可取消），保证运行入口可用
-    // 如果已有 targetPort，保持；否则添加（迁移）
+    // 如果已有 targetPort 字段，保持其值（已配置的走配置）；否则添加 undefined（迁移为自动模式）
     if (!('targetPort' in root)) {
-      return { ...root, targetPort: 'P1' as const };
+      return { ...root, targetPort: undefined };
     }
     return root as RootTestCase;
   }

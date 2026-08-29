@@ -174,7 +174,7 @@ export function createCase(name = 'New Case'): TestCase {
 export function createRootCase(name = 'New Test'): RootTestCase {
   return {
     ...createCase(name),
-    targetPort: 'P1',
+    targetPort: undefined, // 自动模式（新建根用例默认AUTO）
   };
 }
 

@@ -365,28 +365,6 @@ export function TestCaseManager() {
     });
   }, [saveFile, performFileSelect, reset, markClean, filesError, t]);
 
-  // 重命名当前用例文件
-  const handleRenameFile = useCallback(async () => {
-    if (!currentFile) return;
-
-    const currentName = currentFile.replace('.json', '');
-    const newName = prompt(t('testCase.promptRenameFile'), currentName);
-    if (!newName || newName === currentName) return;
-
-    const newFullName = newName.endsWith('.json') ? newName : `${newName}.json`;
-
-    const success = await renameFile(currentFile, newFullName);
-    if (success) {
-      // 同步更新根用例名称
-      const root = getRootCase();
-      if (root) {
-        updateCase(root.id, { name: newName });
-      }
-    } else {
-      alert(t('testCase.renameFailed', { error: filesError }));
-    }
-  }, [currentFile, renameFile, filesError, getRootCase, updateCase, t]);
-
   // 删除当前用例文件
   const handleDeleteFile = useCallback(async () => {
     if (!currentFile) return;
@@ -482,7 +460,8 @@ export function TestCaseManager() {
     } else {
       const root = getRootCase();
       if (root) {
-        void startExecution(root.targetPort);
+        // 不再传递 root.targetPort，由执行引擎智能解析
+        void startExecution();
       }
     }
   }, [isRunning, getRootCase, startExecution, stopExecution]);
@@ -492,7 +471,8 @@ export function TestCaseManager() {
     (caseId: string) => {
       const root = getRootCase();
       if (root && !isRunning) {
-        void runSingleCase(caseId, root.targetPort);
+        // 不再传递 root.targetPort，由执行引擎智能解析
+        void runSingleCase(caseId);
       }
     },
     [getRootCase, isRunning, runSingleCase],
@@ -510,11 +490,11 @@ export function TestCaseManager() {
       if (!found) return;
 
       if (isUrcGuard(found.command)) {
-        // URC 走正常运行逻辑
-        void runSingleCommand(caseId, commandId, root.targetPort);
+        // URC 走正常运行逻辑（不再传递 root.targetPort）
+        void runSingleCommand(caseId, commandId);
       } else {
-        // 普通命令走快速发送（点射）
-        void quickSendCommand(found.command as StandardCommand, root.targetPort);
+        // 普通命令走快速发送（点射，不再传递 root.targetPort）
+        void quickSendCommand(found.command as StandardCommand);
       }
     },
     [cases, getRootCase, isRunning, runSingleCommand, quickSendCommand],
@@ -612,7 +592,6 @@ export function TestCaseManager() {
           isDirty={isDirty}
           onSave={handleSaveFile}
           onEditCase={handleEditRootCase}
-          onRename={handleRenameFile}
           onDelete={handleDeleteFile}
           onExport={handleExportCurrentFile}
           onImport={handleImportAsGroup}
@@ -692,7 +671,20 @@ export function TestCaseManager() {
           open={!!editingCase}
           case_={editingCaseData}
           onClose={() => setEditingCase(null)}
-          onChange={updateCase}
+          onChange={async (caseId, patch) => {
+            // 如果是根用例且修改了名称，同时重命名 JSON 文件
+            const isRoot = 'targetPort' in editingCaseData;
+            if (isRoot && patch.name && patch.name !== editingCaseData.name && currentFile) {
+              const newFileName = patch.name.endsWith('.json') ? patch.name : `${patch.name}.json`;
+              const success = await renameFile(currentFile, newFileName);
+              if (!success) {
+                alert(t('testCase.renameFailed', { error: filesError }));
+                return;
+              }
+            }
+            // 更新用例数据
+            updateCase(caseId, patch);
+          }}
         />
       )}
 

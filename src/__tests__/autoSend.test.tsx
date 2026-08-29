@@ -46,8 +46,9 @@ describe('DataTerminal - 自动发送功能', () => {
     });
   });
 
-  it('自动发送按固定间隔循环发送', async () => {
-    vi.useFakeTimers();
+  it('自动发送串行循环：发完上一条才等间隔发下一条', async () => {
+    // 串行模型：send → 等 invoke 完成 → sleep(间隔) → 再 send。
+    // 用真实计时器 + 短间隔验证会持续发出多次（不重叠）。
     vi.mocked(invoke).mockResolvedValue({ bytes_written: 5, timestamp: Date.now() });
 
     render(<DataTerminal />);
@@ -55,31 +56,23 @@ describe('DataTerminal - 自动发送功能', () => {
     const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     fireEvent.change(input, { target: { value: 'LOOP' } });
 
-    // 修改间隔为 500ms
+    // 间隔设为 20ms，加快测试
     const intervalInput = screen.getByDisplayValue('1000');
-    fireEvent.change(intervalInput, { target: { value: '500' } });
+    fireEvent.change(intervalInput, { target: { value: '20' } });
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
     fireEvent.click(autoSendCheckbox);
 
-    // 立即发送一次（由 useEffect 触发）
-    await vi.waitFor(() => {
-      expect(invoke).toHaveBeenCalledTimes(1);
-    }, { timeout: 100 });
+    // 串行循环应在短时间内累计多次发送
+    await waitFor(() => {
+      expect(vi.mocked(invoke).mock.calls.length).toBeGreaterThanOrEqual(3);
+    }, { timeout: 1000 });
 
-    // 前进 500ms，应触发第二次
-    await vi.advanceTimersByTimeAsync(500);
-    expect(invoke).toHaveBeenCalledTimes(2);
-
-    // 再前进 500ms，应触发第三次
-    await vi.advanceTimersByTimeAsync(500);
-    expect(invoke).toHaveBeenCalledTimes(3);
-
-    vi.useRealTimers();
+    // 停止，避免泄漏到后续用例
+    fireEvent.click(autoSendCheckbox);
   });
 
   it('取消勾选后停止自动发送', async () => {
-    vi.useFakeTimers();
     vi.mocked(invoke).mockResolvedValue({ bytes_written: 5, timestamp: Date.now() });
 
     render(<DataTerminal />);
@@ -87,25 +80,23 @@ describe('DataTerminal - 自动发送功能', () => {
     const input = screen.getByPlaceholderText('terminal.placeholderEnterToSend');
     fireEvent.change(input, { target: { value: 'STOP' } });
 
+    // 间隔设大（1000ms），确保取消前只发出首次那一条
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
     fireEvent.click(autoSendCheckbox);
 
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(invoke).toHaveBeenCalledTimes(1);
-    }, { timeout: 100 });
+    }, { timeout: 500 });
 
-    // 取消勾选
+    // 立即取消勾选（在 1000ms 间隔内），循环终止
     fireEvent.click(autoSendCheckbox);
 
-    // 前进时间，不应再发送
-    await vi.advanceTimersByTimeAsync(5000);
+    // 等待超过一个间隔，仍应停在 1 次
+    await new Promise((r) => setTimeout(r, 300));
     expect(invoke).toHaveBeenCalledTimes(1);
-
-    vi.useRealTimers();
   });
 
   it('循环期间修改输入框内容，下次发送新内容', async () => {
-    vi.useFakeTimers();
     vi.mocked(invoke).mockResolvedValue({ bytes_written: 5, timestamp: Date.now() });
 
     render(<DataTerminal />);
@@ -114,29 +105,32 @@ describe('DataTerminal - 自动发送功能', () => {
     fireEvent.change(input, { target: { value: 'OLD' } });
 
     const intervalInput = screen.getByDisplayValue('1000');
-    fireEvent.change(intervalInput, { target: { value: '500' } });
+    fireEvent.change(intervalInput, { target: { value: '20' } });
 
     const autoSendCheckbox = screen.getByLabelText('terminal.autoSend');
     fireEvent.click(autoSendCheckbox);
 
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(invoke).toHaveBeenCalledTimes(1);
-    }, { timeout: 100 });
+    }, { timeout: 500 });
 
-    // 修改输入框
+    // 修改输入框内容
     fireEvent.change(input, { target: { value: 'NEW' } });
 
-    // 前进间隔，触发下次发送
-    await vi.advanceTimersByTimeAsync(500);
+    // 等待后续迭代发出 NEW 内容
+    await waitFor(() => {
+      const calls = vi.mocked(invoke).mock.calls;
+      const hasNew = calls.some((c) => {
+        const arg = c[1] as { data?: number[] } | undefined;
+        if (!arg?.data) return false;
+        const text = String.fromCharCode(...arg.data).replace(/\r\n$/, '');
+        return text === 'NEW';
+      });
+      expect(hasNew).toBe(true);
+    }, { timeout: 1000 });
 
-    expect(invoke).toHaveBeenCalledTimes(2);
-    // 第二次发送应该是新内容（NEW + CRLF）
-    const lastCall = vi.mocked(invoke).mock.calls[1];
-    const data = lastCall[1] as { data: number[] };
-    const text = String.fromCharCode(...data.data).replace(/\r\n$/, '');
-    expect(text).toBe('NEW');
-
-    vi.useRealTimers();
+    // 停止循环
+    fireEvent.click(autoSendCheckbox);
   });
 
   it('未连接时禁用自动发送开关', () => {

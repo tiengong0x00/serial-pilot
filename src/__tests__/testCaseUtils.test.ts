@@ -51,10 +51,11 @@ describe('testCaseUtils', () => {
       expect(c.id).toMatch(/^case_/);
     });
 
-    it('createRootCase 额外携带 targetPort', () => {
+    it('createRootCase 默认 targetPort 为 undefined（自动模式）', () => {
       const root = createRootCase('根测试');
       expect(root.name).toBe('根测试');
-      expect(root.targetPort).toBe('P1');
+      expect('targetPort' in root).toBe(true); // 携带该字段以标识根用例
+      expect(root.targetPort).toBeUndefined();
       expect(root.children).toEqual([]);
     });
   });

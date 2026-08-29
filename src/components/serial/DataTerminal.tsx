@@ -40,7 +40,15 @@ function getStoredMode(): TerminalMode {
 }
 
 function getStoredTarget(): SendTarget {
-  return (localStorage.getItem(STORAGE_KEY_TARGET) as SendTarget) || "P1";
+  const stored = localStorage.getItem(STORAGE_KEY_TARGET) as SendTarget;
+  // 如果有存储值直接返回（用户上次选择）
+  if (stored) return stored;
+
+  // 无存储值时智能选择：优先 P1，P1 未连接则 P2
+  const { connectionStatus } = useSerialStore.getState();
+  if (connectionStatus.p1_connected) return "P1";
+  if (connectionStatus.p2_connected) return "P2";
+  return "P1"; // 都未连接时默认 P1
 }
 
 function formatTimestamp(ts: number): string {
@@ -384,12 +392,17 @@ const DataTerminal = () => {
   // 端口标识仅在 P1、P2 同时连接时显示
   const showPortLabel = connectionStatus.p1_connected && connectionStatus.p2_connected;
 
-  // P2 断开时，自动切回 P1 发送目标
+  // 智能切换发送目标：任一端口断开时，自动切到仍连接的端口
   useEffect(() => {
+    // P2 断开且当前目标是 P2 或 ALL → 切到 P1
     if (!connectionStatus.p2_connected && (sendTarget === "P2" || sendTarget === "ALL")) {
       setSendTarget("P1");
     }
-  }, [connectionStatus.p2_connected, sendTarget]);
+    // P1 断开且当前目标是 P1 或 ALL，同时 P2 已连接 → 切到 P2
+    if (!connectionStatus.p1_connected && (sendTarget === "P1" || sendTarget === "ALL") && connectionStatus.p2_connected) {
+      setSendTarget("P2");
+    }
+  }, [connectionStatus.p1_connected, connectionStatus.p2_connected, sendTarget]);
 
   // 保存模式和目标到 localStorage
   useEffect(() => {
