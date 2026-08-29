@@ -4,6 +4,8 @@ import type { PortLabel } from '@/types/serial';
 import { useTranslation } from 'react-i18next';
 import { FileUp, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { AtAutocompleteInput } from '@/components/serial/AtAutocompleteInput';
+import { SaveCommandDialog } from '@/components/serial/SaveCommandDialog';
+import { useCommandLibrary } from '@/stores/commandLibraryStore';
 import { useTestCaseStore } from '@/stores/testCaseStore';
 import { findCommand, isCommand, isUrcGuard } from '@/lib/testCaseUtils';
 import { useSerialCommands } from '@/hooks/useSerialCommands';
@@ -90,6 +92,9 @@ function StandardCommandFields({
   const { t } = useTranslation();
   const { saveAttachment, deleteAttachment } = useSerialCommands();
   const [fileError, setFileError] = useState('');
+  // Ctrl+S 保存命令到命令库
+  const [saveDialogCommand, setSaveDialogCommand] = useState<string | null>(null);
+  const refreshCommandLib = useCommandLibrary((s) => s.refresh);
 
   const handleFileDrop = async (file: File) => {
     setFileError('');
@@ -115,6 +120,7 @@ function StandardCommandFields({
           placeholder={t('testCase.commandContentPlaceholder')}
           triggerMode="at-prefix"
           onFileDrop={handleFileDrop}
+          onCtrlS={(cmd) => setSaveDialogCommand(cmd)}
         />
         {/* 已关联文件：紧凑显示在输入框下方，无文件时不占空间 */}
         {command.fileData && (
@@ -351,6 +357,18 @@ function StandardCommandFields({
           onChange({ advancedConfig: { ...command.advancedConfig, rts } })
         }
       />
+
+      {/* Ctrl+S 保存命令到命令库 */}
+      {saveDialogCommand && (
+        <SaveCommandDialog
+          command={saveDialogCommand}
+          onClose={() => setSaveDialogCommand(null)}
+          onSaved={() => {
+            void refreshCommandLib();
+            setSaveDialogCommand(null);
+          }}
+        />
+      )}
     </>
   );
 }

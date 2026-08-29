@@ -2,12 +2,12 @@
  * 命令库存储（Zustand）
  *
  * 启动时从 .exe/../commands/*.json 加载全部命令库文件，按文件名排序合并去重，
- * 构建单个内存 Trie 供高速前缀匹配（零 IPC、零磁盘 IO）。
+ * 缓存到内存数组，提供模糊搜索（命令/分类/描述多字段，任意子串匹配）。
  */
 
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { AtCommand, AtCommandTrie } from '@/lib/atCommands';
+import { AtCommand } from '@/lib/atCommands';
 
 /** 后端返回的命令库文件（对应一个 commands/*.json） */
 interface CommandLibFile {
@@ -25,26 +25,25 @@ interface CommandLibJson {
 interface CommandLibraryState {
   /** 合并去重后的全量命令 */
   commands: AtCommand[];
-  /** 内存 Trie（查找用） */
-  trie: AtCommandTrie | null;
   /** 是否已加载 */
   loaded: boolean;
   /** 加载错误信息 */
   error: string | null;
 
   /**
-   * 从后端加载命令库：invoke → 合并去重 → 建 Trie
-   * 仅需调用一次（App 挂载时），后续查找直接用内存 Trie
+   * 从后端加载命令库：invoke → 合并去重 → 缓存到内存
+   * 仅需调用一次（App 挂载时），后续查找直接用内存数组
    */
   load: () => Promise<void>;
 
   /**
-   * 前缀匹配（查内存 Trie）
-   * @param prefix 输入前缀
-   * @param limit 最大候选数
+   * 模糊搜索匹配（命令/分类/描述多字段，大小写不敏感）
+   * 支持任意子串匹配，不限前缀
+   * @param query 搜索关键词
+   * @param limit 最大候选数（默认 50）
    * @returns 匹配的命令列表
    */
-  match: (prefix: string, limit?: number) => AtCommand[];
+  match: (query: string, limit?: number) => AtCommand[];
 
   /**
    * 手动刷新（重新从后端加载）
@@ -55,7 +54,6 @@ interface CommandLibraryState {
 
 export const useCommandLibrary = create<CommandLibraryState>((set, get) => ({
   commands: [],
-  trie: null,
   loaded: false,
   error: null,
 
@@ -85,10 +83,7 @@ export const useCommandLibrary = create<CommandLibraryState>((set, get) => ({
 
       const uniqueCommands = Array.from(seen.values());
 
-      // 构建 Trie
-      const trie = new AtCommandTrie(uniqueCommands);
-
-      set({ commands: uniqueCommands, trie, loaded: true, error: null });
+      set({ commands: uniqueCommands, loaded: true, error: null });
       console.log(`[Command Library] Loaded ${uniqueCommands.length} commands from ${libs.length} files`);
     } catch (e) {
       const error = String(e);
@@ -97,10 +92,27 @@ export const useCommandLibrary = create<CommandLibraryState>((set, get) => ({
     }
   },
 
-  match: (prefix: string, limit = 8) => {
-    const { trie } = get();
-    if (!trie) return [];
-    return trie.match(prefix, limit);
+  match: (query: string, limit = 50) => {
+    const { commands } = get();
+    if (!query || commands.length === 0) return [];
+
+    const q = query.toLowerCase();
+    const results: AtCommand[] = [];
+
+    // 模糊匹配：命令/分类/描述任意字段包含查询词
+    for (const cmd of commands) {
+      if (results.length >= limit) break;
+
+      if (
+        cmd.command.toLowerCase().includes(q) ||
+        cmd.category.toLowerCase().includes(q) ||
+        cmd.description.toLowerCase().includes(q)
+      ) {
+        results.push(cmd);
+      }
+    }
+
+    return results;
   },
 
   refresh: async () => {

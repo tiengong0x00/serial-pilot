@@ -18,6 +18,8 @@ interface AtAutocompleteInputProps {
   triggerMode?: TriggerMode;
   /** 拖入文件回调（可选）：提供后输入框支持拖拽文件 */
   onFileDrop?: (file: File) => void;
+  /** Ctrl+S 回调（可选）：提供后焦点在本输入框时按 Ctrl+S 触发，传入当前值 */
+  onCtrlS?: (value: string) => void;
 }
 
 export function AtAutocompleteInput({
@@ -27,6 +29,7 @@ export function AtAutocompleteInput({
   className = "w-full px-3 py-2 border rounded-md bg-background text-sm font-mono",
   triggerMode = "at-prefix",
   onFileDrop,
+  onCtrlS,
 }: AtAutocompleteInputProps) {
   const autocomplete = useAtAutocomplete(value, triggerMode);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,8 +73,15 @@ export function AtAutocompleteInput({
             break;
         }
       }
+
+      // Ctrl+S 保存命令到库（仅焦点在本输入框时生效）
+      if (onCtrlS && e.key === "s" && e.ctrlKey) {
+        e.preventDefault();
+        const v = value.trim();
+        if (v) onCtrlS(v);
+      }
     },
-    [autocomplete, applyCandidate]
+    [autocomplete, applyCandidate, onCtrlS, value]
   );
 
   const handleDragOver = useCallback(

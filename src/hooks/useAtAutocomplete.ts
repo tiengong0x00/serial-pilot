@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { type AtCommand } from "@/lib/atCommands";
 import { useCommandLibrary } from "@/stores/commandLibraryStore";
 
@@ -8,7 +8,7 @@ export type TriggerMode = "at-prefix" | "always";
 /**
  * AT 命令自动完成状态管理。
  *
- * 从命令库 store 的内存 Trie 匹配候选命令，维护键盘导航的选中索引。
+ * 从命令库 store 模糊搜索匹配候选命令（命令/分类/描述多字段），维护键盘导航的选中索引。
  * 命令库运行时加载（.exe/../commands/*.json），查找为纯内存操作，零 IPC/零磁盘。
  *
  * @param input 当前输入值
@@ -23,21 +23,36 @@ export function useAtAutocomplete(input: string, triggerMode: TriggerMode = "at-
   const [dismissed, setDismissed] = useState(() => input.trim().length > 0);
   // 记录抑制时对应的输入值：初始为挂载值，输入变化后重新启用
   const dismissedFor = useRef<string>(input);
+  // 防抖后的查询词
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // 从 store 取匹配函数（内存 Trie 查找）
+  // 从 store 取匹配函数（内存数组模糊搜索）
   const match = useCommandLibrary((s) => s.match);
   const loaded = useCommandLibrary((s) => s.loaded);
 
-  // 候选列表：根据触发模式决定是否匹配
-  const candidates = useMemo<AtCommand[]>(() => {
+  // 防抖：输入停顿 150ms 后才触发搜索
+  useEffect(() => {
     const trimmed = input.trim();
-    if (trimmed.length === 0) return [];
-    // at-prefix 模式：仅 AT 开头触发；always 模式：任意输入触发
-    if (triggerMode === "at-prefix" && !/^at/i.test(trimmed)) return [];
-    return match(trimmed);
+    // 最小触发长度：≥2 字符（避免单字符返回海量结果）
+    if (trimmed.length < 2) {
+      setDebouncedQuery("");
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setDebouncedQuery(trimmed);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [input]);
+
+  // 候选列表：模糊搜索（≥2 字符触发）
+  const candidates = useMemo<AtCommand[]>(() => {
+    if (debouncedQuery.length < 2) return [];
+    return match(debouncedQuery);
     // loaded 作为依赖：命令库加载完成后重新计算候选
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, triggerMode, match, loaded]);
+  }, [debouncedQuery, triggerMode, match, loaded]);
 
   // 输入变化后，若与关闭时的值不同则重新启用
   if (dismissed && input !== dismissedFor.current) {

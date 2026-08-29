@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Copy, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { useCommandLibrary } from "@/stores/commandLibraryStore";
 
 const EmbeddedTools = () => {
   const { t } = useTranslation();
@@ -11,7 +10,6 @@ const EmbeddedTools = () => {
   const tools = [
     { id: "ascii-table", label: t("toolbox.toolAsciiTable") },
     { id: "serial-rate", label: t("toolbox.toolSerialRate") },
-    { id: "at-reference", label: t("toolbox.toolAtReference") },
     { id: "modbus-rtu", label: t("toolbox.toolModbusRtu") },
     { id: "nmea-gps", label: t("toolbox.toolNmeaGps") },
     { id: "bit-field", label: t("toolbox.toolBitField") },
@@ -46,7 +44,6 @@ const EmbeddedTools = () => {
       <div className="flex-1 overflow-y-auto">
         {activeTool === "ascii-table" && <AsciiTable />}
         {activeTool === "serial-rate" && <SerialRateCalculator />}
-        {activeTool === "at-reference" && <AtReference />}
         {activeTool === "modbus-rtu" && <ModbusRtu />}
         {activeTool === "nmea-gps" && <NmeaGpsParser />}
         {activeTool === "bit-field" && <BitFieldDecoder />}
@@ -361,92 +358,6 @@ const SerialRateCalculator = () => {
             </div>
           )}
         </div>
-      </div>
-    </ToolCard>
-  );
-};
-
-// ==================== 工具3: AT 指令速查 ====================
-const AtReference = () => {
-  const { t } = useTranslation();
-  const commands = useCommandLibrary((s) => s.commands);
-  const loaded = useCommandLibrary((s) => s.loaded);
-  const [search, setSearch] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return commands;
-    return commands.filter(
-      (c) =>
-        c.command.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.category.toLowerCase().includes(q)
-    );
-  }, [search, commands]);
-
-  const copyCommand = (cmd: string) => {
-    navigator.clipboard.writeText(cmd);
-    toast.success(t("toolbox.copied"));
-  };
-
-  return (
-    <ToolCard title={t("toolbox.atReferenceTitle")}>
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("toolbox.atSearchPlaceholder")}
-            className="w-full h-9 pl-9 pr-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div className="text-xs text-muted-foreground">
-          {t("toolbox.atCommandCount", { count: filtered.length })}
-        </div>
-
-        {!loaded ? (
-          <div className="text-sm text-muted-foreground py-8 text-center">
-            {t("toolbox.atLoading")}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-sm text-muted-foreground py-8 text-center">
-            {t("toolbox.atNoResult")}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((c, idx) => (
-              <div
-                key={`${c.command}-${idx}`}
-                className="p-3 rounded-md border border-input bg-muted/20 hover:bg-muted/40 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <code className="text-sm font-mono font-semibold">{c.command}</code>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">
-                      {c.category}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => copyCommand(c.command)}
-                    className="p-1 hover:bg-muted rounded shrink-0"
-                    title={t("toolbox.copy")}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">{c.description}</p>
-                {c.example && (
-                  <code className="text-xs font-mono text-muted-foreground mt-1 block">
-                    {t("toolbox.atExample")}: {c.example}
-                  </code>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </ToolCard>
   );

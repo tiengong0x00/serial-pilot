@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { Calculator, Type, Network, Cpu } from "lucide-react";
+import { Calculator, Type, Network, Cpu, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import WindowControls from "@/components/WindowControls";
 
 // 工具分类
-type ToolCategory = "conversion" | "string" | "network" | "embedded";
+type ToolCategory = "conversion" | "string" | "network" | "embedded" | "command-lib";
 
 // 导入各分类工具
 import ConversionTools from "./ConversionTools";
 import StringTools from "./StringTools";
 import EmbeddedTools from "./EmbeddedTools";
 import NetworkTools from "./NetworkTools";
+import CommandLibraryManager from "./CommandLibraryManager";
 
 const ToolboxWindow = () => {
   const { t } = useTranslation();
@@ -21,6 +22,7 @@ const ToolboxWindow = () => {
     { id: "string" as const, label: t("toolbox.categoryString"), icon: Type },
     { id: "network" as const, label: t("toolbox.categoryNetwork"), icon: Network },
     { id: "embedded" as const, label: t("toolbox.categoryEmbedded"), icon: Cpu },
+    { id: "command-lib" as const, label: t("toolbox.categoryCommandLib"), icon: Database },
   ];
 
   return (
@@ -64,6 +66,7 @@ const ToolboxWindow = () => {
           {activeCategory === "string" && <StringTools />}
           {activeCategory === "network" && <NetworkTools />}
           {activeCategory === "embedded" && <EmbeddedTools />}
+          {activeCategory === "command-lib" && <CommandLibraryManager />}
         </div>
       </div>
     </div>

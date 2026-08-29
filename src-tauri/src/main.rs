@@ -292,6 +292,36 @@ fn load_command_libraries() -> Result<Vec<CommandLibFile>, String> {
     Ok(libs)
 }
 
+/// 保存命令库文件
+///
+/// filename: 文件名（如 "custom-commands.json"）
+/// content: JSON 字符串内容
+#[tauri::command]
+fn save_command_library(filename: String, content: String) -> Result<(), String> {
+    let dir = get_command_libs_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    let path = dir.join(&filename);
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
+}
+
+/// 删除命令库文件
+///
+/// filename: 文件名（如 "custom-commands.json"）
+#[tauri::command]
+fn delete_command_library(filename: String) -> Result<(), String> {
+    let dir = get_command_libs_dir();
+    let path = dir.join(&filename);
+
+    if !path.exists() {
+        return Err(format!("File not found: {}", filename));
+    }
+
+    std::fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
+    Ok(())
+}
+
 /// 获取日志保存目录（可执行文件路径下的 logs/）
 fn get_logs_dir() -> std::path::PathBuf {
     std::env::current_exe()
@@ -603,6 +633,8 @@ fn main() {
             get_launch_dir,
             save_log_to_path,
             load_command_libraries,
+            save_command_library,
+            delete_command_library,
             toolbox::open_toolbox_window,
             tcp_connect,
             tcp_send,

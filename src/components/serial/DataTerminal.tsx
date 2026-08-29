@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { formatMessagesToText, generateLogFilename, saveLogToPath, getLaunchDir } from "@/lib/logExport";
 import { TerminalContextMenu, type TerminalMenuItem } from "./TerminalContextMenu";
 import { AtAutocompletePanel } from "./AtAutocompletePanel";
+import { SaveCommandDialog } from "./SaveCommandDialog";
+import { useCommandLibrary } from "@/stores/commandLibraryStore";
 import { HighlightedText } from "./HighlightedText";
 import { useHighlightStore } from "@/stores/highlightStore";
 import type { TerminalMessage, PortLabel, FileSendProgressPayload } from "@/types/serial";
@@ -746,6 +748,8 @@ const DataTerminal = () => {
   // AT 命令自动完成
   const autocomplete = useAtAutocomplete(input);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [saveDialogCommand, setSaveDialogCommand] = useState<string | null>(null);
+  const refreshCommandLib = useCommandLibrary((s) => s.refresh);
 
   // 输入框自适应高度：默认单行，随内容增长，超过上限出现滚动条
   const INPUT_MAX_HEIGHT = 140; // 约 6 行，超过则内部滚动
@@ -812,6 +816,16 @@ const DataTerminal = () => {
             break;
         }
       }
+      // Ctrl+S 保存当前命令到命令库
+      if (e.key === "s" && e.ctrlKey) {
+        e.preventDefault();
+        const cmd = input.trim();
+        if (cmd) {
+          setSaveDialogCommand(cmd);
+        }
+        return;
+      }
+
       // 回车发送：受设置开关控制
       // 启用时：Enter 发送，Shift+Enter 或 Ctrl+Enter 换行
       // 关闭时：Enter 换行，仅能点发送按钮
@@ -820,7 +834,7 @@ const DataTerminal = () => {
         void handleSend();
       }
     },
-    [autocomplete, applyCandidate, pendingFile, handleSend, enterToSend]
+    [autocomplete, applyCandidate, pendingFile, handleSend, enterToSend, input]
   );
 
   // 发送文件：下沉后端流式发送，前端只订阅进度事件刷新单行进度条。
@@ -1323,6 +1337,17 @@ const DataTerminal = () => {
           y={contextMenu.y}
           items={getContextMenuItems()}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* 保存命令对话框 */}
+      {saveDialogCommand && (
+        <SaveCommandDialog
+          command={saveDialogCommand}
+          onClose={() => setSaveDialogCommand(null)}
+          onSaved={() => {
+            void refreshCommandLib();
+          }}
         />
       )}
     </div>
