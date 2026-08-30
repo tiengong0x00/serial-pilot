@@ -105,9 +105,9 @@ export const useSettingsStore = create<SettingsStore>()(
       backgroundMaxResolution: 1920, // 默认 1920px 宽度上限（1080p，稳妥）
       backgroundQuality: 0.8, // 默认质量 0.8（平衡清晰度与体积）
 
-      // 默认值：每包 256 字节，包间隔 1ms
-      filePacketSize: 256,
-      filePacketInterval: 1,
+      // 默认值：不分包（0=一次性写入），包间隔 0（连续发送）
+      filePacketSize: 0,
+      filePacketInterval: 0,
       // 默认帧超时 20ms：串口逐字节回传时，静默超过 20ms 判定为一包
       serialFrameTimeout: 20,
       // 终端显示默认值
@@ -116,8 +116,8 @@ export const useSettingsStore = create<SettingsStore>()(
       terminalMaxBytes: 1 * 1024 * 1024, // 1MB
       // 空字符串表示使用默认路径（软件执行路径下的 logs/）
       terminalLogPath: "",
-      // 测试用例默认不自动保存
-      testCaseAutoSave: false,
+      // 测试用例默认自动保存
+      testCaseAutoSave: true,
       testCaseRowHeight: 28, // 默认行高 28px（保持当前样式不变）
       testCaseButtonWidth: 28, // 默认按钮宽度 28px（小按钮，需用户主动调大）
       testCaseButtonDisplay: 'hover', // 默认悬浮显示（保持当前行为）

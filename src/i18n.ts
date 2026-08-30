@@ -366,16 +366,21 @@ const resources = {
         title: "设置",
         // 导航分类
         navGeneral: "通用",
-        navTheme: "主题",
+        navTestCases: "测试用例",
+        navAppearance: "外观",
         navSerial: "串口",
-        navTerminal: "终端",
+        navTerminal: "终端日志",
         navShortcuts: "快捷键",
         navAbout: "关于",
         // 通用
         generalDesc: "语言与常规选项",
+        // 测试用例
+        testCasesDesc: "测试用例界面配置",
+        // 外观
+        appearanceDesc: "主题配色与终端显示",
         language: "语言",
         languageHint: "切换界面显示语言",
-        // 主题
+        // 主题（已废弃，合并到外观）
         themeDesc: "外观与配色",
         themeMode: "主题模式",
         themeLight: "亮色",
@@ -430,7 +435,7 @@ const resources = {
         flowControlSoftware: "软件流控 (XON/XOFF)",
         flowControlHardware: "硬件流控 (RTS/CTS)",
         flowControlHint: "默认无流控。高速传输（>115200）或设备明确要求时调整",
-        terminalDisplayDesc: "终端显示配置",
+        terminalDisplayDesc: "终端日志存储配置",
         terminalFontSize: "字体大小",
         terminalLineHeight: "行高",
         terminalMaxBytes: "日志上限（字节）",
@@ -1233,16 +1238,21 @@ const resources = {
         title: "Settings",
         // Navigation categories
         navGeneral: "General",
-        navTheme: "Theme",
+        navTestCases: "Test Cases",
+        navAppearance: "Appearance",
         navSerial: "Serial",
-        navTerminal: "Terminal",
+        navTerminal: "Terminal Logs",
         navShortcuts: "Shortcuts",
         navAbout: "About",
         // General
         generalDesc: "Language and general options",
+        // Test Cases
+        testCasesDesc: "Test case UI configuration",
+        // Appearance
+        appearanceDesc: "Theme colors and terminal display",
         language: "Language",
         languageHint: "Switch interface display language",
-        // Theme
+        // Theme (deprecated, merged into Appearance)
         themeDesc: "Appearance and colors",
         themeMode: "Theme Mode",
         themeLight: "Light",

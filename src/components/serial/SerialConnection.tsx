@@ -248,7 +248,7 @@ function PortConfigPanel({ portLabel, ports, isConnected, hideHeader, onRefresh,
         <label className="text-xs text-muted-foreground">{t("connection.port")}</label>
         <div className="flex items-center gap-2">
           <select
-            className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background disabled:opacity-50"
+            className="flex-1 min-w-0 h-9 px-2 text-sm rounded-md border border-input bg-background disabled:opacity-50"
             value={displayPort}
             onChange={(e) => setSelectedPort(e.target.value)}
             disabled={isConnected}

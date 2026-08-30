@@ -26,7 +26,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsTab = "general" | "theme" | "serial" | "terminal" | "highlight" | "shortcuts" | "about";
+type SettingsTab = "general" | "testcases" | "appearance" | "serial" | "terminal" | "highlight" | "shortcuts" | "about";
 
 /** 流控模式选择器（P1/P2 独立） */
 function FlowControlSelect({ portLabel }: { portLabel: 'P1' | 'P2' }) {
@@ -174,7 +174,8 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
 
   const tabs: Array<{ id: SettingsTab; label: string }> = [
     { id: "general", label: t("settings.navGeneral") },
-    { id: "theme", label: t("settings.navTheme") },
+    { id: "testcases", label: t("settings.navTestCases") },
+    { id: "appearance", label: t("settings.navAppearance") },
     { id: "serial", label: t("settings.navSerial") },
     { id: "terminal", label: t("settings.navTerminal") },
     { id: "highlight", label: t("settings.navHighlight") },
@@ -230,6 +231,25 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   </select>
                   <p className="text-xs text-muted-foreground">{t("settings.languageHint")}</p>
                 </div>
+
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{t("settings.enterToSend")}</div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("settings.enterToSendHint")}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={enterToSend}
+                    onChange={(e) => setEnterToSend(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === "testcases" && (
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-muted-foreground">{t("settings.testCasesDesc")}</p>
 
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
@@ -358,25 +378,12 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     </label>
                   </div>
                 </div>
-
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{t("settings.enterToSend")}</div>
-                    <p className="text-xs text-muted-foreground mt-1">{t("settings.enterToSendHint")}</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={enterToSend}
-                    onChange={(e) => setEnterToSend(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
-                  />
-                </div>
               </div>
             )}
 
-            {activeTab === "theme" && (
+            {activeTab === "appearance" && (
               <div className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">{t("settings.themeDesc")}</p>
+                <p className="text-sm text-muted-foreground">{t("settings.appearanceDesc")}</p>
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium">{t("settings.themeMode")}</label>
@@ -722,6 +729,47 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   )}
                 </div>
 
+                {/* 终端字体配置 */}
+                <div className="border-t pt-4 mt-2">
+                  <p className="text-sm text-muted-foreground mb-3">{t("settings.terminalDisplayDesc")}</p>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium">{t("settings.terminalFontSize")}</label>
+                    <input
+                      type="range"
+                      min={10}
+                      max={20}
+                      step={1}
+                      className="accent-primary"
+                      value={terminalFontSize}
+                      onChange={(e) => setTerminalFontSize(Number(e.target.value))}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>10px</span>
+                      <span className="font-medium text-foreground">{terminalFontSize}px</span>
+                      <span>20px</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 mt-3">
+                    <label className="text-sm font-medium">{t("settings.terminalLineHeight")}</label>
+                    <input
+                      type="range"
+                      min={1.0}
+                      max={2.0}
+                      step={0.1}
+                      className="accent-primary"
+                      value={terminalLineHeight}
+                      onChange={(e) => setTerminalLineHeight(Number(e.target.value))}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>1.0</span>
+                      <span className="font-medium text-foreground">{terminalLineHeight.toFixed(1)}</span>
+                      <span>2.0</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 实时预览 */}
                 <div className="flex flex-col gap-1.5 mt-1">
                   <label className="text-sm font-medium">{t("settings.terminalPreview")}</label>
@@ -799,42 +847,6 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
             {activeTab === "terminal" && (
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-muted-foreground">{t("settings.terminalDisplayDesc")}</p>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{t("settings.terminalFontSize")}</label>
-                  <input
-                    type="range"
-                    min={10}
-                    max={20}
-                    step={1}
-                    className="accent-primary"
-                    value={terminalFontSize}
-                    onChange={(e) => setTerminalFontSize(Number(e.target.value))}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>10px</span>
-                    <span className="font-medium text-foreground">{terminalFontSize}px</span>
-                    <span>20px</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{t("settings.terminalLineHeight")}</label>
-                  <input
-                    type="range"
-                    min={1.0}
-                    max={2.0}
-                    step={0.1}
-                    className="accent-primary"
-                    value={terminalLineHeight}
-                    onChange={(e) => setTerminalLineHeight(Number(e.target.value))}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>1.0</span>
-                    <span className="font-medium text-foreground">{terminalLineHeight.toFixed(1)}</span>
-                    <span>2.0</span>
-                  </div>
-                </div>
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium">{t("settings.terminalMaxBytes")}</label>
