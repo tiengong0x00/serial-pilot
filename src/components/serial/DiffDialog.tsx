@@ -1,7 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { diffLines, diffChars } from "diff";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -40,21 +39,49 @@ function messagesToPlainText(messages: TerminalMessage[]): string {
 /**
  * 拆分 diff part 的文本为行数组，去掉因结尾换行符产生的空尾元素
  */
-function splitLines(value: string): string[] {
-  const lines = value.split("\n");
-  if (lines.length > 0 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-  return lines;
+interface DiffLine {
+  text: string; // 行内容（可能含残留的 \r）
+  nl: boolean; // 该行原本是否以 \n 结尾
 }
+
+function splitLines(value: string): DiffLine[] {
+  const parts = value.split("\n");
+  // split("\n") 后，除最后一段外每段都对应一个以 \n 结尾的行
+  const endsWithNl = parts.length > 0 && parts[parts.length - 1] === "";
+  if (endsWithNl) parts.pop();
+  return parts.map((text, idx) => ({
+    text,
+    // 非最后一段必有 \n；最后一段仅当原串以 \n 结尾时才有
+    nl: idx < parts.length - 1 || endsWithNl,
+  }));
+}
+
+/**
+ * 将不可见字符替换为可见符号（VS Code 风格 Unicode Control Pictures）
+ * 仅处理行内字符：\r → ␍，空格 → ·，\t → →
+ * （\n 已被分行消费，由行尾的 nl 标记单独渲染 ␊）
+ */
+function visualize(text: string, show: boolean): string {
+  if (!show) return text;
+  return text
+    .replace(/\r/g, "␍")
+    .replace(/\t/g, "→")
+    .replace(/ /g, "·");
+}
+
+const NL_SYMBOL = "␊"; // U+240A，行尾换行标记
 
 /**
  * 行级 diff + 行内字符高亮的渲染组件
  */
-function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
+function DiffView({ p1Text, p2Text, showWhitespace }: { p1Text: string; p2Text: string; showWhitespace: boolean }) {
   const rows = useMemo(() => {
     const lineDiff = diffLines(p1Text, p2Text);
     const result: Array<{ left: JSX.Element | null; right: JSX.Element | null }> = [];
+
+    // 行尾换行标记（淡色，可视化开启时显示）
+    const nlMark = (nl: boolean) =>
+      showWhitespace && nl ? <span className="text-muted-foreground/40">{NL_SYMBOL}</span> : null;
 
     let i = 0;
     while (i < lineDiff.length) {
@@ -64,7 +91,12 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
         // 公共行：左右都显示
         const lines = splitLines(part.value);
         lines.forEach((line) => {
-          const elem = <div className="whitespace-pre-wrap break-all px-2 py-0.5">{line || " "}</div>;
+          const elem = (
+            <div className="whitespace-pre-wrap break-all px-2 py-0.5">
+              {visualize(line.text, showWhitespace) || " "}
+              {nlMark(line.nl)}
+            </div>
+          );
           result.push({ left: elem, right: elem });
         });
         i++;
@@ -75,23 +107,24 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
         const maxLen = Math.max(removedLines.length, addedLines.length);
 
         for (let j = 0; j < maxLen; j++) {
-          const leftLine = removedLines[j] ?? "";
-          const rightLine = addedLines[j] ?? "";
+          const leftLine = removedLines[j] ?? null;
+          const rightLine = addedLines[j] ?? null;
 
           if (leftLine && rightLine) {
-            // 两行都存在，做字符级 diff
-            const charDiff = diffChars(leftLine, rightLine);
+            // 两行都存在，做字符级 diff（在原始文本上算，渲染时可视化）
+            const charDiff = diffChars(leftLine.text, rightLine.text);
             const leftElem = (
               <div className="bg-red-500/20 whitespace-pre-wrap break-all px-2 py-0.5">
                 {charDiff.map((c, idx) =>
                   c.removed ? (
                     <span key={idx} className="bg-red-500/50">
-                      {c.value}
+                      {visualize(c.value, showWhitespace)}
                     </span>
                   ) : c.added ? null : (
-                    <span key={idx}>{c.value}</span>
+                    <span key={idx}>{visualize(c.value, showWhitespace)}</span>
                   )
                 )}
+                {nlMark(leftLine.nl)}
               </div>
             );
             const rightElem = (
@@ -99,26 +132,37 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
                 {charDiff.map((c, idx) =>
                   c.added ? (
                     <span key={idx} className="bg-green-500/50">
-                      {c.value}
+                      {visualize(c.value, showWhitespace)}
                     </span>
                   ) : c.removed ? null : (
-                    <span key={idx}>{c.value}</span>
+                    <span key={idx}>{visualize(c.value, showWhitespace)}</span>
                   )
                 )}
+                {nlMark(rightLine.nl)}
               </div>
             );
             result.push({ left: leftElem, right: rightElem });
           } else if (leftLine) {
             // 只有左侧
             result.push({
-              left: <div className="bg-red-500/20 whitespace-pre-wrap break-all px-2 py-0.5">{leftLine}</div>,
+              left: (
+                <div className="bg-red-500/20 whitespace-pre-wrap break-all px-2 py-0.5">
+                  {visualize(leftLine.text, showWhitespace) || " "}
+                  {nlMark(leftLine.nl)}
+                </div>
+              ),
               right: null,
             });
-          } else {
+          } else if (rightLine) {
             // 只有右侧
             result.push({
               left: null,
-              right: <div className="bg-green-500/20 whitespace-pre-wrap break-all px-2 py-0.5">{rightLine}</div>,
+              right: (
+                <div className="bg-green-500/20 whitespace-pre-wrap break-all px-2 py-0.5">
+                  {visualize(rightLine.text, showWhitespace) || " "}
+                  {nlMark(rightLine.nl)}
+                </div>
+              ),
             });
           }
         }
@@ -128,7 +172,12 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
         const lines = splitLines(part.value);
         lines.forEach((line) => {
           result.push({
-            left: <div className="bg-red-500/20 whitespace-pre-wrap break-all px-2 py-0.5">{line || " "}</div>,
+            left: (
+              <div className="bg-red-500/20 whitespace-pre-wrap break-all px-2 py-0.5">
+                {visualize(line.text, showWhitespace) || " "}
+                {nlMark(line.nl)}
+              </div>
+            ),
             right: null,
           });
         });
@@ -139,7 +188,12 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
         lines.forEach((line) => {
           result.push({
             left: null,
-            right: <div className="bg-green-500/20 whitespace-pre-wrap break-all px-2 py-0.5">{line || " "}</div>,
+            right: (
+              <div className="bg-green-500/20 whitespace-pre-wrap break-all px-2 py-0.5">
+                {visualize(line.text, showWhitespace) || " "}
+                {nlMark(line.nl)}
+              </div>
+            ),
           });
         });
         i++;
@@ -147,7 +201,7 @@ function DiffView({ p1Text, p2Text }: { p1Text: string; p2Text: string }) {
     }
 
     return result;
-  }, [p1Text, p2Text]);
+  }, [p1Text, p2Text, showWhitespace]);
 
   return (
     <div className="flex flex-1 min-h-0 divide-x divide-border">
@@ -175,6 +229,7 @@ export function DiffDialog({
   p2Messages,
 }: DiffDialogProps) {
   const { t } = useTranslation();
+  const [showWhitespace, setShowWhitespace] = useState(false);
 
   const p1Text = useMemo(() => messagesToPlainText(p1Messages), [p1Messages]);
   const p2Text = useMemo(() => messagesToPlainText(p2Messages), [p2Messages]);
@@ -183,29 +238,32 @@ export function DiffDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b">
-          <div className="flex items-center justify-between">
-            <DialogTitle>{t("diff.title")}</DialogTitle>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="rounded-sm opacity-70 hover:opacity-100"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <DialogTitle>{t("diff.title")}</DialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
             {t("diff.hint")}
           </p>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          {/* 左右标题 */}
+          {/* 左右标题 + 可视化开关 */}
           <div className="flex divide-x divide-border border-b text-xs font-medium bg-muted/30">
             <div className="flex-1 px-3 py-2 text-blue-600">P1</div>
-            <div className="flex-1 px-3 py-2 text-orange-600">P2</div>
+            <div className="flex-1 px-3 py-2 text-orange-600 flex items-center justify-between">
+              <span>P2</span>
+              <label className="flex items-center gap-1.5 text-xs font-normal text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showWhitespace}
+                  onChange={(e) => setShowWhitespace(e.target.checked)}
+                  className="w-3.5 h-3.5"
+                />
+                <span className="select-none">显示空白符</span>
+              </label>
+            </div>
           </div>
 
           {/* 对比视图 */}
-          <DiffView p1Text={p1Text} p2Text={p2Text} />
+          <DiffView p1Text={p1Text} p2Text={p2Text} showWhitespace={showWhitespace} />
         </div>
       </DialogContent>
     </Dialog>
