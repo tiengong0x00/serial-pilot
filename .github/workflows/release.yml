@@ -42,17 +42,13 @@ jobs:
 
       - name: Prepare portable executable
         run: |
-          # 复制绿色版并添加 .portable 标记
+          # 复制绿色版 exe（单文件分发，更新器做原地替换）
           $portableExe = "src-tauri/target/release/serial-pilot.exe"
           $portableOut = "src-tauri/target/release/serial-pilot-portable.exe"
 
           if (Test-Path $portableExe) {
             Copy-Item $portableExe $portableOut
-
-            # 创建 .portable 标记文件（写入提示信息避免 GitHub 0 字节限制）
-            $markerPath = "src-tauri/target/release/.portable"
-            Set-Content -Path $markerPath -Value "Serial Pilot Portable Version Marker" -NoNewline
-            Write-Host "✓ Portable executable prepared with marker"
+            Write-Host "✓ Portable executable prepared"
           } else {
             Write-Error "Portable executable not found"
             exit 1
@@ -105,7 +101,6 @@ jobs:
             src-tauri/target/release/bundle/nsis/*setup.exe.sig
             src-tauri/target/release/serial-pilot-portable.exe
             src-tauri/target/release/serial-pilot-portable.exe.sig
-            src-tauri/target/release/.portable
           generate_release_notes: true
 
       - name: Generate and upload update manifests

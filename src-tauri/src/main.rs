@@ -696,6 +696,12 @@ fn main() {
             // 启动电源监听器（监听系统休眠/恢复事件）
             power_monitor::setup_power_monitor(app.handle().clone());
 
+            // 启动时检测并持久化分发类型（确保绿色版标识被正确记录）
+            let dist = dist_type::DistType::detect();
+            if let Err(e) = dist.persist_marker() {
+                eprintln!("[DistType] Failed to persist marker: {}", e);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

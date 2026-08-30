@@ -28,8 +28,8 @@ impl DistType {
             }
         }
 
-        // 默认假设为 NSIS 安装版
-        DistType::Nsis
+        // 默认假设为绿色版（更安全：绿色版更新不会变成安装包）
+        DistType::Portable
     }
 
     /// 获取对应的更新 endpoint
@@ -83,6 +83,11 @@ impl DistType {
 
         key.set_value("DistType", &value)
             .map_err(|e| format!("Failed to set registry value: {}", e))?;
+
+        // 绿色版：同时创建 .portable 文件标记（注册表 + 文件双保险）
+        if *self == DistType::Portable {
+            let _ = Self::create_portable_marker();
+        }
 
         Ok(())
     }
