@@ -40,8 +40,15 @@ fn verify_signature(file_data: &[u8], signature_base64: &str) -> Result<(), Stri
     let pubkey = PublicKey::decode(&pubkey_str)
         .map_err(|e| format!("Invalid public key format: {}", e))?;
 
-    // 解码签名
-    let signature = Signature::decode(signature_base64)
+    // 解码签名：Tauri 的 .sig 文件是「完整 minisign 签名文本」再做一层 Base64 编码
+    // 因此需先 Base64 解码得到原始签名文本，再交给 Signature::decode()
+    let signature_bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        signature_base64
+    ).map_err(|e| format!("Failed to decode signature base64: {}", e))?;
+
+    let signature_str = String::from_utf8_lossy(&signature_bytes);
+    let signature = Signature::decode(&signature_str)
         .map_err(|e| format!("Invalid signature format: {}", e))?;
 
     // 验证签名
