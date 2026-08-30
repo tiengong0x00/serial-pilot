@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import {
   Dialog,
@@ -877,7 +878,16 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                 <p className="text-sm text-muted-foreground">{t("settings.aboutDesc")}</p>
                 <div className="flex flex-col gap-3 text-sm">
                   <div className="flex items-baseline gap-2">
-                    <span className="font-medium text-foreground">{t("settings.aboutAppName")}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openUrl("https://github.com/tiengong0x00/serial-pilot");
+                      }}
+                      className="font-medium text-primary hover:underline cursor-pointer"
+                      title={t("settings.aboutRepoLink")}
+                    >
+                      {t("settings.aboutAppName")}
+                    </button>
                     <span className="text-muted-foreground">v{appVersion}</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
