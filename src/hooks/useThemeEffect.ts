@@ -8,6 +8,8 @@ import { useSettingsStore } from "@/stores/settingsStore";
  * 1. 主题模式（light/dark/system）→ 切换 <html> 的 .dark 类
  *    - system 模式跟随 OS 深浅色，并实时响应系统切换
  * 2. 终端背景色 → 覆盖 CSS 变量 --terminal-bg
+ * 3. 终端 RX 文字色 → 覆盖 --terminal-text
+ * 4. 终端 TX 文字色 → 覆盖 --terminal-sent
  *
  * 挂载于 App 顶层，任意设置变更即时生效。
  */
@@ -15,6 +17,7 @@ export function useThemeEffect() {
   const themeMode = useSettingsStore((s) => s.themeMode);
   const terminalBgColor = useSettingsStore((s) => s.terminalBgColor);
   const terminalTextColor = useSettingsStore((s) => s.terminalTextColor);
+  const terminalTxColor = useSettingsStore((s) => s.terminalTxColor);
   const terminalOpacity = useSettingsStore((s) => s.terminalOpacity);
   const backgroundImage = useSettingsStore((s) => s.backgroundImage);
 
@@ -53,7 +56,7 @@ export function useThemeEffect() {
     }
   }, [terminalBgColor, terminalOpacity, backgroundImage]);
 
-  // 终端文字色：覆盖 CSS 变量
+  // 终端 RX（接收）文字色：覆盖 CSS 变量 --terminal-text
   useEffect(() => {
     const root = document.documentElement;
     if (terminalTextColor) {
@@ -62,4 +65,14 @@ export function useThemeEffect() {
       root.style.removeProperty("--terminal-text");
     }
   }, [terminalTextColor]);
+
+  // 终端 TX（发送）文字色：覆盖 CSS 变量 --terminal-sent
+  useEffect(() => {
+    const root = document.documentElement;
+    if (terminalTxColor) {
+      root.style.setProperty("--terminal-sent", terminalTxColor);
+    } else {
+      root.style.removeProperty("--terminal-sent");
+    }
+  }, [terminalTxColor]);
 }

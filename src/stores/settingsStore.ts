@@ -11,7 +11,8 @@ interface SettingsStore {
   // 主题设置
   themeMode: ThemeMode;
   terminalBgColor: string; // HSL 格式：如 "0 0% 12%"
-  terminalTextColor: string; // HSL 格式：如 "0 0% 88%"
+  terminalTextColor: string; // RX（接收）文字色，HSL 格式：如 "0 0% 88%"
+  terminalTxColor: string; // TX（发送）文字色，HSL 格式：如 "142 69% 58%"
   terminalOpacity: number; // 终端背景不透明度 0-100（背景图模式下生效）
   backgroundImage: string; // 背景图路径（空字符串表示无背景图）
   backgroundOpacity: number; // 背景图不透明度 0-100
@@ -56,6 +57,7 @@ interface SettingsStore {
   setThemeMode: (mode: ThemeMode) => void;
   setTerminalBgColor: (color: string) => void;
   setTerminalTextColor: (color: string) => void;
+  setTerminalTxColor: (color: string) => void;
   setTerminalOpacity: (opacity: number) => void;
   setBackgroundImage: (path: string) => void;
   setBackgroundOpacity: (opacity: number) => void;
@@ -91,7 +93,8 @@ export const useSettingsStore = create<SettingsStore>()(
       // 主题默认值
       themeMode: 'system',
       terminalBgColor: '0 0% 12%', // 默认深黑
-      terminalTextColor: '0 0% 88%', // 默认浅色文字
+      terminalTextColor: '0 0% 88%', // RX 默认浅色文字
+      terminalTxColor: '142 69% 58%', // TX 默认绿色（与旧 --terminal-sent 一致）
       terminalOpacity: 80, // 终端背景默认不透明度 80%（背景图模式下微透）
       backgroundImage: '', // 默认无背景图
       backgroundOpacity: 15, // 默认不透明度 15%（淡背景，不干扰阅读）
@@ -128,6 +131,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setThemeMode: (mode) => set({ themeMode: mode }),
       setTerminalBgColor: (color) => set({ terminalBgColor: color }),
       setTerminalTextColor: (color) => set({ terminalTextColor: color }),
+      setTerminalTxColor: (color) => set({ terminalTxColor: color }),
       setTerminalOpacity: (opacity) => set({ terminalOpacity: opacity }),
       setBackgroundImage: (path) => set({ backgroundImage: path }),
       setBackgroundOpacity: (opacity) => set({ backgroundOpacity: opacity }),

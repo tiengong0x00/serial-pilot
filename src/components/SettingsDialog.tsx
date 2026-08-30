@@ -120,6 +120,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     themeMode,
     terminalBgColor,
     terminalTextColor,
+    terminalTxColor,
     terminalOpacity,
     backgroundImage,
     backgroundOpacity,
@@ -146,6 +147,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setThemeMode,
     setTerminalBgColor,
     setTerminalTextColor,
+    setTerminalTxColor,
     setTerminalOpacity,
     setBackgroundImage,
     setBackgroundOpacity,
@@ -436,14 +438,24 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   onChange={setTerminalBgColor}
                 />
 
-                {/* 文字色：纯色块 */}
+                {/* RX 接收文字色：纯色块 */}
                 <ColorSwatchRow
-                  label={t("settings.terminalTextColor")}
-                  hint={t("settings.terminalTextColorHint")}
+                  label={t("settings.terminalRxColor")}
+                  hint={t("settings.terminalRxColorHint")}
                   customLabel={t("settings.terminalBgCustom")}
                   presets={TERMINAL_TEXT_PRESETS}
                   value={terminalTextColor}
                   onChange={setTerminalTextColor}
+                />
+
+                {/* TX 发送文字色：纯色块 */}
+                <ColorSwatchRow
+                  label={t("settings.terminalTxColor")}
+                  hint={t("settings.terminalTxColorHint")}
+                  customLabel={t("settings.terminalBgCustom")}
+                  presets={TERMINAL_TEXT_PRESETS}
+                  value={terminalTxColor}
+                  onChange={setTerminalTxColor}
                 />
 
                 {/* 背景图配置 */}
@@ -717,7 +729,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     className="rounded-md p-3 font-mono text-xs border border-border"
                     style={{ background: `hsl(${terminalBgColor})`, color: `hsl(${terminalTextColor})` }}
                   >
-                    <div>[TX] AT+CGMR</div>
+                    <div style={{ color: `hsl(${terminalTxColor})` }}>[TX] AT+CGMR</div>
                     <div>[RX] +CGMR: V1.0.0</div>
                     <div>[RX] OK</div>
                   </div>
