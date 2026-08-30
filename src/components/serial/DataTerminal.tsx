@@ -358,6 +358,49 @@ const DataTerminal = () => {
   const [format, setFormat] = useState<DisplayFormat>("text");
   const [lineFeed, setLineFeed] = useState<LineFeed>("crlf");
   const [input, setInput] = useState("");
+  const [hexMode, setHexMode] = useState(false); // 十六进制输入模式
+
+  // 文本转十六进制
+  const textToHex = useCallback((text: string): string => {
+    if (!text) return '';
+    const bytes = new TextEncoder().encode(text);
+    return Array.from(bytes)
+      .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
+      .join(' ');
+  }, []);
+
+  // 十六进制转文本
+  const hexToText = useCallback((hex: string): string => {
+    if (!hex) return '';
+    const hexStr = hex.replace(/\s+/g, '');
+    // 如果不是有效的十六进制，返回原样
+    if (!/^[0-9A-Fa-f]*$/.test(hexStr)) return hex;
+    if (hexStr.length % 2 !== 0) return hex;
+
+    const bytes: number[] = [];
+    for (let i = 0; i < hexStr.length; i += 2) {
+      bytes.push(parseInt(hexStr.substr(i, 2), 16));
+    }
+    try {
+      return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+    } catch {
+      return hex;
+    }
+  }, []);
+
+  // 切换到文本模式
+  const switchToTextMode = useCallback(() => {
+    if (!hexMode) return;
+    setInput(prev => hexToText(prev));
+    setHexMode(false);
+  }, [hexMode, hexToText]);
+
+  // 切换到十六进制模式
+  const switchToHexMode = useCallback(() => {
+    if (hexMode) return;
+    setInput(prev => textToHex(prev));
+    setHexMode(true);
+  }, [hexMode, textToHex]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [terminalMode, setTerminalMode] = useState<TerminalMode>(getStoredMode);
@@ -644,9 +687,34 @@ const DataTerminal = () => {
     }
     setErrorMsg("");
 
-    // 构造发送数据：文本 + 换行符
-    const payload = input + LINE_FEED_MAP[lineFeed];
-    const bytes = new TextEncoder().encode(payload);
+    // 构造发送数据：根据模式转换
+    let bytes: Uint8Array;
+    let displayText: string | undefined; // 文本模式的显示文本；hex 模式为 undefined（渲染时按显示格式解码）
+
+    if (hexMode) {
+      // 十六进制模式：解析十六进制字符串
+      const hexStr = input.replace(/\s+/g, ''); // 移除空格
+      if (!/^[0-9A-Fa-f]*$/.test(hexStr)) {
+        setErrorMsg(t("terminal.invalidHex"));
+        return;
+      }
+      if (hexStr.length % 2 !== 0) {
+        setErrorMsg(t("terminal.hexLengthOdd"));
+        return;
+      }
+
+      const byteArray: number[] = [];
+      for (let i = 0; i < hexStr.length; i += 2) {
+        byteArray.push(parseInt(hexStr.substr(i, 2), 16));
+      }
+      bytes = new Uint8Array(byteArray);
+      displayText = undefined; // 让 renderContent 按终端显示格式自动渲染（文本/hex）
+    } else {
+      // 文本模式：文本 + 换行符
+      const payload = input + LINE_FEED_MAP[lineFeed];
+      bytes = new TextEncoder().encode(payload);
+      displayText = payload;
+    }
 
     // 确定发送目标
     const targets = resolveTargets();
@@ -664,7 +732,7 @@ const DataTerminal = () => {
         port_label: target,
         data: bytes,
         timestamp: txTimestamp,
-        text: payload,
+        text: displayText, // hex 模式为 undefined，renderContent 按显示格式自动解码
       };
       addMessage(txMsg);
     }
@@ -690,7 +758,7 @@ const DataTerminal = () => {
       const t5 = performance.now();
       console.log(`[PERF] handleSend[${sendId}] total=${(t5-t0).toFixed(2)}ms`);
     }
-  }, [input, isConnected, lineFeed, resolveTargets, writeSerialData, addMessage, t]);
+  }, [input, isConnected, lineFeed, hexMode, resolveTargets, writeSerialData, addMessage, t]);
 
   // 切换显示格式
   const handleToggleFormat = useCallback(() => {
@@ -1162,11 +1230,31 @@ const DataTerminal = () => {
         )}
 
         <div className="flex items-center gap-2">
+          {/* 文本 / 十六进制 模式切换 */}
+          <div className="flex items-center rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              className={`px-2.5 py-1 text-xs ${!hexMode ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+              onClick={switchToTextMode}
+            >
+              {t("terminal.modeText")}
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1 text-xs ${hexMode ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+              onClick={switchToHexMode}
+            >
+              {t("terminal.modeHex")}
+            </button>
+          </div>
+
           <label className="text-xs text-muted-foreground">{t("terminal.lineFeed")}</label>
           <select
-            className="h-7 px-1.5 text-xs rounded-md border border-input bg-background"
+            className="h-7 px-1.5 text-xs rounded-md border border-input bg-background disabled:opacity-50"
             value={lineFeed}
             onChange={(e) => setLineFeed(e.target.value as LineFeed)}
+            disabled={hexMode}
+            title={hexMode ? t("terminal.lineFeedHexDisabled") : undefined}
           >
             <option value="none">{t("terminal.lfNone")}</option>
             <option value="lf">{t("terminal.lfLF")}</option>
@@ -1271,24 +1359,36 @@ const DataTerminal = () => {
         )}
 
         <div className="flex items-start gap-2 relative">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            className="flex-1 min-h-[36px] px-2 py-1.5 text-sm leading-5 rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 resize-y"
-            placeholder={
-              pendingFile
-                ? t("terminal.filePending")
-                : enterToSend
-                ? t("terminal.placeholderEnterToSend")
-                : t("terminal.placeholder")
-            }
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            onBlur={() => autocomplete.dismiss()}
-            onContextMenu={handleInputContextMenu}
-            disabled={!!pendingFile || isSending}
-          />
+          <div className="flex-1 relative">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              className="w-full min-h-[36px] px-2 py-1.5 pb-6 text-sm leading-5 rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 resize-y"
+              placeholder={
+                pendingFile
+                  ? t("terminal.filePending")
+                  : enterToSend
+                  ? t("terminal.placeholderEnterToSend")
+                  : hexMode
+                  ? t("terminal.placeholderHex")
+                  : t("terminal.placeholder")
+              }
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onBlur={() => autocomplete.dismiss()}
+              onContextMenu={handleInputContextMenu}
+              disabled={!!pendingFile || isSending}
+            />
+
+            {/* 字符/字节数指示器 */}
+            <div className="absolute bottom-1 right-2 text-xs text-muted-foreground tabular-nums pointer-events-none">
+              {hexMode
+                ? `${Math.floor(input.replace(/\s+/g, '').length / 2)} ${t("terminal.bytes")}`
+                : `${input.length} ${t("terminal.chars")}`
+              }
+            </div>
+          </div>
 
           {/* AT 命令候选面板 */}
           <AtAutocompletePanel

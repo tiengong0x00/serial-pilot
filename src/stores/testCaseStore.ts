@@ -83,11 +83,6 @@ interface TestCaseState {
    */
   moveChildToPosition: (childId: string, targetParentId: string, targetIndex: number) => void;
 
-  /** 提升节点层级：移到其父级的后面（保底右键菜单用） */
-  promoteCase: (childId: string) => void;
-  /** 降级节点：移入上一个兄弟用例的末尾（保底右键菜单用） */
-  demoteCase: (childId: string) => void;
-
   // 兼容旧 API（内部映射到统一接口）
   reorderCases: (parentId: string | null, fromIndex: number, toIndex: number) => void;
   reorderCommands: (caseId: string, fromIndex: number, toIndex: number) => void;
@@ -507,50 +502,6 @@ export const useTestCaseStore = create<TestCaseState>()(
         const safeIndex = Math.max(0, Math.min(targetIndex, targetParent.children.length));
         targetParent.children.splice(safeIndex, 0, child);
         targetParent.isExpanded = true;
-        state.isDirty = true;
-      }),
-
-    promoteCase: (childId) =>
-      set((state) => {
-        // 找到节点的父和祖父
-        const parentInfo = findParentAndIndex(state.cases, childId);
-        if (!parentInfo) return;
-
-        const { parent } = parentInfo;
-        const grandParentInfo = findParentAndIndex(state.cases, parent.id);
-        if (!grandParentInfo) return; // 已经是根层级，无法提升
-
-        // 提取节点
-        const child = extractChildInPlace(state.cases, childId);
-        if (!child) return;
-
-        // 插入到父级的后面（祖父的 children 中）
-        const grandParent = grandParentInfo.parent;
-        const insertIndex = grandParentInfo.index + 1;
-        grandParent.children.splice(insertIndex, 0, child);
-        state.isDirty = true;
-      }),
-
-    demoteCase: (childId) =>
-      set((state) => {
-        // 找到节点的父和索引
-        const info = findParentAndIndex(state.cases, childId);
-        if (!info) return;
-
-        const { parent, index } = info;
-        if (index === 0) return; // 是第一个子项，没有上一个兄弟
-
-        // 找到上一个兄弟
-        const prevSibling = parent.children[index - 1];
-        if (!isCase(prevSibling)) return; // 上一个兄弟必须是用例才能降级进去
-
-        // 提取节点
-        const child = extractChildInPlace(state.cases, childId);
-        if (!child) return;
-
-        // 插入到上一个兄弟的末尾
-        prevSibling.children.push(child);
-        prevSibling.isExpanded = true;
         state.isDirty = true;
       }),
 

@@ -49,8 +49,6 @@ export function TestCaseManager() {
     getRootCase,
     moveChildRelative,
     moveChildToPosition,
-    promoteCase,
-    demoteCase,
     reset,
   } = useTestCaseStore();
 
@@ -723,8 +721,6 @@ export function TestCaseManager() {
           onToggleSelected={handleToggleSelected}
           onEditCase={handleEditCase}
           onEditCommand={handleEditCommand}
-          onPromoteCase={contextMenu.commandId ? undefined : promoteCase}
-          onDemoteCase={contextMenu.commandId ? undefined : demoteCase}
         />
       )}
 

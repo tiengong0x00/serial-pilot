@@ -20,8 +20,6 @@ interface ContextMenuProps {
   onToggleSelected: (caseId: string, cmdId?: string) => void;
   onEditCase: (id: string) => void;
   onEditCommand: (caseId: string, cmdId: string) => void;
-  onPromoteCase?: (id: string) => void;
-  onDemoteCase?: (id: string) => void;
 }
 
 export function ContextMenu({
@@ -38,8 +36,6 @@ export function ContextMenu({
   onToggleSelected,
   onEditCase,
   onEditCommand,
-  onPromoteCase,
-  onDemoteCase,
 }: ContextMenuProps) {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
@@ -138,24 +134,6 @@ export function ContextMenu({
           label: isSelected ? t('testCase.disableExecution') : t('testCase.enableExecution'),
           onClick: () => onToggleSelected(caseId),
         },
-        ...(onPromoteCase
-          ? [
-              {
-                icon: Edit,
-                label: '⬆️ ' + t('testCase.promoteLevel'),
-                onClick: () => onPromoteCase(caseId),
-              },
-            ]
-          : []),
-        ...(onDemoteCase
-          ? [
-              {
-                icon: Edit,
-                label: '⬇️ ' + t('testCase.demoteLevel'),
-                onClick: () => onDemoteCase(caseId),
-              },
-            ]
-          : []),
         {
           icon: Trash2,
           label: t('testCase.deleteCase'),
