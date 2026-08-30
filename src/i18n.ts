@@ -597,6 +597,11 @@ const resources = {
         cut: "已剪切",
         cutFailed: "剪切失败",
         pasteFailed: "粘贴失败",
+        compareDiff: "对比 P1/P2 数据差异",
+      },
+      diff: {
+        title: "P1 / P2 数据对比",
+        hint: "将 P1、P2 的全部数据（剔除时间戳与收发标记）整体对比。绿色为 P2 新增，红色为 P1 独有，行内高亮为具体差异字符。此为点击时的快照，不会实时刷新。",
       },
       statusFooter: {
         messages: "条消息",
@@ -1455,6 +1460,11 @@ const resources = {
         cut: "Cut",
         cutFailed: "Cut failed",
         pasteFailed: "Paste failed",
+        compareDiff: "Compare P1/P2 data diff",
+      },
+      diff: {
+        title: "P1 / P2 Data Comparison",
+        hint: "Compares all data from P1 and P2 (timestamps and TX/RX markers stripped). Green = added in P2, red = only in P1, inline highlight = differing characters. This is a snapshot taken on click and does not refresh live.",
       },
       statusFooter: {
         messages: "messages",

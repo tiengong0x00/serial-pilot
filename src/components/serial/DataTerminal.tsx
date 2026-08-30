@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock } from "lucide-react";
+import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock, FileDiff } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -15,6 +15,7 @@ import { formatMessagesToText, generateLogFilename, saveLogToPath, getLaunchDir 
 import { TerminalContextMenu, type TerminalMenuItem } from "./TerminalContextMenu";
 import { AtAutocompletePanel } from "./AtAutocompletePanel";
 import { SaveCommandDialog } from "./SaveCommandDialog";
+import { DiffDialog } from "./DiffDialog";
 import { useCommandLibrary } from "@/stores/commandLibraryStore";
 import { HighlightedText } from "./HighlightedText";
 import { useHighlightStore } from "@/stores/highlightStore";
@@ -436,6 +437,9 @@ const DataTerminal = () => {
 
   // 端口标识仅在 P1、P2 同时连接时显示
   const showPortLabel = connectionStatus.p1_connected && connectionStatus.p2_connected;
+
+  // P1/P2 数据对比弹窗
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
 
   // 智能切换发送目标：任一端口断开时，自动切到仍连接的端口
   useEffect(() => {
@@ -1142,6 +1146,17 @@ const DataTerminal = () => {
         >
           <Download className="w-3.5 h-3.5" />
         </button>
+        {showPortLabel && (
+          <button
+            type="button"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary disabled:opacity-50 transition-colors"
+            onClick={() => setDiffDialogOpen(true)}
+            disabled={p1Messages.length === 0 && p2Messages.length === 0}
+            title={t("terminal.compareDiff")}
+          >
+            <FileDiff className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           type="button"
           className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary transition-colors"
@@ -1437,6 +1452,14 @@ const DataTerminal = () => {
           }}
         />
       )}
+
+      {/* P1/P2 数据对比弹窗 */}
+      <DiffDialog
+        open={diffDialogOpen}
+        onOpenChange={setDiffDialogOpen}
+        p1Messages={p1Messages}
+        p2Messages={p2Messages}
+      />
     </div>
   );
 };
