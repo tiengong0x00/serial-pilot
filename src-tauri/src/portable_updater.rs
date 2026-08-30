@@ -28,14 +28,16 @@ pub struct UpdateInfo {
 
 /// 验证文件签名（minisign）
 fn verify_signature(file_data: &[u8], signature_base64: &str) -> Result<(), String> {
-    // 解码公钥
+    // 解码公钥（Base64 编码的完整 minisign 格式：注释行 + 公钥行）
     let pubkey_bytes = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         UPDATER_PUBKEY
     ).map_err(|e| format!("Failed to decode public key: {}", e))?;
 
     let pubkey_str = String::from_utf8_lossy(&pubkey_bytes);
-    let pubkey = PublicKey::from_base64(&pubkey_str)
+
+    // 使用 decode() 而非 from_base64()，因为我们有完整的 minisign 格式（包含注释行）
+    let pubkey = PublicKey::decode(&pubkey_str)
         .map_err(|e| format!("Invalid public key format: {}", e))?;
 
     // 解码签名
