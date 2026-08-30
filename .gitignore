@@ -65,4 +65,3 @@ test-*.js
 ARCH_REFACTOR_DESIGN.md
 PERF_TRACE.md
 RELEASE_NOTES_v*.md
-toolbox.html
