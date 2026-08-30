@@ -325,17 +325,17 @@ const DataTerminal = () => {
   const { t } = useTranslation();
   const { messages, clearMessages, addMessage } = useTerminalStore();
   const { connectionStatus } = useSerialStore();
-  const { terminalFontSize, terminalLineHeight, terminalMaxMessages, enterToSend } = useSettingsStore();
+  const { terminalFontSize, terminalLineHeight, terminalMaxBytes, enterToSend } = useSettingsStore();
   const showTimestamp = useSettingsStore((s) => s.showTimestamp);
   const setShowTimestamp = useSettingsStore((s) => s.setShowTimestamp);
-  const setMaxMessages = useTerminalStore((s) => s.setMaxMessages);
+  const setMaxBytes = useTerminalStore((s) => s.setMaxBytes);
   const { writeSerialData, saveAttachment, deleteAttachment, sendAttachment, cancelFileSend } = useSerialCommands();
   const { success, error: notifyError } = useNotify();
 
   // 同步日志上限设置到 terminalStore（实时生效）
   useEffect(() => {
-    setMaxMessages(terminalMaxMessages);
-  }, [terminalMaxMessages, setMaxMessages]);
+    setMaxBytes(terminalMaxBytes);
+  }, [terminalMaxBytes, setMaxBytes]);
 
   // 注册日志自动保存通知回调（超限自动保存并清空时提示用户）
   useEffect(() => {
@@ -459,16 +459,6 @@ const DataTerminal = () => {
   }, [sendTarget]);
 
   // 自动滚动逻辑已下沉到 VirtualTerminalView 内部（各视图独立处理）
-
-  const stats = useMemo(() => {
-    let tx = 0;
-    let rx = 0;
-    for (const m of messages) {
-      if (m.type === "TX") tx += m.data.length;
-      else if (m.type === "RX") rx += m.data.length;
-    }
-    return { tx, rx, count: messages.length };
-  }, [messages]);
 
   // 分栏模式：按端口过滤消息
   const p1Messages = useMemo(() => messages.filter((m) => m.port_label === "P1"), [messages]);
@@ -1133,9 +1123,6 @@ const DataTerminal = () => {
 
         <div className="flex-1" />
 
-        <span className="text-xs text-muted-foreground">
-          TX {stats.tx} · RX {stats.rx} · {stats.count}
-        </span>
         <button
           type="button"
           className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary transition-colors ${

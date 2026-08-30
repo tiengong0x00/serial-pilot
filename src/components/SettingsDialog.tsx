@@ -133,7 +133,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     serialFrameTimeout,
     terminalFontSize,
     terminalLineHeight,
-    terminalMaxMessages,
+    terminalMaxBytes,
     terminalLogPath,
     testCaseAutoSave,
     testCaseRowHeight,
@@ -159,7 +159,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setSerialFrameTimeout,
     setTerminalFontSize,
     setTerminalLineHeight,
-    setTerminalMaxMessages,
+    setTerminalMaxBytes,
     setTerminalLogPath,
     setTestCaseAutoSave,
     setTestCaseRowHeight,
@@ -824,20 +824,20 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{t("settings.terminalMaxMessages")}</label>
+                  <label className="text-sm font-medium">{t("settings.terminalMaxBytes")}</label>
                   <input
                     type="number"
-                    min={100}
-                    max={50000}
-                    step={100}
+                    min={1024}
+                    max={10485760}
+                    step={1024}
                     className="h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                    value={terminalMaxMessages}
+                    value={terminalMaxBytes}
                     onChange={(e) => {
-                      const val = Number(e.target.value) || 10000;
-                      setTerminalMaxMessages(Math.max(100, Math.min(50000, val)));
+                      const val = Number(e.target.value) || 1048576;
+                      setTerminalMaxBytes(Math.max(1024, Math.min(10485760, val)));
                     }}
                   />
-                  <p className="text-xs text-muted-foreground">{t("settings.terminalMaxMessagesHint")}</p>
+                  <p className="text-xs text-muted-foreground">{t("settings.terminalMaxBytesHint")}</p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">

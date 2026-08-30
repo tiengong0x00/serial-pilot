@@ -5,6 +5,7 @@ import { useSerialStore } from "@/stores/serialStore";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { useExecutionStore } from "@/stores/executionStore";
 import { useSerialCommands } from "@/hooks/useSerialCommands";
+import { useNotify } from "@/hooks/useNotify";
 import {
   Dialog,
   DialogContent,
@@ -182,6 +183,7 @@ const StatusFooter = () => {
   const { t } = useTranslation();
   const { connectionStatus, p1PortName, p2PortName, p1Config, p2Config, setConfig, p1SelectedPort, p2SelectedPort, setSelectedPort } = useSerialStore();
   const { connectSerialPort, disconnectSerialPort } = useSerialCommands();
+  const { error: notifyError } = useNotify();
   const systemLogs = useTerminalStore((s) => s.systemLogs);
   const clearSystemLogs = useTerminalStore((s) => s.clearSystemLogs);
   const criticalEvents = useExecutionStore((s) => s.criticalEvents);
@@ -220,9 +222,11 @@ const StatusFooter = () => {
       if (!port) return;
       await connectSerialPort(portLabel, port, config);
     } catch (err) {
-      console.error(`Failed to connect ${portLabel}:`, err);
+      const e = err as { message?: string };
+      const errMsg = `${t("connection.connectFailed")}: ${e.message ?? String(err)}`;
+      notifyError(errMsg, { portLabel, toast: true, log: true });
     }
-  }, [p1Config, p2Config, p1SelectedPort, p2SelectedPort, connectSerialPort]);
+  }, [p1Config, p2Config, p1SelectedPort, p2SelectedPort, connectSerialPort, t, notifyError]);
 
   // 快速切换端口
   const handleSelectPort = useCallback(async (portLabel: PortLabel, portName: string) => {
@@ -298,28 +302,18 @@ const StatusFooter = () => {
           />
         </div>
 
-        {/* 中间：最后一条系统消息（可点击查看完整日志） */}
-        <div className="flex-1 mx-4 flex items-center justify-center">
+        {/* 右侧：日志图标（点击查看完整日志） */}
+        <div className="flex items-center">
           {lastSystemMessage && (
             <button
               type="button"
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-muted/50 transition-colors cursor-pointer"
+              className="flex items-center px-2 py-0.5 rounded hover:bg-muted/50 transition-colors cursor-pointer"
               onClick={() => setLogDialogOpen(true)}
               title={t("statusFooter.clickToViewLogs")}
             >
-              <FileText className="w-3 h-3" />
-              <span className="truncate max-w-md">
-                {lastSystemMessage.text || new TextDecoder().decode(lastSystemMessage.data)}
-              </span>
+              <FileText className="w-3.5 h-3.5" />
             </button>
           )}
-        </div>
-
-        {/* 右侧：预留扩展区（如统计信息） */}
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground/70">
-            {systemLogs.length} {t("statusFooter.messages")}
-          </span>
         </div>
       </footer>
 

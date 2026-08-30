@@ -18,8 +18,9 @@ describe('terminalStore 自动保存逻辑', () => {
     useTerminalStore.setState({
       messages: [],
       systemLogs: [],
+      totalBytes: 0,
       sequenceCounter: 0,
-      maxMessages: 10000,
+      maxBytes: 1 * 1024 * 1024,
       maxSystemLogs: 500,
     });
     vi.clearAllMocks();
@@ -53,7 +54,7 @@ describe('terminalStore 自动保存逻辑', () => {
     setAutoSaveNotifier(notifier);
 
     // 设置较小的上限方便测试
-    store.setMaxMessages(3);
+    store.setMaxBytes(3);
 
     // 添加 3 条消息（达到上限）
     for (let i = 0; i < 3; i++) {
@@ -113,7 +114,7 @@ describe('terminalStore 自动保存逻辑', () => {
     // Mock 保存失败
     saveLogToFile.mockRejectedValueOnce(new Error('写入失败'));
 
-    store.setMaxMessages(1);
+    store.setMaxBytes(1);
 
     // 添加第一条消息
     store.addMessage({
@@ -153,7 +154,7 @@ describe('terminalStore 自动保存逻辑', () => {
     // 不注册 notifier
     setAutoSaveNotifier(null);
 
-    store.setMaxMessages(2);
+    store.setMaxBytes(2);
 
     store.addMessage({
       id: 'msg1',
@@ -197,8 +198,9 @@ describe('terminalStore 系统日志 FIFO', () => {
     useTerminalStore.setState({
       messages: [],
       systemLogs: [],
+      totalBytes: 0,
       sequenceCounter: 0,
-      maxMessages: 10000,
+      maxBytes: 1 * 1024 * 1024,
       maxSystemLogs: 500,
     });
     vi.clearAllMocks();

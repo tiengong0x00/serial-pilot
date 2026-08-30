@@ -26,9 +26,9 @@ function makeMessage(type: 'TX' | 'RX', ts: number): TerminalMessage {
 
 describe('发送瓶颈：addMessage 排序开销', () => {
   beforeEach(() => {
-    useTerminalStore.setState({ messages: [], sequenceCounter: 0 });
+    useTerminalStore.setState({ messages: [], totalBytes: 0, sequenceCounter: 0 });
     // 拉高上限，避免测试中触发自动保存清空
-    useTerminalStore.getState().setMaxMessages(100000);
+    useTerminalStore.getState().setMaxBytes(100 * 1024 * 1024);
   });
 
   it('测量：不同数组规模下单次 addMessage 耗时', () => {

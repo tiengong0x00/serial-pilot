@@ -20,7 +20,8 @@ export function setAutoSaveNotifier(fn: AutoSaveNotifier | null): void {
 interface TerminalStore {
   // 通信数据（TX/RX）：满了自动保存到文件并清空
   messages: TerminalMessage[];
-  maxMessages: number;
+  maxBytes: number; // 累计字节数上限
+  totalBytes: number; // 当前累计字节数
   sequenceCounter: number; // 用于生成单调递增的序列号
 
   // 系统日志（SYS）：固定条数 FIFO，不自动保存
@@ -44,16 +45,17 @@ interface TerminalStore {
   }) => void;
   clearMessages: () => void;
   clearSystemLogs: () => void;
-  setMaxMessages: (max: number) => void;
+  setMaxBytes: (max: number) => void;
   setMaxSystemLogs: (max: number) => void;
 }
 
-const MAX_MESSAGES_DEFAULT = 10000;
+const MAX_BYTES_DEFAULT = 1 * 1024 * 1024; // 1MB
 const MAX_SYSTEM_LOGS_DEFAULT = 500;
 
 export const useTerminalStore = create<TerminalStore>((set) => ({
   messages: [],
-  maxMessages: MAX_MESSAGES_DEFAULT,
+  maxBytes: MAX_BYTES_DEFAULT,
+  totalBytes: 0,
   sequenceCounter: 0,
   systemLogs: [],
   maxSystemLogs: MAX_SYSTEM_LOGS_DEFAULT,
@@ -69,8 +71,11 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
         return { systemLogs: nextLogs };
       }
 
-      // 通信数据（TX/RX）：检查是否即将超限（添加新消息后会超过上限）
-      if (state.messages.length >= state.maxMessages) {
+      // 通信数据（TX/RX）：检查添加新消息后是否超过字节限制
+      const newMsgBytes = message.data.length;
+      const wouldExceed = state.totalBytes + newMsgBytes > state.maxBytes;
+
+      if (wouldExceed) {
         // 先保存当前所有消息到文件
         const filename = generateLogFilename('auto');
         const content = formatMessagesToText(state.messages, true);
@@ -84,12 +89,13 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
             console.error('Failed to auto-save log:', err);
           });
 
-        // 清空终端，重置序列号，然后添加新消息
+        // 清空终端，重置序列号和字节数，然后添加新消息
         return {
           messages: [{
             ...message,
             sequence: 0,
           }],
+          totalBytes: newMsgBytes,
           sequenceCounter: 1,
         };
       }
@@ -104,6 +110,7 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
 
       return {
         messages: [...state.messages, messageWithSeq],
+        totalBytes: state.totalBytes + newMsgBytes,
         sequenceCounter: state.sequenceCounter + 1,
       };
     }),
@@ -137,7 +144,10 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
         };
         const nextMessages = state.messages.slice();
         nextMessages[idx] = updated;
-        return { messages: nextMessages };
+        return {
+          messages: nextMessages,
+          totalBytes: state.totalBytes + chunk.length, // 追加字节数
+        };
       }
 
       // 不存在：新建一条 RX 消息（复用 addMessage 的超限/序列号语义）
@@ -153,7 +163,9 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
       };
 
       // 超限：先落盘再清空（与 addMessage 一致）
-      if (state.messages.length >= state.maxMessages) {
+      const newMsgBytes = chunk.length;
+      const wouldExceed = state.totalBytes + newMsgBytes > state.maxBytes;
+      if (wouldExceed) {
         const filename = generateLogFilename('auto');
         const content = formatMessagesToText(state.messages, true);
         saveLogToFile(content, filename)
@@ -167,21 +179,23 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
           });
         return {
           messages: [{ ...newMsg, sequence: 0 }],
+          totalBytes: newMsgBytes,
           sequenceCounter: 1,
         };
       }
 
       return {
         messages: [...state.messages, { ...newMsg, sequence: state.sequenceCounter }],
+        totalBytes: state.totalBytes + newMsgBytes,
         sequenceCounter: state.sequenceCounter + 1,
       };
     }),
 
-  clearMessages: () => set({ messages: [], sequenceCounter: 0 }),
+  clearMessages: () => set({ messages: [], totalBytes: 0, sequenceCounter: 0 }),
 
   clearSystemLogs: () => set({ systemLogs: [] }),
 
-  setMaxMessages: (max) => set({ maxMessages: max }),
+  setMaxBytes: (max) => set({ maxBytes: max }),
 
   setMaxSystemLogs: (max) => set({ maxSystemLogs: max }),
 }));

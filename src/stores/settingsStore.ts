@@ -32,7 +32,7 @@ interface SettingsStore {
   // 终端显示配置
   terminalFontSize: number; // 字号（px），范围 10-20
   terminalLineHeight: number; // 行高（倍数），范围 1.0-2.0
-  terminalMaxMessages: number; // 日志上限，范围 100-50000
+  terminalMaxBytes: number; // 日志上限（字节），默认 1MB
   terminalLogPath: string; // 日志保存路径，超限时自动保存
 
   // 测试用例配置
@@ -71,7 +71,7 @@ interface SettingsStore {
   setShowTimestamp: (show: boolean) => void;
   setTerminalFontSize: (size: number) => void;
   setTerminalLineHeight: (height: number) => void;
-  setTerminalMaxMessages: (max: number) => void;
+  setTerminalMaxBytes: (max: number) => void;
   setTerminalLogPath: (path: string) => void;
   setTestCaseAutoSave: (enabled: boolean) => void;
   setTestCaseRowHeight: (height: number) => void;
@@ -110,7 +110,7 @@ export const useSettingsStore = create<SettingsStore>()(
       // 终端显示默认值
       terminalFontSize: 12,
       terminalLineHeight: 1.2, // 行距默认 1.2（更紧凑，显示更多日志）
-      terminalMaxMessages: 10000,
+      terminalMaxBytes: 1 * 1024 * 1024, // 1MB
       // 空字符串表示使用默认路径（软件执行路径下的 logs/）
       terminalLogPath: "",
       // 测试用例默认不自动保存
@@ -143,7 +143,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setShowTimestamp: (show) => set({ showTimestamp: show }),
       setTerminalFontSize: (size) => set({ terminalFontSize: size }),
       setTerminalLineHeight: (height) => set({ terminalLineHeight: height }),
-      setTerminalMaxMessages: (max) => set({ terminalMaxMessages: max }),
+      setTerminalMaxBytes: (max) => set({ terminalMaxBytes: max }),
       setTerminalLogPath: (path) => set({ terminalLogPath: path }),
       setTestCaseAutoSave: (enabled) => set({ testCaseAutoSave: enabled }),
       setTestCaseRowHeight: (height) => set({ testCaseRowHeight: Math.max(24, Math.min(48, height)) }),
