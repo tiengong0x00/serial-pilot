@@ -44,3 +44,25 @@ coverage/
 *.temp
 .cache/
 .plan/
+
+# AI工作区（Claude Code / Claude Desktop）
+.claude/
+
+# 编译产物（应通过 CI/CD 构建，不进仓库）
+*.exe
+*.msi
+*.dmg
+*.deb
+*.AppImage
+
+# 更新清单（CI 产物）
+latest*.json
+
+# 临时测试脚本
+test-*.js
+
+# 内部文档（移出跟踪，本地保留）
+ARCH_REFACTOR_DESIGN.md
+PERF_TRACE.md
+RELEASE_NOTES_v*.md
+toolbox.html
