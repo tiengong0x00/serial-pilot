@@ -405,6 +405,34 @@ export function TestCaseManager() {
     return () => clearTimeout(timer);
   }, [testCaseAutoSave, isDirty, currentFile, handleSaveFile]);
 
+  // 刷新：更新文件列表，并重新从磁盘加载当前打开的文件（丢弃内存中的未保存修改）
+  const handleRefresh = useCallback(async () => {
+    const list = await refreshFiles();
+    if (!currentFile) return;
+
+    // 当前文件已被外部删除，清空并结束
+    if (!list.includes(currentFile)) {
+      reset();
+      return;
+    }
+
+    if (isDirty) {
+      const ok = window.confirm(t('testCase.refreshDiscardConfirm'));
+      if (!ok) return;
+    }
+
+    const json = await loadFile(currentFile);
+    if (json) {
+      try {
+        importJson(json, currentFile, true);
+        markClean();
+      } catch (err) {
+        console.error('Failed to reload file:', err);
+        alert(t('testCase.importFailed', { error: err }));
+      }
+    }
+  }, [refreshFiles, currentFile, isDirty, loadFile, importJson, markClean, reset, t]);
+
   // 导出当前用例（下载）
   const handleExportCurrentFile = useCallback(() => {
     if (!currentFile) return;
@@ -566,7 +594,7 @@ export function TestCaseManager() {
         {/* 刷新 */}
         <button
           className="flex items-center justify-center h-8 w-8 bg-background border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-40"
-          onClick={() => void refreshFiles()}
+          onClick={() => void handleRefresh()}
           disabled={filesLoading}
           title={t('testCase.refreshFiles')}
         >

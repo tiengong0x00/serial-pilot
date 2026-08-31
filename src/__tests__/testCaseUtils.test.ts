@@ -172,7 +172,8 @@ describe('testCaseUtils', () => {
 
       // 运行状态被重置
       expect(imported[0].status).toBe('pending');
-      expect(imported[0].selected).toBe(false);
+      // 根用例 selected 强制为 true（执行引擎依赖）
+      expect(imported[0].selected).toBe(true);
     });
 
     it('导入非法 JSON 应抛出错误', () => {
@@ -196,6 +197,31 @@ describe('testCaseUtils', () => {
         expect(importedSub.name).toBe('子用例');
         expect(importedSub.children[0].id).not.toBe(subCmd.id);
         expect(importedSub.children[0].id).toMatch(/^cmd_/);
+      }
+    });
+
+    it('导入应保留子用例的 selected 状态', () => {
+      const root = createRootCase('测试 selected 保留');
+      const sub1 = createCase('已启用子用例');
+      sub1.selected = true;
+      const sub2 = createCase('已禁用子用例');
+      sub2.selected = false;
+      root.children = [sub1, sub2];
+
+      const json = JSON.stringify(exportToFile(root));
+      const imported = parseImportFile(json);
+
+      // 根用例强制启用
+      expect(imported[0].selected).toBe(true);
+
+      // 子用例保留原始 selected 状态
+      const importedSub1 = imported[0].children[0];
+      const importedSub2 = imported[0].children[1];
+      expect(isCase(importedSub1)).toBe(true);
+      expect(isCase(importedSub2)).toBe(true);
+      if (isCase(importedSub1) && isCase(importedSub2)) {
+        expect(importedSub1.selected).toBe(true);
+        expect(importedSub2.selected).toBe(false);
       }
     });
   });

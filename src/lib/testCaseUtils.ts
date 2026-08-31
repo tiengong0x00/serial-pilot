@@ -359,7 +359,7 @@ export function reassignIds(c: TestCase, isRoot = true): TestCase {
     id: newCaseId,
     children: newChildren,
     status: 'pending',
-    selected: false,
+    selected: isRoot ? true : (c.selected ?? false), // 根用例强制启用，子用例保留导入值
   };
 }
 
