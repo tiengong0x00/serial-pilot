@@ -4,6 +4,7 @@ use serialport::SerialPort;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tokio::sync::watch;
 
@@ -268,31 +269,78 @@ impl SerialManager {
     }
 
     /// 断开串口
+    ///
+    /// 阻塞等待监听器/发送线程释放端口句柄后返回，确保底层 COM 句柄完全关闭。
+    /// 快速连接/断开循环时不会出现旧监听器与新连接争抢端口的竞态。
     pub fn disconnect(&self, label: &str) -> Result<(), SerialError> {
-        let mut guard = self.connections.lock()
-            .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
+        let port_arc = {
+            let mut guard = self.connections.lock()
+                .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
 
-        let handle = guard.remove(label)
-            .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
+            let handle = guard.remove(label)
+                .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
 
-        // 发送取消信号（监听器会优雅退出）
-        let _ = handle.cancel_tx.send(true);
+            // 发送取消信号（监听器会优雅退出）
+            let _ = handle.cancel_tx.send(true);
+
+            // 取出 port Arc 后手动释放 connections 全局锁，避免在等待期间阻塞其它端口操作
+            Arc::clone(&handle.port)
+            // handle 在此 drop，其内部的 Arc 引用计数 -1
+        }; // ← 全局锁释放
+
+        // 等待所有 Arc 克隆释放（监听器/发送线程退出）：引用计数归 1（仅本函数持有）
+        // 表明底层 SerialPort 对象可被安全释放（调用方收到 Ok 即保证 COM 句柄已关闭）。
+        // 监听器每次循环约 5ms，最长约 10ms 即退出；超时仍返回 Ok（后台任务最终会释放）。
+        let deadline = Instant::now() + Duration::from_millis(200);
+        loop {
+            if Arc::strong_count(&port_arc) == 1 {
+                // 只剩本函数持有 → 其它克隆已全部释放 → 底层句柄可安全关闭
+                break;
+            }
+            if Instant::now() > deadline {
+                eprintln!("[{}] Disconnect timeout: listener may not have exited cleanly", label);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
 
         Ok(())
     }
 
     /// 断开所有串口（电源管理专用）
+    ///
+    /// 与 disconnect 相同，逐个发送取消信号后阻塞等待所有句柄释放。
     pub fn disconnect_all(&self) -> Result<(), String> {
-        let mut guard = self.connections.lock()
-            .map_err(|e| format!("Failed to acquire lock: {}", e))?;
+        let port_arcs: Vec<(String, Arc<Mutex<Box<dyn SerialPort>>>)> = {
+            let mut guard = self.connections.lock()
+                .map_err(|e| format!("Failed to acquire lock: {}", e))?;
 
-        let labels: Vec<String> = guard.keys().cloned().collect();
+            let labels: Vec<String> = guard.keys().cloned().collect();
+            let mut arcs = Vec::with_capacity(labels.len());
 
-        for label in labels {
-            if let Some(handle) = guard.remove(&label) {
-                eprintln!("[{}] Disconnecting due to power event", label);
-                let _ = handle.cancel_tx.send(true);
-                // handle 被移除后自动触发 Drop，释放底层资源
+            for label in labels {
+                if let Some(handle) = guard.remove(&label) {
+                    eprintln!("[{}] Disconnecting due to power event", label);
+                    let _ = handle.cancel_tx.send(true);
+                    arcs.push((label, Arc::clone(&handle.port)));
+                    // handle 在此 drop，其内部 Arc 引用计数 -1
+                }
+            }
+            arcs
+        }; // ← 全局锁释放
+
+        // 等待每个端口的监听器/发送线程释放句柄
+        for (label, port_arc) in &port_arcs {
+            let deadline = Instant::now() + Duration::from_millis(200);
+            loop {
+                if Arc::strong_count(port_arc) == 1 {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    eprintln!("[{}] Disconnect timeout: listener may not have exited cleanly", label);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(2));
             }
         }
 

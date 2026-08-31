@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback } from 'react';
 import { useSerialStore } from '../stores/serialStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useTerminalStore } from '../stores/terminalStore';
 import type { PortInfo, SerialConfig, ConnectionStatus, PortLabel, AttachmentRef } from '../types/serial';
 
 /**
@@ -39,6 +40,9 @@ export function useSerialCommands() {
       portLabel,
       frameTimeoutMs: useSettingsStore.getState().serialFrameTimeout,
     });
+
+    // ✅ 封存该端口旧帧，避免新连接的 frame_id 重置后与旧帧冲突（BUG2 修复）
+    useTerminalStore.getState().sealPortFrames(portLabel);
 
     // ✅ 连接成功后直接设置前端状态，消除竞态
     setPortName(portLabel, portName);

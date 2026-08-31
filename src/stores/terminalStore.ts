@@ -47,6 +47,11 @@ interface TerminalStore {
   clearSystemLogs: () => void;
   setMaxBytes: (max: number) => void;
   setMaxSystemLogs: (max: number) => void;
+  /**
+   * 封存指定端口的所有 RX 帧（将 frameId 置为 undefined），
+   * 用于新连接时隔离旧帧，避免 frame_id 重置后与旧帧冲突。
+   */
+  sealPortFrames: (portLabel: TerminalMessage['port_label']) => void;
 }
 
 const MAX_BYTES_DEFAULT = 1 * 1024 * 1024; // 1MB
@@ -192,6 +197,22 @@ export const useTerminalStore = create<TerminalStore>((set) => ({
     }),
 
   clearMessages: () => set({ messages: [], totalBytes: 0, sequenceCounter: 0 }),
+
+  // 新连接会重置后端 frame_id（从 1 重新自增），旧连接遗留的 RX 帧若仍带
+  // frameId，会与新连接的低位 frameId 撞车，导致 appendFrame 把新增量误拼到
+  // 旧消息（表现为 "OK\nOK" / 顺序错乱）。连接时封存旧帧即可隔离，历史日志保留。
+  sealPortFrames: (portLabel) =>
+    set((state) => {
+      let changed = false;
+      const nextMessages = state.messages.map((m) => {
+        if (m.type === 'RX' && m.port_label === portLabel && m.frameId !== undefined) {
+          changed = true;
+          return { ...m, frameId: undefined, isFinal: true };
+        }
+        return m;
+      });
+      return changed ? { messages: nextMessages } : {};
+    }),
 
   clearSystemLogs: () => set({ systemLogs: [] }),
 

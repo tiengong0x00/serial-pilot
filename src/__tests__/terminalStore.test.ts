@@ -193,6 +193,132 @@ describe('terminalStore 自动保存逻辑', () => {
   });
 });
 
+describe('terminalStore.sealPortFrames (BUG2 修复验证)', () => {
+  beforeEach(() => {
+    useTerminalStore.setState({
+      messages: [],
+      systemLogs: [],
+      totalBytes: 0,
+      sequenceCounter: 0,
+      maxBytes: 1 * 1024 * 1024,
+      maxSystemLogs: 500,
+    });
+    vi.clearAllMocks();
+  });
+
+  it('封存指定端口旧帧，新连接低 frameId 不冲突', () => {
+    const store = useTerminalStore.getState();
+
+    // 模拟旧连接的第一个帧（frame_id=1）
+    const oldFrame: TerminalMessage = {
+      id: 'rx-old-1',
+      type: 'RX',
+      port_label: 'P1',
+      data: new Uint8Array([0x4f, 0x4b]), // "OK"
+      timestamp: Date.now() - 5000,
+      text: 'OK',
+      frameId: 1,
+      isFinal: true,
+    };
+    store.addMessage(oldFrame);
+
+    // 用户断开连接（listener.rs 线程退出，frame_id 复位到 0）
+    // 用户再次连接，调用 sealPortFrames 封存旧帧
+    store.sealPortFrames('P1');
+
+    // 验证旧帧的 frameId 被清除
+    const messagesAfterSeal = useTerminalStore.getState().messages;
+    expect(messagesAfterSeal).toHaveLength(1);
+    expect(messagesAfterSeal[0].frameId).toBeUndefined();
+    expect(messagesAfterSeal[0].isFinal).toBe(true);
+    expect(messagesAfterSeal[0].text).toBe('OK');
+
+    // 模拟新连接的第一个帧（frame_id 重置后再次为 1）
+    // 使用 appendFrame，应新建消息而非与旧帧合并
+    store.appendFrame({
+      portLabel: 'P1',
+      frameId: 1,
+      timestamp: Date.now(),
+      chunk: new Uint8Array([0x41, 0x54]), // "AT"
+      isFinal: false,
+      decode: (bytes) => new TextDecoder().decode(bytes),
+    });
+
+    const finalMessages = useTerminalStore.getState().messages;
+    expect(finalMessages).toHaveLength(2); // 旧帧 + 新帧
+    expect(finalMessages[0].text).toBe('OK'); // 旧帧未被修改
+    expect(finalMessages[1].text).toBe('AT'); // 新帧独立创建
+    expect(finalMessages[1].frameId).toBe(1);
+  });
+
+  it('封存操作只影响指定端口', () => {
+    const store = useTerminalStore.getState();
+
+    // 添加两个端口的帧
+    store.addMessage({
+      id: 'rx-p1',
+      type: 'RX',
+      port_label: 'P1',
+      data: new Uint8Array([0x41]),
+      timestamp: Date.now(),
+      text: 'A',
+      frameId: 5,
+      isFinal: true,
+    });
+
+    store.addMessage({
+      id: 'rx-p2',
+      type: 'RX',
+      port_label: 'P2',
+      data: new Uint8Array([0x42]),
+      timestamp: Date.now(),
+      text: 'B',
+      frameId: 3,
+      isFinal: true,
+    });
+
+    // 只封存 P1
+    store.sealPortFrames('P1');
+
+    const messages = useTerminalStore.getState().messages;
+    expect(messages[0].frameId).toBeUndefined(); // P1 被封存
+    expect(messages[1].frameId).toBe(3);          // P2 保持不变
+  });
+
+  it('封存对 TX/SYS 类型消息无影响', () => {
+    const store = useTerminalStore.getState();
+
+    store.addMessage({
+      id: 'tx1',
+      type: 'TX',
+      port_label: 'P1',
+      data: new Uint8Array([0x41]),
+      timestamp: Date.now(),
+      text: 'ATI',
+      frameId: 99, // TX 类型不应有 frameId，但测试健壮性
+    });
+
+    store.addMessage({
+      id: 'rx1',
+      type: 'RX',
+      port_label: 'P1',
+      data: new Uint8Array([0x4f, 0x4b]),
+      timestamp: Date.now(),
+      text: 'OK',
+      frameId: 2,
+      isFinal: true,
+    });
+
+    store.sealPortFrames('P1');
+
+    const messages = useTerminalStore.getState().messages;
+    expect(messages[0].type).toBe('TX');
+    expect(messages[0].frameId).toBe(99); // TX 未受影响
+    expect(messages[1].type).toBe('RX');
+    expect(messages[1].frameId).toBeUndefined(); // RX 被封存
+  });
+});
+
 describe('terminalStore 系统日志 FIFO', () => {
   beforeEach(() => {
     useTerminalStore.setState({
