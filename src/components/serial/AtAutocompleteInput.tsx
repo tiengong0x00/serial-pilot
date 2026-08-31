@@ -75,7 +75,7 @@ export function AtAutocompleteInput({
       }
 
       // Ctrl+S 保存命令到库（仅焦点在本输入框时生效）
-      if (onCtrlS && e.key === "s" && e.ctrlKey) {
+      if (onCtrlS && e.key.toLowerCase() === "s" && e.ctrlKey) {
         e.preventDefault();
         const v = value.trim();
         if (v) onCtrlS(v);

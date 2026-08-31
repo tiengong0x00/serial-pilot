@@ -879,7 +879,7 @@ const DataTerminal = () => {
         }
       }
       // Ctrl+S 保存当前命令到命令库
-      if (e.key === "s" && e.ctrlKey) {
+      if (e.key.toLowerCase() === "s" && e.ctrlKey) {
         e.preventDefault();
         const cmd = input.trim();
         if (cmd) {
