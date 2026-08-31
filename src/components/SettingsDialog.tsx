@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,9 @@ import {
 import { SHORTCUT_BINDINGS } from "@/lib/shortcutBus";
 import { HighlightSettings } from "./HighlightSettings";
 import { useSerialStore } from "@/stores/serialStore";
+import { useSerialCommands } from "@/hooks/useSerialCommands";
 import type { SerialConfig } from "@/types/serial";
+import { toast } from "sonner";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -71,6 +74,73 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
   const [bgAdvancedOpen, setBgAdvancedOpen] = useState(false); // 背景图高级选项折叠状态
   const [appVersion, setAppVersion] = useState<string>("0.1.0"); // 应用版本号
+
+  // 路径配置
+  const { getAppConfig, setTestcasesDir, setCommandsDir, openHelpManual } = useSerialCommands();
+  const [testcasesPath, setTestcasesPath] = useState("");
+  const [commandsPath, setCommandsPath] = useState("");
+
+  // 加载路径配置
+  useEffect(() => {
+    if (open) {
+      getAppConfig().then((config) => {
+        setTestcasesPath(config.testcasesDir);
+        setCommandsPath(config.commandsDir);
+      }).catch(err => {
+        console.error("Failed to load app config:", err);
+      });
+    }
+  }, [open, getAppConfig]);
+
+  // 保存路径配置
+  const handleSaveTestcasesPath = async () => {
+    try {
+      await setTestcasesDir(testcasesPath);
+      toast.success(t("settings.pathSaved"));
+    } catch (err) {
+      toast.error(String(err));
+    }
+  };
+
+  const handleSaveCommandsPath = async () => {
+    try {
+      await setCommandsDir(commandsPath);
+      toast.success(t("settings.pathSaved"));
+    } catch (err) {
+      toast.error(String(err));
+    }
+  };
+
+  // 浏览选择目录
+  const handleBrowseTestcasesPath = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: t("settings.selectTestcasesDir"),
+      });
+      if (selected) {
+        setTestcasesPath(selected as string);
+      }
+    } catch (err) {
+      console.error("Failed to open dialog:", err);
+    }
+  };
+
+  const handleBrowseCommandsPath = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: t("settings.selectCommandsDir"),
+      });
+      if (selected) {
+        setCommandsPath(selected as string);
+      }
+    } catch (err) {
+      console.error("Failed to open dialog:", err);
+    }
+  };
 
   // 获取应用版本号
   useEffect(() => {
@@ -243,6 +313,77 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     onChange={(e) => setEnterToSend(e.target.checked)}
                     className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer"
                   />
+                </div>
+
+                {/* 存储路径配置 */}
+                <div className="border-t pt-4 mt-2 flex flex-col gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium mb-1">{t("settings.pathsTitle")}</h3>
+                    <p className="text-xs text-muted-foreground">{t("settings.pathsDesc")}</p>
+                  </div>
+
+                  {/* 测试用例目录 */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">{t("settings.testcasesDir")}</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={testcasesPath}
+                        onChange={(e) => setTestcasesPath(e.target.value)}
+                        placeholder={t("settings.pathPlaceholderTestcases")}
+                        className="flex-1 h-9 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleBrowseTestcasesPath}
+                        className="px-3 h-9 text-sm rounded-md border border-input bg-background hover:bg-accent transition-colors"
+                      >
+                        {t("settings.pathBrowse")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveTestcasesPath}
+                        className="px-3 h-9 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        {t("settings.pathSave")}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 命令库目录 */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">{t("settings.commandsDir")}</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={commandsPath}
+                        onChange={(e) => setCommandsPath(e.target.value)}
+                        placeholder={t("settings.pathPlaceholderCommands")}
+                        className="flex-1 h-9 px-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleBrowseCommandsPath}
+                        className="px-3 h-9 text-sm rounded-md border border-input bg-background hover:bg-accent transition-colors"
+                      >
+                        {t("settings.pathBrowse")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveCommandsPath}
+                        className="px-3 h-9 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        {t("settings.pathSave")}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-muted-foreground">{t("settings.pathHint")}</p>
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+                      <p className="text-xs text-amber-600 dark:text-amber-400">{t("settings.pathRestartHint")}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -917,6 +1058,31 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   <p className="text-muted-foreground leading-relaxed">
                     {t("settings.aboutDescription")}
                   </p>
+                </div>
+
+                {/* 帮助手册 */}
+                <div className="border-t pt-4 mt-2 flex flex-col gap-3">
+                  <h3 className="text-sm font-medium">{t("settings.helpManuals")}</h3>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openHelpManual('testcases', language);
+                      }}
+                      className="px-4 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent transition-colors"
+                    >
+                      {t("settings.testcasesHelp")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openHelpManual('commands', language);
+                      }}
+                      className="px-4 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent transition-colors"
+                    >
+                      {t("settings.commandsHelp")}
+                    </button>
+                  </div>
                 </div>
 
                 {/* 检查更新 */}

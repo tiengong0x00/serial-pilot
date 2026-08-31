@@ -374,6 +374,23 @@ const resources = {
         navAbout: "关于",
         // 通用
         generalDesc: "语言与常规选项",
+        pathsTitle: "存储路径配置",
+        pathsDesc: "配置测试用例与命令库的保存目录。",
+        testcasesDir: "测试用例目录",
+        commandsDir: "命令库目录",
+        pathPlaceholderTestcases: "留空使用默认（执行目录下的 testcases）",
+        pathPlaceholderCommands: "留空使用默认（执行目录下的 commands）",
+        pathBrowse: "浏览",
+        pathSave: "保存",
+        pathSaved: "路径已保存，重启后生效",
+        pathHint: "支持相对路径（相对于程序执行目录）或绝对路径。留空则使用默认目录",
+        pathRestartHint: "路径修改后需要重启应用才能生效",
+        selectTestcasesDir: "选择测试用例目录",
+        selectCommandsDir: "选择命令库目录",
+        // 帮助手册
+        helpManuals: "帮助手册",
+        testcasesHelp: "测试用例说明",
+        commandsHelp: "命令库说明",
         // 测试用例
         testCasesDesc: "测试用例界面配置",
         // 外观
@@ -1246,6 +1263,23 @@ const resources = {
         navAbout: "About",
         // General
         generalDesc: "Language and general options",
+        pathsTitle: "Storage Paths",
+        pathsDesc: "Configure the storage directories for test cases and command libraries.",
+        testcasesDir: "Test Cases Directory",
+        commandsDir: "Command Library Directory",
+        pathPlaceholderTestcases: "Leave empty for default (testcases under executable directory)",
+        pathPlaceholderCommands: "Leave empty for default (commands under executable directory)",
+        pathBrowse: "Browse",
+        pathSave: "Save",
+        pathSaved: "Path saved, takes effect after restart",
+        pathHint: "Supports relative paths (relative to executable directory) or absolute paths. Leave empty for default",
+        pathRestartHint: "Path changes require an application restart to take effect",
+        selectTestcasesDir: "Select Test Cases Directory",
+        selectCommandsDir: "Select Command Library Directory",
+        // Help Manuals
+        helpManuals: "Help Manuals",
+        testcasesHelp: "Test Cases Guide",
+        commandsHelp: "Command Library Guide",
         // Test Cases
         testCasesDesc: "Test case UI configuration",
         // Appearance

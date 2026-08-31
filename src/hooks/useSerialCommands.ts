@@ -192,6 +192,40 @@ export function useSerialCommands() {
     await invoke('set_serial_rts', { portLabel, level });
   }, []);
 
+  /**
+   * 获取应用配置（测试用例/命令库路径等）
+   */
+  const getAppConfig = useCallback(async (): Promise<{
+    testcasesDir: string;
+    commandsDir: string;
+  }> => {
+    return await invoke('get_app_config');
+  }, []);
+
+  /**
+   * 设置测试用例目录（空字符串=恢复默认）
+   */
+  const setTestcasesDir = useCallback(async (path: string): Promise<void> => {
+    await invoke('set_testcases_dir', { path });
+  }, []);
+
+  /**
+   * 设置命令库目录（空字符串=恢复默认）
+   */
+  const setCommandsDir = useCallback(async (path: string): Promise<void> => {
+    await invoke('set_commands_dir', { path });
+  }, []);
+
+  /**
+   * 打开帮助手册（testcases 或 commands，根据语言打开对应 README）
+   */
+  const openHelpManual = useCallback(async (
+    manualType: 'testcases' | 'commands',
+    language: string
+  ): Promise<void> => {
+    await invoke('open_help_manual', { manualType, language });
+  }, []);
+
   return {
     getSerialPorts,
     connectSerialPort,
@@ -206,5 +240,9 @@ export function useSerialCommands() {
     getConnectionStatus,
     setSerialDtr,
     setSerialRts,
+    getAppConfig,
+    setTestcasesDir,
+    setCommandsDir,
+    openHelpManual,
   };
 }

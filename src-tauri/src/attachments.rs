@@ -25,13 +25,16 @@ pub fn get_attachments_dir() -> PathBuf {
         .join("attachments")
 }
 
-/// 获取测试用例目录（exe 同级 testcases/）
+/// 获取测试用例目录（优先配置路径，未配置时用 exe 同级 testcases/）
 fn get_testcases_dir() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("testcases")
+    let cfg = crate::config::global().get();
+    crate::config::resolve_config_path(&cfg.testcases_dir).unwrap_or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("testcases")
+    })
 }
 
 /// 生成唯一 id（时间戳纳秒 + 全局计数器，无哈希依赖）

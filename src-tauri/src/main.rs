@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod attachments;
+mod config;
 mod dist_type;
 mod error;
 mod network;
@@ -181,22 +182,28 @@ async fn start_serial_listener(
     serial::listener::start_listener(port_label, port, cancel_rx, app_handle, frame_timeout_ms)
 }
 
-/// 获取测试用例文件目录路径（可执行文件同级的 testcases/）
-fn get_test_cases_dir() -> std::path::PathBuf {
+/// exe 所在目录
+fn get_exe_dir() -> std::path::PathBuf {
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("testcases")
 }
 
-/// 获取命令库文件目录路径（可执行文件同级的 commands/）
+/// 获取测试用例文件目录路径。
+/// 优先使用配置中的路径（相对/绝对），未配置时用默认 exe 同级 testcases/。
+fn get_test_cases_dir() -> std::path::PathBuf {
+    let cfg = config::global().get();
+    config::resolve_config_path(&cfg.testcases_dir)
+        .unwrap_or_else(|| get_exe_dir().join("testcases"))
+}
+
+/// 获取命令库文件目录路径。
+/// 优先使用配置中的路径（相对/绝对），未配置时用默认 exe 同级 commands/。
 fn get_command_libs_dir() -> std::path::PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("commands")
+    let cfg = config::global().get();
+    config::resolve_config_path(&cfg.commands_dir)
+        .unwrap_or_else(|| get_exe_dir().join("commands"))
 }
 
 /// 获取脚本文件目录路径（可执行文件同级的 scripts/）
@@ -206,6 +213,77 @@ fn get_scripts_dir() -> std::path::PathBuf {
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("scripts")
+}
+
+// ============================================================================
+// 应用配置命令（路径可配置）
+// ============================================================================
+
+/// 读取应用配置（测试用例/命令库路径等）
+#[tauri::command]
+fn get_app_config() -> config::AppConfig {
+    config::global().get()
+}
+
+/// 设置测试用例目录路径（空字符串表示恢复默认）
+#[tauri::command]
+fn set_testcases_dir(path: String) -> Result<(), String> {
+    config::global().update(|cfg| cfg.testcases_dir = path)
+}
+
+/// 设置命令库目录路径（空字符串表示恢复默认）
+#[tauri::command]
+fn set_commands_dir(path: String) -> Result<(), String> {
+    config::global().update(|cfg| cfg.commands_dir = path)
+}
+
+/// 打开帮助手册（根据类型和语言打开对应 README，用系统默认程序）
+#[tauri::command]
+fn open_help_manual(manual_type: String, language: String) -> Result<(), String> {
+    let dir = match manual_type.as_str() {
+        "testcases" => get_test_cases_dir(),
+        "commands" => get_command_libs_dir(),
+        _ => return Err(format!("Invalid manual type: {}", manual_type)),
+    };
+
+    let filename = if language.starts_with("zh") {
+        "README.md"
+    } else {
+        "README_EN.md"
+    };
+
+    let path = dir.join(filename);
+    if !path.exists() {
+        return Err(format!("Help manual not found: {}", path.display()));
+    }
+
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| "Invalid path encoding".to_string())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", path_str])
+            .spawn()
+            .map_err(|e| format!("Failed to open manual: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open manual: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open manual: {}", e))?;
+    }
+
+    Ok(())
 }
 
 /// 通用种子释放：目录不存在才创建并释放内嵌文件
@@ -761,6 +839,9 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
         .setup(|app| {
+            // 初始化全局配置（必须在路径函数被调用之前）
+            config::init_global();
+
             // 启动时释放内嵌的种子测试用例（目录不存在才创建）
             if let Err(e) = ensure_test_cases_seeded() {
                 eprintln!("[Seed] testcases failed: {}", e);
@@ -825,6 +906,10 @@ fn main() {
             get_build_type,
             check_update,
             install_update,
+            get_app_config,
+            set_testcases_dir,
+            set_commands_dir,
+            open_help_manual,
             portable_updater::check_update_portable,
             portable_updater::install_update_portable
         ])
