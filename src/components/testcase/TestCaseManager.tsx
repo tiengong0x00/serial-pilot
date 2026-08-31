@@ -692,6 +692,7 @@ export function TestCaseManager() {
           open={!!editingCommand}
           command={editingCommandData.command}
           caseId={editingCommandData.owner.id}
+          testcaseName={currentFile?.replace(/\.json$/, '') ?? ''}
           onClose={() => setEditingCommand(null)}
           onChange={updateCommand}
         />

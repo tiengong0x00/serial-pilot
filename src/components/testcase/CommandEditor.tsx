@@ -19,6 +19,7 @@ function formatBytes(n: number): string {
 
 interface CommandEditorProps {
   command: TestCommand;
+  testcaseName: string;
   onChange: (patch: Partial<TestCommand>) => void;
 }
 
@@ -26,7 +27,7 @@ const inputCls = 'w-full px-3 py-2 border rounded-md bg-background text-sm';
 const labelCls = 'text-sm font-medium';
 const fieldCls = 'space-y-1.5';
 
-export function CommandEditor({ command, onChange }: CommandEditorProps) {
+export function CommandEditor({ command, testcaseName, onChange }: CommandEditorProps) {
   const { t } = useTranslation();
 
   return (
@@ -62,7 +63,7 @@ export function CommandEditor({ command, onChange }: CommandEditorProps) {
       {/* 命令描述已移到各子编辑器内部，统一放在内容/模式之后 */}
 
       {/* 根据类型渲染不同编辑器 */}
-      {command.type === 'command' && <StandardCommandFields command={command} onChange={onChange} />}
+      {command.type === 'command' && <StandardCommandFields command={command} testcaseName={testcaseName} onChange={onChange} />}
       {command.type === 'urc-guard' && <UrcGuardCommandFields command={command} onChange={onChange} />}
       {command.type === 'script' && <ScriptCommandFields command={command} onChange={onChange} />}
 
@@ -84,13 +85,15 @@ export function CommandEditor({ command, onChange }: CommandEditorProps) {
 // ============ 普通命令编辑器 ============
 function StandardCommandFields({
   command,
+  testcaseName,
   onChange,
 }: {
   command: StandardCommand;
+  testcaseName: string;
   onChange: (patch: Partial<TestCommand>) => void;
 }) {
   const { t } = useTranslation();
-  const { saveAttachment, deleteAttachment } = useSerialCommands();
+  const { saveTestcaseAttachment, deleteAttachment } = useSerialCommands();
   const [fileError, setFileError] = useState('');
   // Ctrl+S 保存命令到命令库
   const [saveDialogCommand, setSaveDialogCommand] = useState<string | null>(null);
@@ -101,7 +104,7 @@ function StandardCommandFields({
     try {
       const buf = await file.arrayBuffer();
       const bytes = new Uint8Array(buf);
-      const ref = await saveAttachment(bytes, file.name);
+      const ref = await saveTestcaseAttachment(bytes, file.name, testcaseName);
       onChange({
         fileData: { name: ref.name, size: ref.size, id: ref.id },
       });

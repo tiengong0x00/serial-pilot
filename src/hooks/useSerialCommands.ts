@@ -107,6 +107,21 @@ export function useSerialCommands() {
   }, []);
 
   /**
+   * 保存用例附件到 testcases/<用例名>/ 下，id 为相对路径 "用例名/文件名"。
+   */
+  const saveTestcaseAttachment = useCallback(async (
+    data: Uint8Array,
+    name: string,
+    testcaseName: string
+  ): Promise<AttachmentRef> => {
+    return await invoke<AttachmentRef>('save_testcase_attachment', {
+      data: Array.from(data),
+      name,
+      testcaseName,
+    });
+  }, []);
+
+  /**
    * 检查附件是否存在(执行前校验)
    */
   const attachmentExists = useCallback(async (id: string): Promise<boolean> => {
@@ -183,6 +198,7 @@ export function useSerialCommands() {
     disconnectSerialPort,
     writeSerialData,
     saveAttachment,
+    saveTestcaseAttachment,
     attachmentExists,
     deleteAttachment,
     sendAttachment,

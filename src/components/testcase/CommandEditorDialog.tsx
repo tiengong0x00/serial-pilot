@@ -14,6 +14,7 @@ interface CommandEditorDialogProps {
   open: boolean;
   command: TestCommand | null;
   caseId: string | null;
+  testcaseName: string;
   onClose: () => void;
   onChange: (caseId: string, cmdId: string, patch: Partial<TestCommand>) => void;
 }
@@ -22,6 +23,7 @@ export function CommandEditorDialog({
   open,
   command,
   caseId,
+  testcaseName,
   onClose,
   onChange,
 }: CommandEditorDialogProps) {
@@ -48,6 +50,7 @@ export function CommandEditorDialog({
         <div className="flex-1 overflow-y-auto">
           <CommandEditor
             command={command}
+            testcaseName={testcaseName}
             onChange={(patch) => onChange(caseId, command.id, patch)}
           />
         </div>

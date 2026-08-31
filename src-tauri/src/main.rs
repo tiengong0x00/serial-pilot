@@ -95,12 +95,23 @@ async fn write_serial_data(
 }
 
 /// 保存附件到磁盘缓存，返回引用（id/name/size）。字节仅上传时走一次 IPC。
+/// 用于终端直接上传（不属于任何用例），存储到 attachments/ 扁平目录。
 #[tauri::command]
 async fn save_attachment(
     data: Vec<u8>,
     name: String,
 ) -> Result<attachments::AttachmentRef, SerialError> {
     attachments::save_attachment(&data, &name)
+}
+
+/// 保存用例附件，存储到 testcases/<用例名>/ 下，id 为相对路径 "用例名/文件名"。
+#[tauri::command]
+async fn save_testcase_attachment(
+    data: Vec<u8>,
+    name: String,
+    testcase_name: String,
+) -> Result<attachments::AttachmentRef, SerialError> {
+    attachments::save_testcase_attachment(&data, &name, &testcase_name)
 }
 
 /// 检查附件是否存在（执行前校验，缺失给明确提示）
@@ -459,7 +470,16 @@ fn delete_test_case_file(filename: String) -> Result<(), String> {
     }
 
     std::fs::remove_file(&path)
-        .map_err(|e| format!("Failed to delete file {}: {}", filename, e))
+        .map_err(|e| format!("Failed to delete file {}: {}", filename, e))?;
+
+    // 同步删除该用例的附件目录（testcases/<用例名>/）
+    let case_name = filename.strip_suffix(".json").unwrap_or(&filename);
+    let attachment_dir = get_test_cases_dir().join(case_name);
+    if attachment_dir.exists() && attachment_dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&attachment_dir); // 静默失败，不影响用例删除
+    }
+
+    Ok(())
 }
 
 /// 重命名测试用例文件
@@ -488,7 +508,72 @@ fn rename_test_case_file(old_name: String, new_name: String) -> Result<(), Strin
     }
 
     std::fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("Failed to rename file: {}", e))
+        .map_err(|e| format!("Failed to rename file: {}", e))?;
+
+    // 提取用例名（去掉 .json 后缀）
+    let old_stem = old_name.strip_suffix(".json").unwrap_or(&old_name);
+    let new_stem = new_name.strip_suffix(".json").unwrap_or(&new_name);
+
+    // 重命名附件目录（如果存在）
+    let old_dir = dir.join(old_stem);
+    let new_dir = dir.join(new_stem);
+    if old_dir.exists() && old_dir.is_dir() {
+        std::fs::rename(&old_dir, &new_dir)
+            .map_err(|e| format!("Failed to rename attachment directory: {}", e))?;
+    }
+
+    // 重写 JSON 中的附件 id 路径前缀
+    rewrite_attachment_ids(&new_path, old_stem, new_stem)?;
+
+    Ok(())
+}
+
+/// 重写 JSON 文件中所有附件 id 的路径前缀（用于重命名用例时同步更新）
+fn rewrite_attachment_ids(
+    json_path: &std::path::Path,
+    old_prefix: &str,
+    new_prefix: &str,
+) -> Result<(), String> {
+    let content = std::fs::read_to_string(json_path)
+        .map_err(|e| format!("Failed to read JSON: {}", e))?;
+
+    let mut value: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    // 递归替换所有 id 字段中的路径前缀
+    replace_id_prefix(&mut value, old_prefix, new_prefix);
+
+    let new_content = serde_json::to_string_pretty(&value)
+        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
+
+    std::fs::write(json_path, new_content)
+        .map_err(|e| format!("Failed to write JSON: {}", e))?;
+
+    Ok(())
+}
+
+/// 递归替换 JSON 中所有 id 字段的路径前缀
+fn replace_id_prefix(value: &mut serde_json::Value, old_prefix: &str, new_prefix: &str) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::String(id)) = map.get_mut("id") {
+                let old_path = format!("{}/", old_prefix);
+                let new_path = format!("{}/", new_prefix);
+                if id.starts_with(&old_path) {
+                    *id = id.replacen(&old_path, &new_path, 1);
+                }
+            }
+            for v in map.values_mut() {
+                replace_id_prefix(v, old_prefix, new_prefix);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                replace_id_prefix(v, old_prefix, new_prefix);
+            }
+        }
+        _ => {}
+    }
 }
 
 // ============================================================================
@@ -711,6 +796,7 @@ fn main() {
             get_connection_status,
             write_serial_data,
             save_attachment,
+            save_testcase_attachment,
             attachment_exists,
             delete_attachment,
             send_attachment,
