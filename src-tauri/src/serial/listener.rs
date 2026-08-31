@@ -2,6 +2,7 @@ use crate::error::SerialError;
 use crate::state::{classify_io_error, SerialErrorKind, SerialErrorPayload, Severity};
 use serialport::SerialPort;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::watch;
@@ -53,8 +54,11 @@ fn now_millis() -> u64 {
 
 /// 启动串口监听任务
 ///
-/// 接收 try_clone() 后的独立端口句柄，在 tokio::spawn_blocking 中运行阻塞读循环。
-/// 监听器拥有端口的独立句柄，不与写入路径共享锁，彻底消除读写抢锁导致的延迟/丢失。
+/// 接收与写入路径**共享**的端口句柄（`Arc<Mutex<Box<dyn SerialPort>>>`），在
+/// tokio::spawn_blocking 中运行阻塞读循环。摒弃 Windows 下不可靠的 try_clone()：
+/// 克隆句柄在部分 USB 转串口驱动上读不到任何数据（RX 完全消失）。改为单句柄
+/// 共享 + 短持锁：每次循环只在 `read()` 期间持锁，读完立即释放，随后在锁外
+/// 完成组包与 emit，写入路径得以在包间隙插入。对齐 QT QSerialPort 的单句柄模型。
 ///
 /// # 组包机制（纯字符间超时）
 ///
@@ -68,7 +72,7 @@ fn now_millis() -> u64 {
 #[allow(unused_assignments)]
 pub fn start_listener(
     port_label: String,
-    mut port: Box<dyn SerialPort>,
+    port: Arc<Mutex<Box<dyn SerialPort>>>,
     cancel_rx: watch::Receiver<bool>,
     app_handle: AppHandle,
     frame_timeout_ms: u64,
@@ -76,10 +80,12 @@ pub fn start_listener(
     // 夹取帧超时下限，保证 frame_timeout > read_timeout
     let frame_timeout = Duration::from_millis(frame_timeout_ms.max(MIN_FRAME_TIMEOUT_MS));
 
-    // 将读超时收紧到较小值，以提高静默间隙的检测分辨率。
-    // try_clone 出的句柄独立设置超时，不影响写入路径。
-    if let Err(e) = port.set_timeout(Duration::from_millis(READ_TIMEOUT_MS)) {
-        eprintln!("Failed to set read timeout [{}]: {}", port_label, e);
+    // 初始读超时已在 connect() 设为 READ_TIMEOUT_MS。写路径会临时切换再恢复，
+    // 故此处再兜底设置一次，确保监听器起始状态为短超时（防御 connect 逻辑变动）。
+    if let Ok(mut guard) = port.lock() {
+        if let Err(e) = guard.set_timeout(Duration::from_millis(READ_TIMEOUT_MS)) {
+            eprintln!("Failed to set read timeout [{}]: {}", port_label, e);
+        }
     }
 
     tokio::task::spawn_blocking(move || {
@@ -141,7 +147,23 @@ pub fn start_listener(
                 break;
             }
 
-            match port.read(&mut read_buf) {
+            // ── 短持锁读取 ────────────────────────────────────────────
+            // 仅在 read() 期间持有端口锁：读到数据或超时后立即释放，
+            // 后续组包/emit 全在锁外完成，写入路径可在包间隙拿锁。
+            // 锁本身若被写入方毒化（panic），视为致命，退出监听。
+            let read_result = {
+                let mut guard = match port.lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        eprintln!("Serial port lock poisoned [{}], stopping listener", port_label);
+                        emit_chunk!(true);
+                        break;
+                    }
+                };
+                guard.read(&mut read_buf)
+            }; // ← 端口锁在此释放
+
+            match read_result {
                 Ok(n) if n > 0 => {
                     // 若与上一次收到字节的间隔已超过帧超时，说明上一帧已结束，先闭合
                     if frame_active {
@@ -185,6 +207,10 @@ pub fn start_listener(
                                 emit_chunk!(false);
                             }
                         }
+                    } else {
+                        // 无帧进行中且本次读空转：主动让出 CPU 与端口锁的抢占窗口，
+                        // 保证写入线程不会因监听器紧循环重抢锁而饥饿（std::Mutex 非公平）。
+                        std::thread::yield_now();
                     }
                 }
                 Err(e) => {
@@ -198,8 +224,10 @@ pub fn start_listener(
 
                     match severity {
                         Severity::Warning => {
-                            // 警告级：打印到控制台后继续重试
+                            // 警告级：打印后短暂退避再重试，避免瞬时错误下 CPU 紧自旋、
+                            // 并给写入线程抢锁窗口（此前 continue 会静默无限空转）。
                             eprintln!("Serial read warning [{}]: {}", port_label, e);
+                            std::thread::sleep(Duration::from_millis(READ_TIMEOUT_MS));
                             continue;
                         }
                         Severity::Fatal => {

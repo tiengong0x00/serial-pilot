@@ -87,6 +87,12 @@ fn now_millis() -> u64 {
         .as_millis() as u64
 }
 
+/// 监听器读循环使用的短读超时（毫秒）
+///
+/// 单句柄共享模式下，此超时同时是设备级超时。写操作会在持锁期间临时切换到
+/// 写超时、写完恢复此值，保证监听器每次拿锁读时都是短超时（高分辨率帧检测）。
+pub const READ_TIMEOUT_MS: u64 = 5;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerialConfig {
     pub baud_rate: u32,
@@ -118,6 +124,18 @@ pub struct PortHandle {
     /// 缓存的波特率，避免每次 write 时调用 port.baud_rate()（Windows 下是系统调用）
     #[allow(dead_code)]
     pub baud_rate: u32,
+}
+
+/// 根据要写入的字节数与波特率，估算一个安全的写超时（毫秒）
+///
+/// 单句柄共享模式下，设备级超时由读写共用。写前临时放大到此值，保证
+/// 大块数据能在流控/拥塞下发完；写后由调用方恢复为 `READ_TIMEOUT_MS`。
+fn write_timeout_for(len: usize, baud_rate: u32) -> u64 {
+    // 每字节约 10 bit（8N1 含起止位）。传输耗时(ms) = len*10*1000/baud。
+    // 放 4 倍余量 + 200ms 基础，兜底 500ms、封顶 5s。
+    let baud = baud_rate.max(1) as u64;
+    let transmit_ms = (len as u64) * 10 * 1000 / baud;
+    (transmit_ms * 4 + 200).clamp(500, 5000)
 }
 
 impl Drop for PortHandle {
@@ -165,10 +183,11 @@ impl SerialManager {
 
     /// 连接串口
     ///
-    /// 固定写超时按"覆盖一大块缓冲的理论发送时间 + 余量"设定，连接后不再变。
-    /// 写超时只是等待上限（WriteFile 能写就立即返回，设大无副作用、不增加延迟），
-    /// 唯有设备卡死才触发。给足可根治大数据 write_all 部分写入（"failed to write
-    /// whole buffer"）。`file_packet_size` 参数保留（调用方兼容），此处不再参与计算。
+    /// 单句柄共享模式：读写共用同一句柄与同一设备级超时。初始超时设为
+    /// `READ_TIMEOUT_MS`（监听器读循环所需的短超时）；写操作在持锁期间临时切换到
+    /// 按数据量估算的写超时，写完恢复短超时（详见 `write`）。互斥锁保证读写永不
+    /// 并发访问端口，因此监听器每次拿锁时超时都已恢复为短值。`file_packet_size`
+    /// 参数保留（调用方兼容），此处不再参与计算。
     pub fn connect(&self, label: &str, name: &str, cfg: &SerialConfig, file_packet_size: u32) -> Result<(), SerialError> {
         let _ = file_packet_size; // 不再按单包算超时，保留签名兼容
         // 检查是否已连接
@@ -212,14 +231,9 @@ impl SerialManager {
             _ => return Err(SerialError::ConfigInvalid(format!("Invalid flow control: {}", cfg.flow_control))),
         };
 
-        // 计算固定写超时：覆盖一大块缓冲(64KB)在当前波特率下的理论发送时间 + 1s 余量。
-        // write_all 只在 OS 发送缓冲填满时才阻塞，超时给足即可保证整包塞入不被截断；
-        // 小命令写入瞬时返回，超时多大都不影响其延迟。
-        let baud = cfg.baud_rate.max(110); // 防止除零，最低110波特率
-        const TIMEOUT_COVER_BYTES: u64 = 64 * 1024;
-        let theoretical_ms = (TIMEOUT_COVER_BYTES * 10 * 1000) / baud as u64;
-        let write_timeout_ms = (theoretical_ms + 1000).max(1000);
-        let write_timeout = std::time::Duration::from_millis(write_timeout_ms);
+        // 初始设备级超时 = 监听器读循环所需的短超时。
+        // 写路径会在持锁期间临时放大再恢复，故此处不再按大缓冲预置长超时。
+        let read_timeout = std::time::Duration::from_millis(READ_TIMEOUT_MS);
 
         // 打开串口
         let mut port = serialport::new(name, cfg.baud_rate)
@@ -227,7 +241,7 @@ impl SerialManager {
             .stop_bits(stop_bits)
             .data_bits(data_bits)
             .flow_control(flow_control)
-            .timeout(write_timeout)
+            .timeout(read_timeout)
             .open()
             .map_err(|e| SerialError::OpenFailed(format!("{}: {}", name, e)))?;
 
@@ -325,16 +339,13 @@ impl SerialManager {
         // Arc<Mutex> 后立即释放全局锁。这样 write_all 的阻塞只作用于当前
         // 端口自己的锁，不再卡住其他端口的读写、状态查询与连接管理，
         // 消除"连点发送时全局串行排队"的瓶颈。
-        let port_arc = {
+        let (port_arc, baud_rate) = {
             let guard = self.connections.lock()
                 .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
             let handle = guard.get(label)
                 .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
-            Arc::clone(&handle.port)
+            (Arc::clone(&handle.port), handle.baud_rate)
         }; // ← 全局锁在此释放
-
-        let mut port_guard = port_arc.lock()
-            .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
 
         // packet_size == 0 表示“不分包”：整包一次性发送。
         let packet_size = if file_packet_size == 0 {
@@ -352,14 +363,31 @@ impl SerialManager {
         // 不再做 bytes_to_write() 背压轮询：部分 USB 转串口驱动(如 XR21V1412)
         // 的 cbOutQue 恒返回 0，轮询是死代码；且写超时已按大缓冲给足，
         // write_all 会阻塞到整包塞入 OS 缓冲，不会出现部分写入。
+        // 单句柄共享模式：每包**短持锁**，锁内切换写超时→写入→恢复读超时→释放锁。
+        // 这样监听器读循环能在包间隙拿到锁读取，写入不会长期霸占句柄；且互斥锁
+        // 保证监听器拿锁时超时已恢复为 READ_TIMEOUT_MS（高分辨率帧检测）。
+        let read_timeout = std::time::Duration::from_millis(READ_TIMEOUT_MS);
         let mut total_written = 0;
         let chunks = data.chunks(packet_size);
         let chunk_count = chunks.len();
 
         for (i, chunk) in chunks.enumerate() {
-            port_guard
-                .write_all(chunk)
-                .map_err(|e| SerialError::WriteFailed(format!("{}", e)))?;
+            {
+                let mut port_guard = port_arc.lock()
+                    .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?;
+
+                // 按本包字节量动态放大写超时，保证流控/拥塞下能整包写完
+                let wt = std::time::Duration::from_millis(write_timeout_for(chunk.len(), baud_rate));
+                let _ = port_guard.set_timeout(wt);
+
+                let write_res = port_guard.write_all(chunk);
+
+                // 无论成败都恢复短读超时，避免监听器下次读被长超时拖住
+                let _ = port_guard.set_timeout(read_timeout);
+
+                write_res.map_err(|e| SerialError::WriteFailed(format!("{}", e)))?;
+            } // ← 端口锁在此释放，让监听器有机会读取
+
             total_written += chunk.len();
 
             // 包间延时（最后一包无需等待）
@@ -386,11 +414,12 @@ impl SerialManager {
         }
     }
 
-    /// 获取用于监听器的独立端口句柄
+    /// 获取用于监听器的端口句柄（共享模式）
     ///
-    /// 通过 try_clone() 复制底层句柄，使监听器读循环拥有自己的端口，
-    /// 与写入路径（原端口）互不抢锁，避免阻塞式 read 持锁导致收发相互延迟/丢失。
-    pub fn get_port_for_listener(&self, label: &str) -> Result<(Box<dyn SerialPort>, watch::Receiver<bool>), SerialError> {
+    /// 返回端口的 Arc<Mutex> 引用和取消信号接收器。
+    /// 监听器将通过短持锁方式读取数据，与写入路径共享同一句柄，
+    /// 避免 Windows 下 try_clone() 导致的克隆句柄读失效问题。
+    pub fn get_port_for_listener(&self, label: &str) -> Result<(Arc<Mutex<Box<dyn SerialPort>>>, watch::Receiver<bool>), SerialError> {
         let guard = self.connections.lock()
             .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
 
@@ -399,12 +428,8 @@ impl SerialManager {
 
         let cancel_rx = handle.cancel_tx.subscribe();
 
-        let port_clone = handle.port.lock()
-            .map_err(|e| SerialError::Internal(format!("Failed to acquire port lock: {}", e)))?
-            .try_clone()
-            .map_err(|e| SerialError::OpenFailed(format!("Failed to clone port: {}", e)))?;
-
-        Ok((port_clone, cancel_rx))
+        // 直接返回共享的 Arc，不再 try_clone
+        Ok((Arc::clone(&handle.port), cancel_rx))
     }
 
     /// 请求取消指定端口正在进行的文件发送
@@ -439,13 +464,13 @@ impl SerialManager {
             .map_err(|e| SerialError::Internal(format!("Failed to stat attachment: {}", e)))?
             .len();
 
-        // 拿到端口 Arc（克隆句柄，释放全局锁后再发送）
-        let port_arc = {
+        // 拿到端口 Arc 与波特率（释放全局锁后再发送）
+        let (port_arc, baud_rate) = {
             let guard = self.connections.lock()
                 .map_err(|e| SerialError::Internal(format!("Failed to acquire lock: {}", e)))?;
             let handle = guard.get(label)
                 .ok_or_else(|| SerialError::NotConnected(label.to_string()))?;
-            Arc::clone(&handle.port)
+            (Arc::clone(&handle.port), handle.baud_rate)
         };
 
         // 注册/重置该端口的取消标志
@@ -476,54 +501,60 @@ impl SerialManager {
                 cancelled: false,
             });
 
-            {
-                let mut port_guard = match port_arc.lock() {
-                    Ok(g) => g,
-                    Err(_) => return,
+            let read_timeout = std::time::Duration::from_millis(READ_TIMEOUT_MS);
+            let mut buffer = vec![0u8; block];
+            loop {
+                if cancel_flag.load(Ordering::SeqCst) {
+                    cancelled = true;
+                    break;
+                }
+
+                // 从磁盘读一块
+                let n = match file.read(&mut buffer) {
+                    Ok(0) => break, // EOF
+                    Ok(n) => n,
+                    Err(_) => {
+                        cancelled = true;
+                        break;
+                    }
                 };
 
-                let mut buffer = vec![0u8; block];
-                loop {
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        cancelled = true;
-                        break;
-                    }
-
-                    // 从磁盘读一块
-                    let n = match file.read(&mut buffer) {
-                        Ok(0) => break, // EOF
-                        Ok(n) => n,
-                        Err(_) => {
-                            cancelled = true;
-                            break;
-                        }
+                // 单句柄共享模式：每块短持锁——锁内切换写超时→写入→恢复读超时→释放。
+                // 块间隙让监听器有机会拿锁读取设备回显/上报，避免大文件发送期间 RX 饿死。
+                {
+                    let mut port_guard = match port_arc.lock() {
+                        Ok(g) => g,
+                        Err(_) => { cancelled = true; break; }
                     };
-
-                    // 背靠背写串口
-                    if port_guard.write_all(&buffer[..n]).is_err() {
+                    let wt = std::time::Duration::from_millis(write_timeout_for(n, baud_rate));
+                    let _ = port_guard.set_timeout(wt);
+                    let write_res = port_guard.write_all(&buffer[..n]);
+                    let _ = port_guard.set_timeout(read_timeout);
+                    if write_res.is_err() {
                         cancelled = true;
                         break;
                     }
-                    sent += n as u64;
+                } // ← 端口锁在此释放
 
-                    // 块间延时（最后一块由 EOF 判断，此处统一延时）
-                    if interval_ms > 0 {
-                        std::thread::sleep(std::time::Duration::from_millis(interval_ms as u64));
-                    }
+                sent += n as u64;
 
-                    // 时间片节流 emit 进度
-                    if last_emit.elapsed().as_millis() >= EMIT_INTERVAL_MS {
-                        let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
-                            port_label: label_owned.clone(),
-                            sent_bytes: sent,
-                            total_bytes,
-                            done: false,
-                            cancelled: false,
-                        });
-                        last_emit = std::time::Instant::now();
-                    }
+                // 块间延时（最后一块由 EOF 判断，此处统一延时）
+                if interval_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(interval_ms as u64));
                 }
-            } // 释放端口锁
+
+                // 时间片节流 emit 进度
+                if last_emit.elapsed().as_millis() >= EMIT_INTERVAL_MS {
+                    let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
+                        port_label: label_owned.clone(),
+                        sent_bytes: sent,
+                        total_bytes,
+                        done: false,
+                        cancelled: false,
+                    });
+                    last_emit = std::time::Instant::now();
+                }
+            }
 
             // 终态事件
             let _ = app_handle.emit("file_send_progress", FileSendProgressPayload {
