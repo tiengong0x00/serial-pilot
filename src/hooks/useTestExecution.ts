@@ -1302,12 +1302,14 @@ export function useTestExecution() {
   /** 暂停执行 */
   const pauseExecution = useCallback(() => {
     pausedRef.current = true;
+    useExecutionStore.getState().pause();
     addLog('info', 'Execution paused');
   }, [addLog]);
 
   /** 恢复执行 */
   const resumeExecution = useCallback(() => {
     pausedRef.current = false;
+    useExecutionStore.getState().resume();
     addLog('info', 'Execution resumed');
   }, [addLog]);
 
@@ -1325,8 +1327,10 @@ export function useTestExecution() {
       const rootCase = cases[0];
       const effectivePort = targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1');
 
-      // 重置目标用例子树状态为 pending
-      resetCaseStatuses([targetCase]);
+      // 清理所有用例的状态（避免之前运行的用例状态残留）
+      if (rootCase) {
+        resetCaseStatuses([rootCase]);
+      }
 
       // 初始化上下文
       const ctx = getContext();
@@ -1356,7 +1360,7 @@ export function useTestExecution() {
         stop();
       }
     },
-    [cases, initExecution, start, stop, addLog, runCase],
+    [cases, initExecution, start, stop, addLog, runCase, resetCaseStatuses],
   );
 
   /** 运行单个命令（包装为临时用例执行） */

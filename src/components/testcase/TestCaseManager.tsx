@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Square, RefreshCw, Maximize2, Minimize2, Plus, Folder } from 'lucide-react';
+import { Play, Square, RefreshCw, Maximize2, Minimize2, Plus, Folder, Pause } from 'lucide-react';
 import { AtCommandIcon, UrcIcon, ScriptIcon } from '@/components/icons/CommandTypeIcons';
 import { useTestCaseStore } from '@/stores/testCaseStore';
 import { useExecutionStore } from '@/stores/executionStore';
@@ -54,8 +54,8 @@ export function TestCaseManager() {
     reset,
   } = useTestCaseStore();
 
-  const { isRunning } = useExecutionStore();
-  const { startExecution, stopExecution, runSingleCase, runSingleCommand, quickSendCommand } = useTestExecution();
+  const { isRunning, isPaused } = useExecutionStore();
+  const { startExecution, stopExecution, pauseExecution, resumeExecution, runSingleCase, runSingleCommand, quickSendCommand } = useTestExecution();
   useUrcListener(); // 启动 URC 后台监听器
 
   // 自动保存配置
@@ -587,9 +587,7 @@ export function TestCaseManager() {
       return;
     }
     try {
-      console.log('开始导出文件:', currentFile);
       const json = exportJson(currentFile);
-      console.log('导出 JSON 长度:', json.length);
 
       // 使用 Tauri 保存对话框
       const { save } = await import('@tauri-apps/plugin-dialog');
@@ -607,10 +605,7 @@ export function TestCaseManager() {
         // 使用 Tauri writeTextFile API 保存文件
         const { writeTextFile } = await import('@tauri-apps/plugin-fs');
         await writeTextFile(filePath, json);
-        console.log('文件保存成功:', filePath);
         alert(t('testCase.exportSuccess'));
-      } else {
-        console.log('用户取消了保存');
       }
     } catch (err) {
       console.error('导出失败:', err);
@@ -844,19 +839,48 @@ export function TestCaseManager() {
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* 运行/停止按钮 */}
-        <button
-          className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors ${
-            isRunning
-              ? 'bg-red-500 text-white hover:bg-red-600'
-              : 'bg-green-500 text-white hover:bg-green-600 disabled:opacity-40'
-          }`}
-          onClick={handleRun}
-          disabled={cases.length === 0}
-          title={isRunning ? t('testCase.stopExecution') : t('testCase.runCase')}
-        >
-          {isRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </button>
+        {/* 运行控制按钮组 */}
+        {!isRunning ? (
+          // 未运行：显示运行按钮
+          <button
+            className="flex items-center justify-center h-8 w-8 rounded-md transition-colors bg-green-500 text-white hover:bg-green-600 disabled:opacity-40"
+            onClick={handleRun}
+            disabled={cases.length === 0}
+            title={t('testCase.runCase')}
+          >
+            <Play className="h-4 w-4" />
+          </button>
+        ) : (
+          // 运行中：显示暂停/继续 + 停止按钮
+          <div className="flex items-center gap-1">
+            {!isPaused ? (
+              // 未暂停：显示暂停按钮
+              <button
+                className="flex items-center justify-center h-8 w-8 rounded-md transition-colors bg-yellow-500 text-white hover:bg-yellow-600"
+                onClick={pauseExecution}
+                title={t('testCase.pause')}
+              >
+                <Pause className="h-4 w-4" />
+              </button>
+            ) : (
+              // 已暂停：显示继续按钮
+              <button
+                className="flex items-center justify-center h-8 w-8 rounded-md transition-colors bg-green-500 text-white hover:bg-green-600"
+                onClick={resumeExecution}
+                title={t('testCase.resume')}
+              >
+                <Play className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              className="flex items-center justify-center h-8 w-8 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600"
+              onClick={stopExecution}
+              title={t('testCase.stopExecution')}
+            >
+              <Square className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {filesError && <p className="px-2 pt-1 text-xs text-destructive">{filesError}</p>}
@@ -905,6 +929,7 @@ export function TestCaseManager() {
           onRunCase={handleRunCase}
           onRunCommand={handleRunCommand}
           isRunning={isRunning}
+          isPaused={isPaused}
         />
       </div>
 

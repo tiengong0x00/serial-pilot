@@ -112,7 +112,6 @@ export const useCommandLibrary = create<CommandLibraryState>((set, get) => ({
 
       const unique = Array.from(seen.values());
       set({ commands: unique, loaded: true, error: null });
-      console.log(`[Command Library] Loaded ${unique.length} commands from ${libs.length} files`);
     } catch (e) {
       const error = String(e);
       set({ error, loaded: true });

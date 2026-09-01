@@ -256,7 +256,7 @@ function VirtualTerminalView({
     } else {
       // 生产环境用虚拟滚动
       if (autoScroll && messages.length > 0) {
-        virtualizer.scrollToIndex(messages.length - 1, { align: "end" });
+        virtualizer.scrollToIndex(messages.length - 1, { align: "start" });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -667,10 +667,6 @@ const DataTerminal = () => {
   }, [contextMenu, messages.length, input, handleExport, clearMessages, success, notifyError]);
 
   const handleSend = useCallback(async () => {
-    const sendId = Math.random().toString(36).substr(2, 6);
-    const t0 = performance.now();
-    console.log(`[PERF] handleSend[${sendId}] entry`);
-
     if (!input) {
       setErrorMsg(t("terminal.emptyInput"));
       return;
@@ -731,16 +727,10 @@ const DataTerminal = () => {
       addMessage(txMsg);
     }
 
-    const t1 = performance.now();
-    console.log(`[PERF] handleSend[${sendId}] optimistic_render=${(t1-t0).toFixed(2)}ms`);
-
     // 2. 后台发送（不阻塞界面）
     try {
       for (const target of targets) {
-        const t2 = performance.now();
         await writeSerialData(target, bytes);
-        const t3 = performance.now();
-        console.log(`[PERF] handleSend[${sendId}] writeSerialData[${target}]=${(t3-t2).toFixed(2)}ms`);
         // 成功：无需任何操作（TX 已显示）
       }
       // 发送成功后保留输入内容（不清空），用户可直接覆盖或修改
@@ -748,9 +738,6 @@ const DataTerminal = () => {
       const err = e as { message?: string };
       // 失败：TX 保持显示（符合常见软件行为），仅设置错误提示
       setErrorMsg(err.message ?? String(e));
-    } finally {
-      const t5 = performance.now();
-      console.log(`[PERF] handleSend[${sendId}] total=${(t5-t0).toFixed(2)}ms`);
     }
   }, [input, isConnected, lineFeed, hexMode, resolveTargets, writeSerialData, addMessage, t]);
 

@@ -7,6 +7,7 @@ import {
   Folder,
   GripVertical,
   Play,
+  Pause,
 } from 'lucide-react';
 import { AtCommandIcon, UrcIcon, ScriptIcon } from '@/components/icons/CommandTypeIcons';
 import {
@@ -89,13 +90,18 @@ interface TestCaseTreeProps {
   onRunCase?: (caseId: string) => void;
   onRunCommand?: (caseId: string, commandId: string) => void;
   isRunning?: boolean;
+  isPaused?: boolean;
 }
 
 type StatusValue = TestCase['status'] | TestCommand['status'];
 
-function StatusIcon({ status }: { status: StatusValue }) {
+function StatusIcon({ status, isPaused }: { status: StatusValue; isPaused?: boolean }) {
   switch (status) {
     case 'running':
+      // 运行中根据暂停状态显示不同图标
+      if (isPaused) {
+        return <Pause className="h-3.5 w-3.5 text-yellow-500" />;
+      }
       return <Clock className="h-3.5 w-3.5 text-status-running animate-spin" />;
     case 'success':
       return <CheckCircle2 className="h-3.5 w-3.5 text-status-success" />;
@@ -169,6 +175,7 @@ function DraggableCommandRow({
   onUpdateCommand,
   onRun,
   isRunning,
+  isPaused,
   projected,
 }: {
   cmd: TestCommand;
@@ -182,6 +189,7 @@ function DraggableCommandRow({
   onUpdateCommand: (patch: Partial<TestCommand>) => void;
   onRun?: () => void;
   isRunning?: boolean;
+  isPaused?: boolean;
   projected: ProjectedPosition | null;
 }) {
   const { t } = useTranslation();
@@ -281,7 +289,7 @@ function DraggableCommandRow({
         <GripVertical style={{ width: iconSize, height: iconSize }} />
       </button>
       <CommandTypeIcon type={cmd.type} />
-      <StatusIcon status={cmd.status} />
+      <StatusIcon status={cmd.status} isPaused={isPaused} />
       {editing ? (
         <input
           ref={inputRef}
@@ -342,7 +350,7 @@ function DraggableCommandRow({
             height: `${testCaseRowHeight - 4}px`,
           }}
           title={t('testCase.runThisCommand')}
-          disabled={isRunning}
+          disabled={isRunning && cmd.status === 'running'}
           onClick={(e) => {
             e.stopPropagation();
             onRun();
@@ -486,7 +494,7 @@ function DraggableCaseNode(props: {
         )}
 
         <Folder style={{ width: iconSize, height: iconSize }} className="text-blue-500" />
-        <StatusIcon status={case_.status} />
+        <StatusIcon status={case_.status} isPaused={shared.isPaused} />
         <span className={cn('flex-1 truncate', textSizeClass, !case_.selected && 'text-muted-foreground')}>
           {case_.name}
         </span>
@@ -508,7 +516,7 @@ function DraggableCaseNode(props: {
               height: `${testCaseRowHeight - 4}px`,
             }}
             title={t('testCase.runThisCase')}
-            disabled={shared.isRunning}
+            disabled={shared.isRunning && case_.status === 'running'}
             onClick={(e) => {
               e.stopPropagation();
               shared.onRunCase?.(case_.id);
@@ -549,6 +557,7 @@ function DraggableCaseNode(props: {
                 onUpdateCommand={(patch) => onUpdateCommand(case_.id, child.id, patch)}
                 onRun={shared.onRunCommand ? () => shared.onRunCommand?.(case_.id, child.id) : undefined}
                 isRunning={shared.isRunning}
+                isPaused={shared.isPaused}
                 projected={projected}
               />
             ) : (
@@ -729,6 +738,7 @@ export function TestCaseTree(props: TestCaseTreeProps) {
                   onUpdateCommand={(patch) => onUpdateCommand(root.id, child.id, patch)}
                   onRun={shared.onRunCommand ? () => shared.onRunCommand?.(root.id, child.id) : undefined}
                   isRunning={shared.isRunning}
+                  isPaused={shared.isPaused}
                   projected={projected}
                 />
               ) : (
