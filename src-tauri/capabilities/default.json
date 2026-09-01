@@ -19,6 +19,24 @@
     "process:allow-restart",
     "dialog:default",
     "dialog:allow-save",
+    "dialog:allow-open",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+        { "path": "$RESOURCE/*" },
+        { "path": "$APPDATA/*" },
+        { "path": "$APPCONFIG/*" },
+        { "path": "$APPLOCALDATA/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        { "path": "$APPDATA/*" },
+        { "path": "$APPCONFIG/*" },
+        { "path": "$APPLOCALDATA/*" }
+      ]
+    },
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://github.com/*" }]

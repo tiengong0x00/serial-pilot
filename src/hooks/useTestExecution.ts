@@ -359,9 +359,6 @@ export function useTestExecution() {
 
       updateCommand(caseId, cmd.id, { status: 'running' });
 
-      // 命令前延迟
-      if (cmd.preDelay > 0) await sleep(cmd.preDelay);
-
       // 命令字符串变量替换
       const replaceResult = replaceVariables(cmd.command, ctx.variables, ctx.sequenceCounters, true);
       const resolvedCommand = replaceResult.text;
@@ -394,8 +391,8 @@ export function useTestExecution() {
           addLog('warning', `[stderr] ${result.stderr.trim()}`, cmd.id, caseId);
         }
 
-        // 命令后延迟
-        if (cmd.postDelay > 0) await sleep(cmd.postDelay);
+        // 命令延时
+        if (cmd.delay > 0) await sleep(cmd.delay);
 
         if (result.success) {
           updateCommand(caseId, cmd.id, { status: 'success' });
@@ -501,7 +498,6 @@ export function useTestExecution() {
       }
 
       updateCommand(caseId, cmd.id, { status: 'running' });
-      await sleep(cmd.preDelay);
 
       let successCount = 0;
 
@@ -819,9 +815,9 @@ export function useTestExecution() {
           break;
         }
 
-        // 重发间隔
+        // 重试间隔（复用命令延时）
         if (attempt < cmd.repeatCount - 1) {
-          await sleep(cmd.attemptInterval);
+          await sleep(cmd.delay);
         }
       }
 
@@ -830,7 +826,7 @@ export function useTestExecution() {
       updateCommand(caseId, cmd.id, { status: finalSuccess ? 'success' : 'failed' });
 
       if (finalSuccess) {
-        await sleep(cmd.postDelay);
+        await sleep(cmd.delay);
         return 'success';
       } else {
         if (!lastFailureReasonRef.current) {
@@ -1428,7 +1424,7 @@ export function useTestExecution() {
   /**
    * 快速发送命令（裸发送模式）
    * - 用于树形区行右侧运行按钮的"点射"语义
-   * - 忽略所有配置：不等 preDelay、不校验响应、不重复、不提取变量、不更新状态
+   * - 忽略所有配置：不等命令延时、不校验响应、不重复、不提取变量、不更新状态
    * - 文件仍按分包设置发送，内容追加行结束符
    */
   const quickSendCommand = useCallback(

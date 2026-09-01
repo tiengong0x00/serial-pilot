@@ -81,8 +81,7 @@ export interface BaseCommand {
   lineEnding: LineEnding;
 
   // 时序控制
-  preDelay: number;                     // 发送前延迟(ms)
-  postDelay: number;                    // 成功后延迟(ms)
+  delay: number;                        // 命令延时(ms)：执行完成后等待，重试之间也用它
 
   // 交互状态
   selected: boolean;                    // 是否参与执行（勾选开关）
@@ -97,7 +96,6 @@ export interface StandardCommand extends BaseCommand {
   repeatCount: number;                  // 发送次数（≥1，1=不重复）
   successThreshold: number;             // 需成功几次才算命令成功（≤repeatCount）
   stopWhenReached: boolean;             // 达到阈值后立即停止（否=发满repeatCount）
-  attemptInterval: number;              // 重发间隔(ms)
 
   // 响应校验
   timeout: number;                      // 单次等待超时(ms)，validation='none'时不生效

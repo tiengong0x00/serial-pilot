@@ -1,179 +1,384 @@
 # Test Case Format Specification
 
-This directory stores automated test case JSON files. Each file represents a complete test scenario.
+This directory stores automated test case JSON files. Each file represents a complete test scenario with support for tree nesting, variable extraction, loops, and retries.
 
 ---
 
-## 1. File Format Overview
+## 📋 Table of Contents
 
-Each `.json` file contains a root case, which can nest sub-cases and commands in a tree structure.
+1. [Quick Start](#quick-start)
+2. [File Structure](#file-structure)
+3. [Field Reference](#field-reference)
+4. [Command Types](#command-types)
+5. [Variable System](#variable-system)
+6. [Failure Strategies](#failure-strategies)
+7. [Complete Examples](#complete-examples)
+8. [FAQ](#faq)
 
-**Basic structure:**
+---
+
+## 🚀 Quick Start
+
+### Minimal Example
+
+Fill only the key fields, defaults will be applied automatically:
 
 ```json
 {
   "version": "2.0",
-  "createdAt": "2026-08-13T00:00:00.000Z",
   "rootCase": {
-    "id": "case_demo_root",
-    "name": "Test Scenario Name",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
-    "children": [ /* commands or sub-cases */ ]
+    "name": "Basic AT Test",
+    "children": [
+      {
+        "type": "command",
+        "name": "AT Handshake",
+        "content": "AT"
+      }
+    ]
   }
 }
 ```
 
+**Auto-filled defaults:**
+- Data format: UTF-8, Line ending: CRLF
+- Repeat count: 1, Timeout: 2000ms
+- Validation: Standard (response contains OK)
+- Failure strategy: Abort test
+
+### Adding Your Own Test Cases
+
+1. **Copy example file** - Start from `demo.json`
+2. **Modify case name and commands** - Adjust the `content` field as needed
+3. **Adjust parameters** (optional) - Modify timeout, retry count, etc.
+4. **Save and import** - Load the file in the application
+
 ---
 
-## 2. Field Details
+## 📦 File Structure
 
-> **Fill only the key parameters.** On import the app auto-fills defaults for missing fields, so when hand-writing / AI-generating JSON you usually only need the ✅ fields; the rest can be omitted (omission = the "Default" shown below).
-> These are also **overwritten even if you set them**, so don't bother: `id` (auto-reassigned on import to avoid collisions), `status` (auto-reset to `"pending"`), `selected` (auto-unchecked on import — you re-check what to run in the UI).
+```
+test-case.json
+├── version          # Format version (fixed "2.0")
+├── createdAt        # Creation time (optional)
+└── rootCase         # Root case
+    ├── name         # Case name
+    ├── targetPort   # Target port (omit = auto)
+    ├── runCount     # Loop count
+    ├── onFailure    # Failure strategy
+    └── children     # Child array
+        ├── Command 1   # type="command"
+        ├── Guard       # type="urc-guard"
+        └── Sub-case    # Nested case
+```
 
-### Root-level fields
+**Hierarchy:**
+- **Root Case**: Top level, defines target port and global strategy
+- **Sub-cases**: Can nest multiple levels for modular testing
+- **Commands**: Actual AT commands to send
+- **Guards**: Background monitors for URC reports
+
+---
+
+## 📖 Field Reference
+
+### Root-level Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | `string` | ✅ | Format version, currently fixed at `"2.0"` |
+| `version` | `string` | ✅ | Format version, fixed at `"2.0"` |
 | `createdAt` | `string` | ❌ | ISO 8601 timestamp (optional) |
 | `rootCase` | `object` | ✅ | Root case object |
 
-### Root case (rootCase) fields
+### Case Fields (rootCase / Sub-case)
 
-| Field | Type | Required | Description | Range / Default |
-|-------|------|----------|-------------|-----------------|
-| `id` | `string` | ❌ | Unique identifier (auto-reassigned on import, can omit) | Suggested format: `case_<timestamp>_<random>` |
-| `name` | `string` | ✅ | Case name (recommended; omit → `"Unnamed Case"`) | Any string |
-| `description` | `string` | ❌ | Case description (optional) | - |
-| `targetPort` | `string` | ❌ | **Target port** (root case only; omit = auto) | `"P1"` / `"P2"`, omit or leave empty = auto |
-| `runCount` | `number` | ❌ | Loop count | `≥1` (normal loop), `0` (infinite loop, manual stop required), default `1` |
-| `onFailure` | `string` | ❌ | Failure strategy (enum) | `"continue"` / `"end-round"` / `"retry-self"` / `"abort"`, default `"abort"` |
-| `maxSelfRetries` | `number` | ❌ | Retry limit for `retry-self` | Default `1`, falls back to `continue` when exhausted |
-| `selected` | `boolean` | ❌ | Whether to execute (auto-unchecked on import, can omit) | `true` / `false` |
-| `isExpanded` | `boolean` | ❌ | UI expand state | `true` / `false`, default `true` |
-| `status` | `string` | ❌ | Execution status (auto-reset on import, can omit) | `"pending"` / `"running"` / `"success"` / `"failed"` / `"interrupted"` / `"skipped"` |
-| `children` | `array` | ✅ | Child array (commands or sub-cases) | At least 1 child |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| **Basic Info** ||||
+| `name` | `string` | Case name | `"Unnamed Case"` |
+| `description` | `string` | Case description | - |
+| `targetPort` | `string` | Target port (root only) | Auto |
+| **Execution Control** ||||
+| `runCount` | `number` | Loop count (0=infinite) | `1` |
+| `onFailure` | `string` | Failure strategy | `"abort"` |
+| `maxSelfRetries` | `number` | Retry limit for `retry-self` | `1` |
+| **UI State** ||||
+| `selected` | `boolean` | Whether to execute | `false` |
+| `isExpanded` | `boolean` | Whether expanded | `true` |
+| `status` | `string` | Execution status | `"pending"` |
+| **Children** ||||
+| `children` | `array` | Commands or sub-cases | Required |
 
-**targetPort explanation:**
-- Omitted or empty — **Auto mode** (recommended): single port → use the connected port; dual port → follow the send-area selection (P1/P2/ALL→P1)
-- `"P1"` — Pin to the first serial port
-- `"P2"` — Pin to the second serial port
-- Only the root case needs this field; sub-cases inherit it automatically
+#### targetPort Explanation
 
-**onFailure strategy:**
-- `continue` — Skip failure, proceed to next sibling
-- `end-round` — End current round (enter next round if parent has loop; otherwise end this case)
-- `retry-self` — Re-execute this case (limited by `maxSelfRetries`, cases only)
-- `abort` — Interrupt entire test
+- **Omit or leave empty** (recommended) - Auto mode:
+  - Single port: Use the connected port
+  - Dual port: Follow send area selection (P1/P2/ALL)
+- **`"P1"`** - Pin to first serial port
+- **`"P2"`** - Pin to second serial port
 
-### Sub-case fields
-
-Sub-cases have the same fields as root case, **but no `targetPort`** (inherits from parent).
+> 💡 **Recommendation**: Omit this field unless you need to pin a specific port
 
 ---
 
-## 3. Command Types
+## 🔧 Command Types
 
-The `children` array can contain two command types:
+### 1. Standard Command (type="command")
 
-### 3.1 Standard Command (type="command")
+Send AT commands and wait for responses.
 
-Send AT command and wait for response.
+#### Basic Fields
 
-| Field | Type | Required | Description | Range / Default |
-|-------|------|----------|-------------|-----------------|
-| `id` | `string` | ❌ | Unique identifier (auto-reassigned on import, can omit) | Suggested: `cmd_<timestamp>_<random>` |
-| `type` | `string` | ✅ | Command type (omit → treated as `"command"`) | `"command"` |
-| `name` | `string` | ❌ | Command display name | - |
-| `description` | `string` | ❌ | Command description | - |
-| `content` | `string` | ✅ | **Command content** (supports variable substitution) | See "Variable Syntax" section |
-| `dataFormat` | `string` | ❌ | Data format | `"utf8"` / `"hex"`, default `"utf8"` |
-| `lineEnding` | `string` | ❌ | Line ending | `"none"` / `"lf"` / `"cr"` / `"crlf"`, default `"crlf"` |
-| `preDelay` | `number` | ❌ | Pre-send delay (ms) | `≥0`, default `0` |
-| `postDelay` | `number` | ❌ | Post-success delay (ms) | `≥0`, default `0` |
-| `selected` | `boolean` | ❌ | Whether to execute (auto-unchecked on import, can omit) | `true` / `false` |
-| `status` | `string` | ❌ | Execution status (auto-reset on import, can omit) | Same as case `status` |
-| **Repeat Strategy** | | | | |
-| `repeatCount` | `number` | ❌ | Send count | `≥1` (`1` = no repeat), default `1` |
-| `successThreshold` | `number` | ❌ | Required success count | `≤ repeatCount`, default `1` |
-| `stopWhenReached` | `boolean` | ❌ | Stop immediately on threshold | `true` (stop on success) / `false` (send full repeatCount), default `true` |
-| `attemptInterval` | `number` | ❌ | Retry interval (ms) | `≥0`, default `1000` |
-| **Response Validation** | | | | |
-| `timeout` | `number` | ❌ | Single wait timeout (ms) | `≥0`, default `2000`, ignored when `validation="none"` |
-| `validation` | `string` | ❌ | Validation type | `"none"` / `"standard"` / `"custom"`, default `"standard"` |
-| `validationPattern` | `string` | ❌ | Validation pattern (required for `custom`) | Regex or string |
-| `validationMode` | `string` | ❌ | Match mode (required for `custom`) | `"contains"` / `"exact"` / `"regex"` / `"startsWith"` / `"endsWith"` |
-| **Variable Extraction** | | | | |
-| `extractConfig` | `object` | ❌ | Extraction config (optional) | See "Variable Extraction" section |
-| **Failure Handling** | | | | |
-| `onFailure` | `string` | ❌ | Failure strategy | `"continue"` / `"end-round"` / `"abort"` (commands don't support `retry-self`), default `"abort"` |
-| **File Send** | | | | |
-| `fileData` | `object` | ❌ | File data (optional) | `{ name, size, base64 }` |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `type` | `string` | Command type | `"command"` |
+| `name` | `string` | Command name | - |
+| `content` | `string` | Command content (supports variables) | Required |
+| `dataFormat` | `string` | Data format | `"utf8"` |
+| `lineEnding` | `string` | Line ending | `"crlf"` |
+| `delay` | `number` | Delay in ms | `0` |
 
-**validation types:**
-- `none` — Success immediately after send, no response wait
-- `standard` — Standard AT validation (pass if response contains `OK`)
-- `custom` — Custom pattern match (requires `validationPattern` and `validationMode`)
+**dataFormat options:** `"utf8"` | `"hex"`  
+**lineEnding options:** `"none"` | `"lf"` | `"cr"` | `"crlf"`
 
-**validationMode:**
-- `contains` — Response contains specified string
-- `exact` — Response exactly matches
-- `regex` — Regex match
-- `startsWith` — Response starts with string
-- `endsWith` — Response ends with string
+#### Repeat Sending
 
-### 3.2 URC Background Guard (type="urc-guard")
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `repeatCount` | `number` | Max send attempts | `1` |
+| `successThreshold` | `number` | Required successes | `1` |
+| `stopWhenReached` | `boolean` | Stop when threshold met | `true` |
 
-Monitor unsolicited result codes from device and trigger actions.
+**Example:** "Send 10 times, need at least 8 successes"
+```json
+{
+  "repeatCount": 10,
+  "successThreshold": 8,
+  "stopWhenReached": false
+}
+```
 
-| Field | Type | Required | Description | Range / Default |
-|-------|------|----------|-------------|-----------------|
-| `id` | `string` | ❌ | Unique identifier (auto-reassigned on import, can omit) | - |
-| `type` | `string` | ✅ | Command type (fixed) | `"urc-guard"` |
-| `name` | `string` | ❌ | Guard name | - |
-| `description` | `string` | ❌ | Guard description | - |
-| `content` | `string` | ❌ | No meaning (legacy compat, leave empty) | `""` |
-| `dataFormat` | `string` | ❌ | Fixed | `"utf8"` |
-| `lineEnding` | `string` | ❌ | Fixed | `"none"` |
-| `preDelay` | `number` | ❌ | Fixed | `0` |
-| `postDelay` | `number` | ❌ | Fixed | `0` |
-| `selected` | `boolean` | ❌ | Whether to execute (auto-unchecked on import, can omit) | `true` / `false` |
-| `status` | `string` | ❌ | Execution status (auto-reset on import, can omit) | - |
-| **Guard Config** | | | | |
-| `pattern` | `string` | ✅ | Match pattern | Regex or string |
-| `matchMode` | `string` | ❌ | Match mode | Same as standard command `validationMode`, default `"contains"` |
-| `scope` | `string` | ❌ | Scope | `"root"` / `"case"`, default `"case"` |
-| `action` | `string` | ❌ | Action on match | `"restart-round"` / `"abort"` / `"fail-current"` / `"capture-only"` / `"log-only"`, default `"fail-current"` |
-| `rearm` | `string` | ❌ | Behavior after trigger | `"once"` / `"continuous"`, default `"continuous"` |
-| `extractConfig` | `object` | ❌ | Extraction config (optional) | - |
+#### Response Validation
 
-**scope:**
-- `root` — Global scope (active during entire test)
-- `case` — Case scope (active only while owning case executes)
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `timeout` | `number` | Wait timeout (ms) | `2000` |
+| `validation` | `string` | Validation type | `"standard"` |
+| `validationPattern` | `string` | Pattern (required for custom) | - |
+| `validationMode` | `string` | Match mode (required for custom) | - |
 
-**action:**
-- `restart-round` — Restart current round
-- `abort` — Interrupt entire test
-- `fail-current` — Mark current node as failed
-- `capture-only` — Extract variables only, no execution impact
-- `log-only` — Log only
+**validation Types:**
 
-**rearm:**
-- `once` — Stop listening after one trigger
-- `continuous` — Keep listening (trigger on every match)
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `"none"` | Succeed immediately after send | Commands with no response |
+| `"standard"` | Response contains `OK` | Standard AT commands |
+| `"custom"` | Custom pattern matching | Special response formats |
+
+**validationMode Options:**
+
+| Mode | Description | Example |
+|------|-------------|---------|
+| `"contains"` | Contains string | Response has `+CSQ:` |
+| `"exact"` | Exact match | Response equals `OK` |
+| `"regex"` | Regular expression | Matches `\+CSQ:\s*\d+` |
+| `"startsWith"` | Starts with | Response starts with `AT+` |
+| `"endsWith"` | Ends with | Response ends with `OK` |
+
+#### File Sending
+
+Commands can attach files for sending (certificates, firmware, config files, etc.).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fileData` | `object` | File data `{ id, name, size }` |
+
+**File Storage Rules:**
+
+Files must be placed in a subdirectory with the same name as the test case:
+```
+testcases/
+├── https-test.json          # Test case file
+└── https-test/              # Same-name directory
+    ├── ca-cert.pem         # Certificate file
+    └── config.txt          # Config file
+```
+
+**Referencing Files in Test Cases:**
+
+```json
+{
+  "type": "command",
+  "name": "Upload CA Certificate",
+  "content": "AT+QSSLCFG=\"cacert\",2",
+  "fileData": {
+    "id": "https-test/ca-cert.pem",
+    "name": "ca-cert.pem",
+    "size": 1234
+  },
+  "validation": "standard"
+}
+```
+
+**Field Descriptions:**
+- `id` - Relative path format: `"case-name/filename"` (case name without `.json` extension)
+- `name` - Filename (for display)
+- `size` - File size (in bytes)
+
+**Complete Example: HTTPS Certificate Configuration**
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "HTTPS Certificate Setup",
+    "children": [
+      {
+        "type": "command",
+        "name": "Configure SSL Version",
+        "content": "AT+QSSLCFG=\"sslversion\",2,4"
+      },
+      {
+        "type": "command",
+        "name": "Prepare CA Certificate Upload",
+        "content": "AT+QSSLCFG=\"cacert\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "Send CA Certificate File",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/ca-cert.pem",
+          "name": "ca-cert.pem",
+          "size": 1456
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "Prepare Client Certificate Upload",
+        "content": "AT+QSSLCFG=\"clientcert\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "Send Client Certificate File",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/client-cert.pem",
+          "name": "client-cert.pem",
+          "size": 1234
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "Prepare Client Key Upload",
+        "content": "AT+QSSLCFG=\"clientkey\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "Send Client Key File",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/client-key.pem",
+          "name": "client-key.pem",
+          "size": 1678
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "Enable Certificate Verification",
+        "content": "AT+QSSLCFG=\"seclevel\",2,2"
+      }
+    ]
+  }
+}
+```
+
+**File Sending Flow:**
+
+File sending uses a **two-step pattern**:
+1. **Prepare command** - Send AT command to notify device (`content` has value, no `fileData`)
+2. **File command** - Send actual file (`content` is empty, has `fileData`)
+
+**Example Flow:**
+```
+Step 1: Send "AT+QSSLCFG=\"cacert\",2"  ← Tell device to prepare for certificate
+Step 2: Send file ca-cert.pem           ← Actually send certificate content
+```
+
+**AI Generation with File Sending:**
+
+When generating test cases with file sending, use this prompt:
+
+```
+Generate test case with file sending. File placement rules:
+1. Case file name: <case-name>.json
+2. Attachment directory: testcases/<case-name>/
+3. Reference in command via fileData:
+   {
+     "fileData": {
+       "id": "<case-name>/<filename>",
+       "name": "<filename>",
+       "size": <estimated-bytes>
+     }
+   }
+4. Files need to be manually prepared by user
+5. Use two-step pattern: prepare command + file command
+```
+
+**Important Notes:**
+- ⚠️ **Files need manual preparation** - AI only generates JSON, actual files need user preparation
+- ✅ **Naming convention** - Case name and attachment directory must match (without `.json` extension)
+- ✅ **size field** - Can use estimated value, doesn't affect sending
+- ✅ **Import in app** - Drag and drop files to command editor to auto-generate `fileData`
+- ✅ **Two-step pattern** - Always separate prepare command from file command
 
 ---
 
-## 4. Variable Extraction and Substitution
+### 2. URC Guard (type="urc-guard")
 
-### 4.1 Variable Extraction (extractConfig)
+Background monitor for device Unsolicited Result Codes.
 
-Extract data from command response into variable pool for use by subsequent commands.
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `type` | `string` | Fixed `"urc-guard"` | Required |
+| `pattern` | `string` | Match pattern (regex or string) | Required |
+| `matchMode` | `string` | Match mode | `"contains"` |
+| `scope` | `string` | Scope | `"case"` |
+| `action` | `string` | Action on trigger | `"fail-current"` |
+| `rearm` | `string` | Behavior after trigger | `"continuous"` |
+
+#### scope
+
+- **`"root"`** - Global guard (active throughout entire test)
+- **`"case"`** - Case guard (active only during case execution)
+
+#### action
+
+| Action | Description | Use Case |
+|--------|-------------|----------|
+| `"restart-round"` | Restart current round | Detected anomaly needs retry |
+| `"abort"` | Abort entire test | Fatal error |
+| `"fail-current"` | Mark current node failed | Warning error |
+| `"capture-only"` | Only extract variables | Data collection |
+| `"log-only"` | Only log | Debug info |
+
+#### rearm
+
+- **`"once"`** - Trigger once then stop
+- **`"continuous"`** - Keep monitoring (trigger every match)
+
+---
+
+## 🔄 Variable System
+
+### Variable Extraction
+
+Extract data from command responses for use in subsequent commands.
 
 ```json
 "extractConfig": {
@@ -187,167 +392,117 @@ Extract data from command response into variable pool for use by subsequent comm
 }
 ```
 
-| Field | Type | Required | Description | Range |
-|-------|------|----------|-------------|-------|
-| `enabled` | `boolean` | ✅ | Enable extraction | `true` / `false` |
-| `parseType` | `string` | ✅ | Parse method | `"regex"` / `"split"` |
-| `parsePattern` | `string` | ✅ | Regex or delimiter | `regex`: regex pattern<br>`split`: delimiter string |
-| `parameterMap` | `object` | ✅ | Variable mapping | `{ "varName": "capture group or split index" }` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Enable extraction |
+| `parseType` | `string` | `"regex"` or `"split"` |
+| `parsePattern` | `string` | Regex pattern or delimiter |
+| `parameterMap` | `object` | Variable mapping `{"var": "group-index"}` |
 
-**parseType:**
-- `regex` — Match with regex, `parameterMap` values are capture group indices (`"1"`, `"2"`, ...)
-- `split` — Split by delimiter, `parameterMap` values are split indices (`"0"`, `"1"`, ...)
+**parseType Comparison:**
 
-### 4.2 Variable Substitution
+| Type | Description | Example |
+|------|-------------|---------|
+| `"regex"` | Regex match, capture group index | `"1"`, `"2"` |
+| `"split"` | Delimiter split, fragment index | `"0"`, `"1"` |
 
-Command content (`content`) supports the following variable syntax:
+### Variable Substitution
 
-| Syntax | Description | Example |
-|--------|-------------|---------|
-| `${varName}` | Extracted variable (from response) | `AT+CMD=${token}` |
-| `${rand:str:N}` | Generate N random visible chars | `${rand:str:8}` → `A3kF9pQz` |
-| `${rand:hex:N}` | Generate N random bytes, output 2N uppercase HEX chars | `${rand:hex:4}` → `3FA8B21C` (4 bytes = 8 hex) |
-| `${seq:start:step}` | Sequence generator, auto-increment on each call | `${seq:60:20}` → 60, 80, 100... |
-| `${seq:start:step:max}` | Sequence generator with upper limit (keeps max when reached) | `${seq:10:5:30}` → 10, 15, 20, 25, 30, 30... |
+Use variables in command `content`:
 
-**Example:**
+| Syntax | Description | Example | Result |
+|--------|-------------|---------|--------|
+| `${varName}` | Extracted variable | `AT+AUTH=${token}` | `AT+AUTH=abc123` |
+| `${rand:str:N}` | N random chars | `${rand:str:8}` | `A3kF9pQz` |
+| `${rand:hex:N}` | N bytes random HEX | `${rand:hex:4}` | `3FA8B21C` |
+| `${seq:start:step}` | Sequence generator | `${seq:60:20}` | 60→80→100... |
+| `${seq:start:step:max}` | Capped sequence | `${seq:10:5:30}` | 10→15→...→30 |
 
-```json
-{
-  "content": "AT+AUTH=${token},${rand:hex:8}",
-  ...
-}
-```
+#### Sequence Generator Features
 
-If `token` variable value is `abc123`, actual send content might be:
+- **Reset per round** - Auto-reset to initial value each loop iteration
+- **Independent counters** - Different parameter combinations don't interfere
+- **Supports negatives** - `${seq:100:-10}` for decrement (100→90→80...)
+- **Max cap** - Stays at max once reached
 
-```
-AT+AUTH=abc123,4F9A2E1B3C7D6A8F
-```
-
-**Dynamic length:** Variable substitution is dict-first then function, so length params can use extracted vars:
+**Practical Use:**
 
 ```json
 {
-  "content": "${rand:hex:${len}}"
-}
-```
-
-If `len=4`, first replaces to `${rand:hex:4}`, then generates 8 hex chars.
-
-**Sequence Generator:**
-
-Sequence generator is used for auto-incrementing parameters, suitable for timeout tests, power scanning, etc.:
-
-```json
-{
-  "content": "AT+HTTPGET=${seq:60:20}",
+  "content": "AT+TIMEOUT=${seq:60:20}",
   "repeatCount": 5
 }
 ```
 
-Actual sends: `AT+HTTPGET=60` → `AT+HTTPGET=80` → `AT+HTTPGET=100` → `AT+HTTPGET=120` → `AT+HTTPGET=140`
-
-Features:
-- **Reset per round**: Counter resets to initial value at the start of each round (each `runCount` iteration)
-- **Independent counting**: Different parameter combinations count independently (e.g., `${seq:60:20}` and `${seq:0:1}` don't interfere)
-- **Negative numbers**: Start value and step can be negative for decrement (e.g., `${seq:100:-10}` → 100, 90, 80...)
-- **Upper limit**: With max specified, value stays at max when reached
-
-For detailed documentation, see: [Sequence Generator Full Guide](../docs/sequence-generator.md)
+Send sequence: `AT+TIMEOUT=60` → `80` → `100` → `120` → `140`
 
 ---
 
-## 5. Complete Examples
+## ⚠️ Failure Strategies
 
-### Example 0: Minimal (only key params, rest use defaults)
+### onFailure Strategy Table
 
-On import the app auto-fills `dataFormat`/`lineEnding`/`repeatCount`/`timeout`/`validation`/`onFailure`, etc.:
+| Strategy | Description | Applies To |
+|----------|-------------|------------|
+| `"continue"` | Skip failure, continue next | Case, Command |
+| `"end-round"` | End round, enter next round | Case, Command |
+| `"retry-self"` | Re-execute this case | Case only |
+| `"abort"` | Abort entire test | Case, Command |
 
-```json
-{
-  "version": "2.0",
-  "rootCase": {
-    "name": "Minimal AT Test",
-    "children": [
-      { "type": "command", "name": "AT Handshake", "content": "AT" }
-    ]
-  }
-}
+### Strategy Details
+
+#### continue - Skip Failure
+
+```
+CommandA [fail] → skip → CommandB [execute]
 ```
 
-The command above is equivalent to: send `AT` once (CRLF ending), standard validation (pass if response contains `OK`), 2000ms timeout, abort on failure. Omitting `targetPort` means auto mode. Write out a field explicitly only when you need to override it.
+Use case: Optional steps, non-blocking commands
 
-### Example 1: Basic AT Handshake (full fields)
+#### end-round - End Current Round
 
-```json
-{
-  "version": "2.0",
-  "createdAt": "2026-08-13T00:00:00.000Z",
-  "rootCase": {
-    "id": "case_basic",
-    "name": "Basic AT Test",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
-    "children": [
-      {
-        "id": "cmd_at",
-        "type": "command",
-        "name": "AT Handshake",
-        "content": "AT",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 100,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 3,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 500,
-        "timeout": 2000,
-        "validation": "standard",
-        "onFailure": "abort"
-      }
-    ]
-  }
-}
+```
+[Round 1] CommandA → CommandB [fail] → end round
+[Round 2] CommandA → CommandB → ...
 ```
 
-### Example 2: Variable Extraction and Substitution
+Use case: Parent has loop, failure triggers next iteration
+
+#### retry-self - Retry Case
+
+```
+CaseA
+  ├─ Command1
+  ├─ Command2 [fail]
+  └─ Trigger retry → Re-execute CaseA (max maxSelfRetries times)
+```
+
+Use case: Network registration, connection establishment
+
+#### abort - Abort Test
+
+```
+CommandA → CommandB [fail] → abort test [stop]
+```
+
+Use case: Fatal error, prerequisite failure
+
+---
+
+## 📝 Complete Examples
+
+### Example 1: Signal Quality Query & Extract
 
 ```json
 {
   "version": "2.0",
   "rootCase": {
-    "id": "case_extract",
-    "name": "Variable Extract and Substitute",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
+    "name": "Signal Quality Query",
     "children": [
       {
-        "id": "cmd_csq",
         "type": "command",
         "name": "Query Signal",
         "content": "AT+CSQ",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 0,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 1,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 1000,
         "timeout": 3000,
         "validation": "custom",
         "validationPattern": "\\+CSQ:",
@@ -360,70 +515,37 @@ The command above is equivalent to: send `AT` once (CRLF ending), standard valid
             "rssi": "1",
             "ber": "2"
           }
-        },
-        "onFailure": "abort"
+        }
       },
       {
-        "id": "cmd_log_rssi",
         "type": "command",
-        "name": "Log RSSI Value",
-        "content": "AT+LOG=RSSI,${rssi}",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 0,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 1,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 1000,
-        "timeout": 2000,
-        "validation": "standard",
-        "onFailure": "continue"
+        "name": "Log Signal Values",
+        "content": "AT+LOG=RSSI:${rssi},BER:${ber}",
+        "validation": "standard"
       }
     ]
   }
 }
 ```
 
-### Example 3: URC Guard + Nested Sub-case
+### Example 2: Network Registration Guard
 
 ```json
 {
   "version": "2.0",
   "rootCase": {
-    "id": "case_network",
-    "name": "Network Registration with Guard",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
+    "name": "Network Registration Test",
     "children": [
       {
-        "id": "case_sub",
-        "name": "Registration Sub-Case",
-        "runCount": 1,
-        "onFailure": "end-round",
+        "id": "case_registration",
+        "name": "Registration Sub-case",
+        "runCount": 3,
+        "onFailure": "retry-self",
         "maxSelfRetries": 2,
-        "selected": true,
-        "isExpanded": true,
-        "status": "pending",
         "children": [
           {
-            "id": "guard_dereg",
             "type": "urc-guard",
             "name": "Deregistration Guard",
-            "description": "Restart round on +CREG: 0",
-            "content": "",
-            "dataFormat": "utf8",
-            "lineEnding": "none",
-            "preDelay": 0,
-            "postDelay": 0,
-            "selected": true,
-            "status": "pending",
             "pattern": "+CREG: 0",
             "matchMode": "contains",
             "scope": "case",
@@ -431,25 +553,13 @@ The command above is equivalent to: send `AT` once (CRLF ending), standard valid
             "rearm": "continuous"
           },
           {
-            "id": "cmd_creg",
             "type": "command",
             "name": "Wait for Registration",
-            "content": "AT+CREG=1",
-            "dataFormat": "utf8",
-            "lineEnding": "crlf",
-            "preDelay": 0,
-            "postDelay": 0,
-            "selected": true,
-            "status": "pending",
-            "repeatCount": 1,
-            "successThreshold": 1,
-            "stopWhenReached": true,
-            "attemptInterval": 1000,
+            "content": "AT+CREG?",
             "timeout": 15000,
             "validation": "custom",
-            "validationPattern": "\\+CREG:\\s*[15]",
-            "validationMode": "regex",
-            "onFailure": "end-round"
+            "validationPattern": "\\+CREG:\\s*0,[15]",
+            "validationMode": "regex"
           }
         ]
       }
@@ -458,86 +568,157 @@ The command above is equivalent to: send `AT` once (CRLF ending), standard valid
 }
 ```
 
+### Example 3: HTTP Timeout Sweep
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "HTTP Timeout Sweep",
+    "description": "Test timeout parameters 60-140 seconds",
+    "children": [
+      {
+        "type": "command",
+        "name": "HTTP GET Request",
+        "content": "AT+HTTPGET=http://example.com,${seq:60:20:140}",
+        "repeatCount": 5,
+        "timeout": 150000,
+        "validation": "custom",
+        "validationPattern": "\\+HTTPGET:\\s*200",
+        "validationMode": "regex",
+        "onFailure": "continue"
+      }
+    ]
+  }
+}
+```
+
+### Example 4: Stability Test (Infinite Loop)
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "AT Stability Test",
+    "runCount": 0,
+    "onFailure": "continue",
+    "children": [
+      {
+        "type": "command",
+        "name": "AT Handshake",
+        "content": "AT",
+        "repeatCount": 10,
+        "successThreshold": 9,
+        "stopWhenReached": false,
+        "delay": 100
+      }
+    ]
+  }
+}
+```
+
 ---
 
-## 6. FAQ
+## ❓ FAQ
 
-### Q1: Does root case require targetPort?
+### Q1: What are the required fields?
 
-**A:** No. **Omitting it enables auto mode** (recommended): single port → use the connected port; dual port → follow the send-area selection (P1/P2/ALL→P1). Only set `"P1"` or `"P2"` explicitly when you need to **pin** a test case to a specific port. Sub-cases inherit the root value automatically.
+**A:** Minimum 3 fields:
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "Case Name",
+    "children": [
+      { "type": "command", "content": "AT" }
+    ]
+  }
+}
+```
 
-### Q2: How to prevent command failure from affecting subsequent execution?
+### Q2: What should I fill for targetPort?
 
-**A:** Set `onFailure: "continue"`. The command will be skipped on failure and execution continues to the next sibling.
+**A:** **Recommend omit** (auto mode). Only fill `"P1"` or `"P2"` when you need to pin a specific port.
 
-### Q3: Difference between repeatCount and successThreshold?
+### Q3: How to continue after command failure?
+
+**A:** Set `"onFailure": "continue"`.
+
+### Q4: What's validation="none" for?
+
+**A:** Succeed immediately after send, no wait for response. Use for:
+- Config commands (don't care about response)
+- Continuous send scenarios (no confirmation needed)
+
+### Q5: How to debug regex?
 
 **A:** 
-- `repeatCount`: Max send attempts (e.g. `3` = send up to 3 times)
-- `successThreshold`: Required success count (e.g. `1` = at least 1 success)
-- `stopWhenReached`: Stop immediately on threshold (`true` = stop after 1 success; `false` = send all 3 attempts)
+- **Toolbox** → "Regex Match Validator" - Real-time testing
+- Online tool: https://regex101.com/ (select JavaScript)
 
-### Q4: Relationship between validation="none" and timeout?
+### Q6: Does variable extraction fail with error?
 
-**A:** When `validation="none"`, command succeeds immediately after send with no response wait. The `timeout` field is ignored.
+**A:** No error. Variable value is empty string on extraction failure. Recommend validating response format with `validationPattern` first.
 
-### Q5: Choose root or case for URC guard scope?
+### Q7: When does sequence generator reset?
 
-**A:**
-- `root` — Guard active during entire test (e.g. monitor module restart, network loss)
-- `case` — Guard active only during owning case (e.g. monitor specific phase anomalies)
+**A:** Auto-reset to initial value at the start of each round (each `runCount` iteration).
 
-### Q6: How to debug regex patterns?
+### Q8: How to implement conditional jumps?
 
-**A:** 
-- Use the "Regex Tester" tool in the toolbox: input response text and regex, instantly view match results and capture groups
-- Online tool: <https://regex101.com/> (select JavaScript flavor)
-
-### Q7: Does extraction failure cause errors?
-
-**A:** No. On extraction failure, variable value is empty string, no impact on command execution. Recommend validating response format in `validationPattern` first to ensure extraction success.
-
-### Q8: How to implement "send 10 times, at least 8 successes"?
-
-**A:** Set `repeatCount: 10`, `successThreshold: 8`, `stopWhenReached: false`.
+**A:** This system doesn't support jumps. Alternatives:
+- Use `onFailure: "continue"` to skip failed steps
+- Nest sub-cases for branching logic
+- Use URC guards for exception handling
 
 ---
 
-## 7. Generating Test Cases with AI
+## 🤖 AI-Generated Test Cases
 
-Provide this document along with your test requirements (manual, flowchart, text description) to an AI, using this prompt:
+### Prompt Template
 
 ```
-Based on the attached test requirements and the format spec in testcases/README_EN.md,
-generate a JSON test case file. Requirements:
+Generate a JSON test case based on the following requirements and the testcases/README_EN.md format specification:
+
+Requirements:
+[Paste your test requirements, manual, or flowchart]
+
+Requirements:
 1. Strictly follow field types and enum values
-2. rootCase targetPort may be omitted (omit = auto mode, recommended); only set "P1" or "P2" to pin a port
-3. All commands must specify type field ("command" or "urc-guard")
-4. validation and onFailure must use enum values listed in the spec
-5. Add description for key commands to explain intent
-6. Output complete JSON that can be saved directly as a .json file
+2. Omit targetPort (use auto mode)
+3. Add description for key commands
+4. Output complete JSON, ready to save
+5. For file sending, use two-step pattern (prepare + file)
 ```
 
-**Post-generation checklist:**
-- ✅ Is `version` set to `"2.0"`?
-- ✅ `rootCase.targetPort` is either omitted (auto mode, recommended) or `"P1"` / `"P2"`
-- ✅ Do all commands include `type` field?
-- ✅ Are enum fields like `validation` / `onFailure` / `matchMode` valid?
-- ✅ When `validation="custom"`, are `validationPattern` and `validationMode` specified?
-- ✅ Is JSON syntax valid? (verify at <https://jsonlint.com/>)
+### Post-Generation Checklist
+
+- ✅ `version` is `"2.0"`
+- ✅ `rootCase.targetPort` omitted or is `"P1"`/`"P2"`
+- ✅ All commands have `type` field
+- ✅ Enum field values are valid (`validation`/`onFailure`/`matchMode` etc.)
+- ✅ `validation="custom"` has `validationPattern` and `validationMode`
+- ✅ JSON syntax correct (validate at https://jsonlint.com/)
+- ✅ File sending uses two-step pattern (prepare command + file command)
 
 ---
 
-## 8. Technical Notes
+## 📚 Related Documentation
 
-- **Execution model**: Recursive tree traversal, no program counter, no flattening, no jumps (v1 model)
-- **State management**: Each node maintains independent `status`; parent updates based on child states
-- **Variable scope**: Global variable pool; all extracted variables shared across entire test
-- **Concurrency**: Only one command executes at a time; URC guards listen asynchronously in background
-- **Backward compatibility**: Old version (`version: "1.0"`) files auto-migrate to v2 format on import
+- [Command Library Format](../commands/README_EN.md) - AT command library format
+- [中文版文档](./README.md) - Chinese version
 
 ---
 
-**Related files:**
-- [Command Library Format Specification](../commands/README_EN.md)
-- [中文版](./README.md)
+## 🔧 Technical Notes
+
+**Execution Model:** Recursive tree traversal  
+**State Management:** Each node maintains independent state  
+**Variable Scope:** Global variable pool (shared throughout test)  
+**Concurrency Control:** Only one command executes at a time  
+**Backward Compatibility:** v1.0 format auto-migrates to v2.0
+
+---
+
+**Version:** 2.0  
+**Last Updated:** 2026-09

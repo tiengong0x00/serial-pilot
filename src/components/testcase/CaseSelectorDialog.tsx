@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Plus, FileText } from 'lucide-react';
+import { Search, Plus, FileText, RefreshCw, FolderOpen } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,18 +17,24 @@ interface CaseSelectorDialogProps {
   open: boolean;
   files: string[];
   currentFile: string | null;
+  loading?: boolean;
   onClose: () => void;
   onSelect: (filename: string) => void;
   onCreateNew: () => void;
+  onRefresh: () => void;
+  onOpenExternal: () => void;
 }
 
 export function CaseSelectorDialog({
   open,
   files,
   currentFile,
+  loading = false,
   onClose,
   onSelect,
   onCreateNew,
+  onRefresh,
+  onOpenExternal,
 }: CaseSelectorDialogProps) {
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
@@ -53,17 +59,28 @@ export function CaseSelectorDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* 搜索框 */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              className="w-full h-9 pl-9 pr-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder={t('testCase.searchCasePlaceholder')}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              autoFocus
-            />
+          {/* 搜索框和操作按钮 */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                className="w-full h-9 pl-9 pr-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder={t('testCase.searchCasePlaceholder')}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {/* 刷新按钮 */}
+            <button
+              className="h-9 w-9 flex items-center justify-center rounded-md border border-input hover:bg-accent transition-colors disabled:opacity-50"
+              onClick={onRefresh}
+              disabled={loading}
+              title={t('testCase.refreshFiles')}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
           {/* 新建用例按钮 */}
@@ -76,6 +93,18 @@ export function CaseSelectorDialog({
           >
             <Plus className="h-4 w-4" />
             {t('testCase.newCaseFile')}
+          </button>
+
+          {/* 打开其他路径用例按钮 */}
+          <button
+            className="w-full h-9 px-3 flex items-center gap-2 text-sm rounded-md border border-dashed border-blue-500 text-blue-500 hover:bg-blue-500/10 transition-colors"
+            onClick={() => {
+              onOpenExternal();
+              onClose();
+            }}
+          >
+            <FolderOpen className="h-4 w-4" />
+            {t('testCase.openExternalCase')}
           </button>
 
           {/* 用例文件列表 */}

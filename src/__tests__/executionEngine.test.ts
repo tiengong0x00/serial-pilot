@@ -728,8 +728,7 @@ describe('useTestExecution Hook (递归模型)', () => {
             content: '',
             dataFormat: 'utf8',
             lineEnding: 'none',
-            preDelay: 0,
-            postDelay: 0,
+            delay: 0,
             selected: true,
             status: 'pending',
             pattern: '+JUMP',
@@ -794,8 +793,7 @@ describe('useTestExecution Hook (递归模型)', () => {
             content: '',
             dataFormat: 'utf8',
             lineEnding: 'none',
-            preDelay: 0,
-            postDelay: 0,
+            delay: 0,
             selected: true,
             status: 'pending',
             pattern: '+CALL',
@@ -890,7 +888,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       // 创建多个命令，延迟较长
       const commands = Array.from({ length: 10 }, () => {
         const cmd = mkCommand('AT');
-        cmd.postDelay = 100; // 延迟便于中断
+        cmd.delay = 100; // 延迟便于中断
         return cmd;
       });
       root.children = commands;

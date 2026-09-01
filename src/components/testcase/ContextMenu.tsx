@@ -12,12 +12,16 @@ interface ContextMenuProps {
   commandId?: string;
   /** 目标节点当前是否选中（用于显示"选中/取消选中"文案） */
   isSelected?: boolean;
+  /** 多选状态集合 */
+  multiSelection: Set<string>;
   onClose: () => void;
   onAddCase: (parentId: string | null) => void;
   onAddCommand: (caseId: string, type: CommandType) => void;
   onRemoveCase: (id: string) => void;
   onRemoveCommand: (caseId: string, cmdId: string) => void;
   onToggleSelected: (caseId: string, cmdId?: string) => void;
+  onBatchToggleSelected: (ids: Set<string>, enable: boolean) => void;
+  onBatchRemove: (ids: Set<string>) => void;
   onEditCase: (id: string) => void;
   onEditCommand: (caseId: string, cmdId: string) => void;
 }
@@ -28,12 +32,15 @@ export function ContextMenu({
   caseId,
   commandId,
   isSelected,
+  multiSelection,
   onClose,
   onAddCase,
   onAddCommand,
   onRemoveCase,
   onRemoveCommand,
   onToggleSelected,
+  onBatchToggleSelected,
+  onBatchRemove,
   onEditCase,
   onEditCommand,
 }: ContextMenuProps) {
@@ -82,7 +89,34 @@ export function ContextMenu({
     };
   }, [onClose]);
 
-  const menuItems = commandId
+  // 如果有多选(>1项),显示批量操作菜单
+  const hasBatchSelection = multiSelection.size > 1;
+
+  const menuItems = hasBatchSelection
+    ? [
+        // 批量操作菜单
+        {
+          icon: CheckCircle2,
+          label: t('testCase.batchEnable', { count: multiSelection.size }),
+          onClick: () => onBatchToggleSelected(multiSelection, true),
+        },
+        {
+          icon: Circle,
+          label: t('testCase.batchDisable', { count: multiSelection.size }),
+          onClick: () => onBatchToggleSelected(multiSelection, false),
+        },
+        {
+          icon: Trash2,
+          label: t('testCase.batchDelete', { count: multiSelection.size }),
+          onClick: () => {
+            if (confirm(t('testCase.batchDeleteConfirm', { count: multiSelection.size }))) {
+              onBatchRemove(multiSelection);
+            }
+          },
+          className: 'text-red-600 hover:bg-red-50',
+        },
+      ]
+    : commandId
     ? [
         // 命令节点菜单
         {

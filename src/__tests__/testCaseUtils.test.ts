@@ -277,12 +277,10 @@ describe('testCaseUtils', () => {
       expect(c.repeatCount).toBe(1);
       expect(c.successThreshold).toBe(1);
       expect(c.stopWhenReached).toBe(true);
-      expect(c.attemptInterval).toBe(1000);
       expect(c.timeout).toBe(2000);
       expect(c.validation).toBe('standard');
       expect(c.onFailure).toBe('abort');
-      expect(c.preDelay).toBe(0);
-      expect(c.postDelay).toBe(0);
+      expect(c.delay).toBe(0);
     });
 
     it('type 缺省时应按标准命令补齐', () => {
@@ -308,7 +306,7 @@ describe('testCaseUtils', () => {
               content: 'AT',
               repeatCount: 5,
               stopWhenReached: false,
-              preDelay: 0,
+              delay: 0,
               timeout: 9000,
               validation: 'none',
             },
@@ -319,7 +317,7 @@ describe('testCaseUtils', () => {
       const c = root.children[0] as StandardCommand;
       expect(c.repeatCount).toBe(5);
       expect(c.stopWhenReached).toBe(false);
-      expect(c.preDelay).toBe(0);
+      expect(c.delay).toBe(0);
       expect(c.timeout).toBe(9000);
       expect(c.validation).toBe('none');
     });
@@ -527,8 +525,7 @@ describe('testCaseUtils', () => {
       source.content = 'AT+CSQ';
       source.dataFormat = 'hex';
       source.lineEnding = 'lf';
-      source.preDelay = 100;
-      source.postDelay = 200;
+      source.delay = 150;
       source.selected = false;
       source.status = 'success';
 
@@ -541,8 +538,7 @@ describe('testCaseUtils', () => {
       expect(converted.content).toBe('AT+CSQ');
       expect(converted.dataFormat).toBe('hex');
       expect(converted.lineEnding).toBe('lf');
-      expect(converted.preDelay).toBe(100);
-      expect(converted.postDelay).toBe(200);
+      expect(converted.delay).toBe(150);
       expect(converted.selected).toBe(false);
       expect(converted.status).toBe('success');
     });

@@ -187,33 +187,22 @@ function StandardCommandFields({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.preDelay')}</label>
-          <input
-            type="number"
-            className={inputCls}
-            value={command.preDelay}
-            onChange={(e) => onChange({ preDelay: Number(e.target.value) })}
-            min="0"
-          />
-        </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.postDelay')}</label>
-          <input
-            type="number"
-            className={inputCls}
-            value={command.postDelay}
-            onChange={(e) => onChange({ postDelay: Number(e.target.value) })}
-            min="0"
-          />
-        </div>
+      <div className={fieldCls}>
+        <label className={labelCls}>{t('testCase.delay')}</label>
+        <input
+          type="number"
+          className={inputCls}
+          value={command.delay}
+          onChange={(e) => onChange({ delay: Math.max(0, Number(e.target.value) || 0) })}
+          min="0"
+        />
+        <p className="text-xs text-muted-foreground mt-1">{t('testCase.delayHint')}</p>
       </div>
 
       {/* 重复策略 */}
       <div className="border-t pt-3 space-y-3">
         <h4 className="text-sm font-semibold">{t('testCase.repeatStrategy')}</h4>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className={fieldCls}>
             <label className={labelCls}>{t('testCase.sendCount')}</label>
             <input
@@ -233,16 +222,6 @@ function StandardCommandFields({
               onChange={(e) => onChange({ successThreshold: Number(e.target.value) })}
               min="1"
               max={command.repeatCount}
-            />
-          </div>
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.attemptInterval')}</label>
-            <input
-              type="number"
-              className={inputCls}
-              value={command.attemptInterval}
-              onChange={(e) => onChange({ attemptInterval: Number(e.target.value) })}
-              min="0"
             />
           </div>
         </div>
@@ -812,28 +791,17 @@ function ScriptCommandFields({
         </select>
       </div>
 
-      {/* 命令前延迟 */}
+      {/* 命令延时 */}
       <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.preDelay')}</label>
+        <label className={labelCls}>{t('testCase.delay')}</label>
         <input
           type="number"
           className={inputCls}
-          value={command.preDelay}
-          onChange={(e) => onChange({ preDelay: Math.max(0, parseInt(e.target.value) || 0) })}
+          value={command.delay}
+          onChange={(e) => onChange({ delay: Math.max(0, parseInt(e.target.value) || 0) })}
           min={0}
         />
-      </div>
-
-      {/* 命令后延迟 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.postDelay')}</label>
-        <input
-          type="number"
-          className={inputCls}
-          value={command.postDelay}
-          onChange={(e) => onChange({ postDelay: Math.max(0, parseInt(e.target.value) || 0) })}
-          min={0}
-        />
+        <p className="text-xs text-muted-foreground mt-1">{t('testCase.delayHint')}</p>
       </div>
     </>
   );

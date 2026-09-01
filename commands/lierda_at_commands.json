@@ -1,0 +1,1005 @@
+{
+  "name": "Lierda LTE Standard(Q) 系列 AT 指令",
+  "commands": [
+    {
+      "cmd": "ATQ",
+      "desc": "该命令用于控制是否将结果码发送到 TE，作为响应发送的其他信息不受影响",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATQ",
+          "d": "该命令用于控制是否将结果码发送到 TE，作为响应发送的其他信息不受影响"
+        }
+      ]
+    },
+    {
+      "cmd": "ATV",
+      "desc": "该命令用于确定与 AT 命令结果码和信息响应一起发送的首尾的内容，并列出了结果码，其数值等效项以及每种用法的简要说明",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATV",
+          "d": "该命令用于确定与 AT 命令结果码和信息响应一起发送的首尾的内容，并列出了结果码，其数值等效项以及每"
+        }
+      ]
+    },
+    {
+      "cmd": "ATE",
+      "desc": "该命令用于控制TA 是否在 AT 命令模式下回显从 TE 接收的字符",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATE",
+          "d": "该命令用于控制TA 是否在 AT 命令模式下回显从 TE 接收的字符"
+        }
+      ]
+    },
+    {
+      "cmd": "ATS3",
+      "desc": "该命令用于确定TA 识别的字符以终止输入的命令行",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATS3?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "ATS3=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "ATS4",
+      "desc": "该命令用于确定TA 为结果代码和信息文本生成的字符，以及通过 ATS3 设置的命令行终止字符",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATS4?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "ATS4=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "ATS5",
+      "desc": "该命令用于确定TA 用来从 AT 命令行删除紧接前一个字符的编辑字符值（等同于退格键）",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATS5?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "ATS5=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QURCCFG",
+      "desc": "该命令用于配置 URC 的输出端口",
+      "keywords": [
+        "配置",
+        "时间",
+        "串口"
+      ],
+      "templates": [
+        {
+          "s": "AT+QURCCFG=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QURCCFG=\"urcport\"\\[,urc_port_ value>\\]",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QPPPDROP",
+      "desc": "该命令用于终止 PPP 连接",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QPPPDROP=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QPPPDROP\\[=<op>\\]",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+LPWRTIME",
+      "desc": "该命令用于配置开、关机时间",
+      "keywords": [
+        "电源",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+LPWRTIME=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+LPWRTIME=<switch>\\[,<time>\\]",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+LGPIO",
+      "desc": "该命令用于配置GPIO输出控制",
+      "keywords": [
+        "GPIO",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+LGPIO=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+LGPIO=<pin>,<direct>\\[,<value>\\]",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT^WAKEUPHEX",
+      "desc": "该命令用于设置Hex字符串，当MQTT接收数据与该字符串匹配时触发RI振铃，否则不触发RI振铃",
+      "keywords": [
+        "MQTT",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT^WAKEUPHEX=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT^WAKEUPHEX=<str>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT^WAKEUPHEX?",
+          "d": "查询：返回当前配置"
+        }
+      ]
+    },
+    {
+      "cmd": "AT&C",
+      "desc": "该命令用于设置 DCD 信号模式，与检测远端的线路信号有关",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT&C",
+          "d": "该命令用于设置 DCD 信号模式，与检测远端的线路信号有关"
+        }
+      ]
+    },
+    {
+      "cmd": "AT&D",
+      "desc": "该命令用于设置在端口处于数据模式时，DTR 信号从低电平转变至高电平后 UE 对应的状态",
+      "keywords": [
+        "网络",
+        "语音",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT&D",
+          "d": "该命令用于设置在端口处于数据模式时，DTR 信号从低电平转变至高电平后 UE 对应的状态"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+IFC",
+      "desc": "该命令用于设置串口通信的流控方式",
+      "keywords": [
+        "时间",
+        "串口"
+      ],
+      "templates": [
+        {
+          "s": "AT+IFC=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+IFC?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+IFC=dce_by_dte>,dte_by_dce>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT+IFC=2,2",
+          "d": "示例：打开硬件流控 OK AT+IFC? +IFC: 2,2 <br"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+IPR",
+      "desc": "该命令用于查询和设置串口的波特率",
+      "keywords": [
+        "时间",
+        "串口"
+      ],
+      "templates": [
+        {
+          "s": "AT+IPR=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+IPR?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+IPR=<rate>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT+IPR=115200",
+          "d": "示例：设置固定波特率为 115200 bps OK AT&W"
+        },
+        {
+          "s": "AT+IPR=115200;&W",
+          "d": "示例：固定波特率为 115200 bps 并保存当前配置 OK |"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CPAS",
+      "desc": "该命令用于查询 ME 的活动状态",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+CPAS=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+CPAS",
+          "d": "执行：执行命令"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QCFG",
+      "desc": "该命令用于查询和配置 UE 的多种设置",
+      "keywords": [
+        "网络",
+        "配置",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QCFG=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QCFG=\"urc/cache\"",
+          "d": "示例：URC 缓存功能关闭 OK AT+QCFG=\"urc/cache\",1"
+        },
+        {
+          "s": "AT+QCFG=\"urc/cache\",1 //打开 URC 缓存",
+          "d": "示例：URC 缓存功能关闭 OK AT+QCFG=\"urc/cache\",1"
+        },
+        {
+          "s": "AT+QCFG=\"urc/cache\",0",
+          "d": "示例：呼叫并发送 2 条信息至模块 AT+QCFG=\"urc/cache\",0 //关闭 URC 缓存"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QINDCFG",
+      "desc": "该命令用于控制 URC 上报",
+      "keywords": [
+        "网络",
+        "短信",
+        "配置",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QINDCFG=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QINDCFG=<urctype>\\[,<enable>\\[, savetonvram>\\]\\]",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QCCID",
+      "desc": "该命令用于查询(U)SIM 卡的集成电路卡识别码（ICCID）",
+      "keywords": [
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QCCID=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QCCID",
+          "d": "执行：执行命令"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QPINC",
+      "desc": "该命令用于查询剩余输入(U)SIM PIN/PUK 密码的次数",
+      "keywords": [
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QPINC=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QPINC?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QPINC=<facility>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QINISTAT",
+      "desc": "该命令用于查询(U)SIM 卡初始化状态",
+      "keywords": [
+        "短信",
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QINISTAT=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QINISTAT",
+          "d": "执行：执行命令"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QSIMDET",
+      "desc": "该命令用于启用(U)SIM 卡的热插拔功能",
+      "keywords": [
+        "SIM卡",
+        "GPIO",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QSIMDET=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QSIMDET?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QSIMDET=<enable>,<insertlevel>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QSIMSTAT",
+      "desc": "该命令用于查询、启用或禁用(U)SIM 卡的插拔状态上报功能",
+      "keywords": [
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QSIMSTAT=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QSIMSTAT?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QSIMSTAT=<enable>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT+QSIMSTAT=1",
+          "d": "示例：使能(U)SIM 卡的插拔状态上报功能。 *"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QDSIM",
+      "desc": "该命令用于切换 USIM 卡槽",
+      "keywords": [
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QDSIM=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QDSIM?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QDSIM=<simslot>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+LUIMSLOT",
+      "desc": "功能同上述“AT+QDSIM”",
+      "keywords": [
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+LUIMSLOT=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+LUIMSLOT?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+LUIMSLOT=<slot>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+LUIMDUAL",
+      "desc": "双卡模式下（需两个卡槽均有SIM卡），在开机时可以根据无线环境中获取到的信号较好的小区选择对应的SIM卡，并自动切换至该SIM卡",
+      "keywords": [
+        "网络",
+        "SIM卡",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+LUIMDUAL=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+LUIMDUAL?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+LUIMDUAL=<value>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CCHO",
+      "desc": "执行该命令后，MT会返回，供TE识别当前选择的、附着到ME的UICC正在分配的通道",
+      "keywords": [
+        "SIM卡"
+      ],
+      "templates": [
+        {
+          "s": "AT+CCHO",
+          "d": "执行该命令后，MT会返回，供TE识别当前选择的、附着到ME的UICC正在分配的通道"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CCHC",
+      "desc": "该命令用于要求ME关闭与活动UICC的通信会话，ME将关闭之前打开的逻辑通道，TE将不能在这个逻辑通道上发送命令，UICC将在接收该命令时关闭逻辑通道",
+      "keywords": [
+        "SIM卡"
+      ],
+      "templates": [
+        {
+          "s": "AT+CCHC",
+          "d": "该命令用于要求ME关闭与活动UICC的通信会话，ME将关闭之前打开的逻辑通道，TE将不能在这个逻辑通"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CGLA",
+      "desc": "设置命令将发送给MT，再由MT将该命令发送给选定的UICC；UICC的也将由MT按原样发送回TA",
+      "keywords": [
+        "网络"
+      ],
+      "templates": [
+        {
+          "s": "AT+CGLA",
+          "d": "设置命令将发送给MT，再由MT将该命令发送给选定的UICC；UICC的也将由MT按原样发送回TA"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+ECSIMSLEEP",
+      "desc": "该AT命令用于配置SIM卡是否允许进入睡眠（power off SIM）状态",
+      "keywords": [
+        "SIM卡"
+      ],
+      "templates": [
+        {
+          "s": "AT+ECSIMSLEEP",
+          "d": "该AT命令用于配置SIM卡是否允许进入睡眠（power off SIM）状态"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+ECSWC",
+      "desc": "该命令用于使能、禁止、查询和重置SIM卡的写计数器，计数器可记录执行SIM卡写命令的次数",
+      "keywords": [
+        "SIM卡",
+        "文件"
+      ],
+      "templates": [
+        {
+          "s": "AT+ECSWC",
+          "d": "该命令用于使能、禁止、查询和重置SIM卡的写计数器，计数器可记录执行SIM卡写命令的次数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+ECUSATP",
+      "desc": "该命令用于向TE发送以修改USAT终端配置文件，查询命令可返回当前配置的参数",
+      "keywords": [
+        "文件"
+      ],
+      "templates": [
+        {
+          "s": "AT+ECUSATP",
+          "d": "该命令用于向TE发送以修改USAT终端配置文件，查询命令可返回当前配置的参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+ECSIMRM",
+      "desc": "执行该命令可触发TA移除SIM卡，该功能为GCF测试所需，可通过AT+CFUN=0/1或复位终端恢复SIM卡",
+      "keywords": [
+        "网络",
+        "SIM卡"
+      ],
+      "templates": [
+        {
+          "s": "AT+ECSIMRM",
+          "d": "执行该命令可触发TA移除SIM卡，该功能为GCF测试所需，可通过AT+CFUN=0/1或复位终端恢复"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QLTS",
+      "desc": "该命令用于获取通过网络同步的最新时间",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QLTS=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QLTS=<mode>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT+QLTS",
+          "d": "执行：执行命令"
+        },
+        {
+          "s": "AT+QLTS=0",
+          "d": "示例：查询通过网络同步的最新时间，功能同执行命令 AT+QLTS 一致。 +QLTS: \"2019/0"
+        },
+        {
+          "s": "AT+QLTS=1",
+          "d": "示例：查询通过网络同步的最新时间计算出的当前 GMT 时间。 +QLTS: \"2019/01/13,03:41"
+        },
+        {
+          "s": "AT+QLTS=2",
+          "d": "示例：查询通过网络同步的最新时间计算出的当前本地时间。 +QLTS: \"2019/01/13,11:41:23"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QNWINFO",
+      "desc": "该命令用于查询网络信息，例如选择的网络制式、运营商以及选择的频段",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QNWINFO=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QNWINFO",
+          "d": "执行：执行命令"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QCELL",
+      "desc": "该命令用于获取服务小区和邻区信息",
+      "keywords": [
+        "网络"
+      ],
+      "templates": [
+        {
+          "s": "AT+QCELL=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QCELL?",
+          "d": "查询：返回当前配置"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QENG",
+      "desc": "该命令用于获取主服务小区和邻区信息",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QENG=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QENG=\"neighbourcell\"",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QWIFISCAN",
+      "desc": "执行命令用于检测Wi-Fi SSID信息",
+      "keywords": [
+        "SIM卡",
+        "时间",
+        "WiFi"
+      ],
+      "templates": [
+        {
+          "s": "AT+QWIFISCAN=\\[<time>\\],\\[<round>\\],\\[<maxbssidnum>\\],\\[<scantimeout>\\],\\[<priority>\\]",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "AT+QWIFISCAN?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QWIFISCAN=?",
+          "d": "测试：查询支持的参数范围"
+        }
+      ]
+    },
+    {
+      "cmd": "+++",
+      "desc": "该命令仅在 TA 处于数据模式时可用",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "+++",
+          "d": "执行：执行命令"
+        }
+      ]
+    },
+    {
+      "cmd": "ATO",
+      "desc": "该命令用于恢复连接，并从命令模式切换回数据模式",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATO",
+          "d": "该命令用于恢复连接，并从命令模式切换回数据模式"
+        }
+      ]
+    },
+    {
+      "cmd": "ATS0",
+      "desc": "该命令用于设置来电的自动应答前振铃次数",
+      "keywords": [
+        "语音",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "ATS0=<n>",
+          "d": "设置：配置参数"
+        },
+        {
+          "s": "ATS0=3//设置三次振铃后自动接听",
+          "d": "示例：设置三次振铃后自动接听 OK RING//呼叫进入 <"
+        }
+      ]
+    },
+    {
+      "cmd": "AT^DSCI",
+      "desc": "该命令用于配置是否使用 URC DSCI 指示呼叫状态",
+      "keywords": [
+        "语音",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT^DSCI=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT^DSCI?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT^DSCI=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CMMS",
+      "desc": "该命令用于控制短消息中断协议链路的连续性",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+CMMS=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+CMMS?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+CMMS=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CNMA",
+      "desc": "该命令用于确认直接发送至 TE 的新消息（SMS-DELIVER 或 SMS-STATUS-REPORT）是否已经成功发送",
+      "keywords": [
+        "网络",
+        "短信",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+CNMA=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+CNMA",
+          "d": "执行：执行命令"
+        },
+        {
+          "s": "AT+CNMA=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QCMGS",
+      "desc": "该命令用于发送级联短消息",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QCMGS=?",
+          "d": "测试：查询支持的参数范围"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QCMGR",
+      "desc": "该命令的功能与 AT+CMGR 相似，但该命令读取的是一个分段级联消息",
+      "keywords": [
+        "短信",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QCMGR=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QCMGR=<index>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QGDCNT",
+      "desc": "该命令用于查询模块发送或接收的字节数",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QGDCNT=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QGDCNT?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QGDCNT=<op>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QAUGDCNT",
+      "desc": "该命令允许 AT+QGDCNT 自动将流量统计结果保存至 NV",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QAUGDCNT=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QAUGDCNT?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QAUGDCNT=<value>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QNETDEVCTL",
+      "desc": "该命令用于连接 USB 网卡进行网卡拨号",
+      "keywords": [
+        "网络",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QNETDEVCTL=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QNETDEVCTL?",
+          "d": "查询：返回当前配置"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QPOWD",
+      "desc": "关闭模块",
+      "keywords": [
+        "网络",
+        "电源",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QPOWD=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+QPOWD=<n>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+CCLK",
+      "desc": "该命令用于设置和查询模块实时时钟（RTC）",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+CCLK=?",
+          "d": "测试：查询支持的参数范围"
+        },
+        {
+          "s": "AT+CCLK?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+CCLK=<time>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QSCLK",
+      "desc": "该命令用于控制模块是否进入普通休眠模式",
+      "keywords": [
+        "电源",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QSCLK",
+          "d": "该命令用于控制模块是否进入普通休眠模式"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QADC",
+      "desc": "该命令用于查询 ADC 通道的输入电压值",
+      "keywords": [
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QADC=<channel>",
+          "d": "设置：配置参数"
+        }
+      ]
+    },
+    {
+      "cmd": "AT+QGPIOV",
+      "desc": "该命令用于设置 IO口电压",
+      "keywords": [
+        "GPIO",
+        "时间"
+      ],
+      "templates": [
+        {
+          "s": "AT+QGPIOV?",
+          "d": "查询：返回当前配置"
+        },
+        {
+          "s": "AT+QGPIOV=<mode>",
+          "d": "设置：配置参数"
+        }
+      ]
+    }
+  ]
+}

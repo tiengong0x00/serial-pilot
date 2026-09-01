@@ -1,0 +1,322 @@
+{
+  "version": "2.0",
+  "createdAt": "2026-09-01T07:58:08.017Z",
+  "rootCase": {
+    "name": "Lierda HTTP P0 冒烟测试",
+    "description": "依据Lierda LTE Standard(Q) AT指令手册生成。环境配置：public-smoke-defaults。",
+    "runCount": 1,
+    "onFailure": "abort",
+    "isExpanded": true,
+    "children": [
+      {
+        "name": "[P0][HTTP-PRE-001] 模组、SIM与网络状态检查",
+        "description": "确认串口可通信、SIM READY、EPS 已注册且信号查询正常。任一步失败即停止本协议冒烟测试。",
+        "runCount": 1,
+        "onFailure": "abort",
+        "isExpanded": true,
+        "children": [
+          {
+            "type": "command",
+            "name": "AT握手",
+            "content": "AT",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "abort",
+            "repeatCount": 3,
+            "successThreshold": 1,
+            "attemptInterval": 500
+          },
+          {
+            "type": "command",
+            "name": "查询模组型号",
+            "content": "AT+CGMM",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "[\\s\\S]+\\r?\\n[\\s\\S]*OK",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "查询固件版本",
+            "content": "AT+CGMR",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "[\\s\\S]+\\r?\\n[\\s\\S]*OK",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "检查SIM状态",
+            "content": "AT+CPIN?",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+CPIN:\\s*READY",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "检查EPS注册",
+            "content": "AT+CEREG?",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 15000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+CEREG:\\s*\\d,?[15](?:[,\\r\\n]|$)",
+            "validationMode": "regex",
+            "repeatCount": 3,
+            "successThreshold": 1,
+            "attemptInterval": 3000
+          },
+          {
+            "type": "command",
+            "name": "查询信号质量",
+            "content": "AT+CSQ",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+CSQ:\\s*(?:[0-9]|[12][0-9]|3[01]),",
+            "validationMode": "regex"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-CFG-001] HTTP配置能力检查",
+        "description": "验证QHTTPCFG测试、查询以及PDP上下文配置。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "查询QHTTPCFG能力",
+            "content": "AT+QHTTPCFG=?",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+QHTTPCFG:[\\s\\S]*contextid[\\s\\S]*OK",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "设置HTTP PDP上下文",
+            "content": "AT+QHTTPCFG=\"contextid\",1",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "abort"
+          },
+          {
+            "type": "command",
+            "name": "查询HTTP PDP上下文",
+            "content": "AT+QHTTPCFG=\"contextid\"",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+QHTTPCFG:\\s*\"contextid\",1",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "关闭自定义请求头",
+            "content": "AT+QHTTPCFG=\"requestheader\",0",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "abort"
+          },
+          {
+            "type": "command",
+            "name": "关闭自动响应输出",
+            "content": "AT+QHTTPCFG=\"rspout/auto\",0",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "abort"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-URL-001] 设置并查询HTTP URL",
+        "description": "URL=http://httpbin.org/anything/serial-pilot?probe=SP_HTTP_SMOKE；按UTF-8计算长度=60字节。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "请求输入URL",
+            "content": "AT+QHTTPURL=60,10",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "CONNECT",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "输入URL",
+            "content": "http://httpbin.org/anything/serial-pilot?probe=SP_HTTP_SMOKE",
+            "dataFormat": "utf8",
+            "lineEnding": "none",
+            "timeout": 12000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "OK",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "查询当前URL",
+            "content": "AT+QHTTPURL?",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "http://httpbin\\.org/anything/serial-pilot\\?probe=SP_HTTP_SMOKE",
+            "validationMode": "regex"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-GET-001] HTTP GET 200响应",
+        "description": "发起GET并等待最终+QHTTPGET URC，不能仅以同步OK判断成功。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "发送GET",
+            "content": "AT+QHTTPGET=60",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 65000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "\\+QHTTPGET:\\s*0,200(?:,\\d+)?",
+            "validationMode": "regex"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-READ-001] 读取并校验HTTP响应体",
+        "description": "响应体必须包含标识 SP_HTTP_SMOKE。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "读取HTTP响应",
+            "content": "AT+QHTTPREAD=60",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 65000,
+            "validation": "custom",
+            "onFailure": "abort",
+            "validationPattern": "SP_HTTP_SMOKE",
+            "validationMode": "regex"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-NEG-001] URL长度不足超时",
+        "description": "声明长度比实际输入多1字节；达到输入超时后应返回CME ERROR，并恢复命令模式。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "请求输入错误长度URL",
+            "content": "AT+QHTTPURL=61,2",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "continue",
+            "validationPattern": "CONNECT",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "输入少1字节URL",
+            "content": "http://httpbin.org/anything/serial-pilot?probe=SP_HTTP_SMOKE",
+            "dataFormat": "utf8",
+            "lineEnding": "none",
+            "timeout": 5000,
+            "validation": "custom",
+            "onFailure": "continue",
+            "validationPattern": "\\+CME ERROR:",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "异常后AT可用性",
+            "content": "AT",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "continue"
+          }
+        ]
+      },
+      {
+        "name": "[P0][HTTP-CLEAN-001] 停止HTTP会话并恢复",
+        "description": "停止可能存在的HTTP请求；若当前无活动请求允许返回ERROR，随后AT必须可用。",
+        "runCount": 1,
+        "onFailure": "continue",
+        "isExpanded": false,
+        "children": [
+          {
+            "type": "command",
+            "name": "停止HTTP请求",
+            "content": "AT+QHTTPSTOP",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 10000,
+            "validation": "custom",
+            "onFailure": "continue",
+            "validationPattern": "(?:OK|ERROR|\\+CME ERROR:)",
+            "validationMode": "regex"
+          },
+          {
+            "type": "command",
+            "name": "清理后AT可用性",
+            "content": "AT",
+            "dataFormat": "utf8",
+            "lineEnding": "crlf",
+            "timeout": 3000,
+            "validation": "standard",
+            "onFailure": "abort"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -76,8 +76,9 @@ interface TestCaseTreeProps {
   cases: TestCase[];
   selectedCaseId: string | null;
   selectedCommandId: string | null;
-  onSelectCase: (id: string) => void;
-  onSelectCommand: (id: string) => void;
+  multiSelection: Set<string>;
+  onSelectCase: (id: string, e?: React.MouseEvent) => void;
+  onSelectCommand: (id: string, e?: React.MouseEvent) => void;
   onToggleExpanded: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, caseId: string, commandId?: string) => void;
   onEditCase: (caseId: string) => void;
@@ -161,6 +162,7 @@ function DraggableCommandRow({
   caseId,
   level,
   selected,
+  multiSelected,
   onSelect,
   onContextMenu,
   onEditCommand,
@@ -173,7 +175,8 @@ function DraggableCommandRow({
   caseId: string;
   level: number;
   selected: boolean;
-  onSelect: () => void;
+  multiSelected: boolean;
+  onSelect: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onEditCommand: () => void;
   onUpdateCommand: (patch: Partial<TestCommand>) => void;
@@ -256,11 +259,12 @@ function DraggableCommandRow({
       className={cn(
         'group flex items-center gap-1 px-1.5 cursor-pointer hover:bg-accent rounded transition-colors',
         selected && 'bg-accent',
+        multiSelected && 'bg-blue-100 dark:bg-blue-900/30',
         !cmd.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
       )}
       // 悬浮显示命令描述（原生 tooltip，零额外开销）；无描述时回退显示完整内容
       title={cmd.description || currentValue || undefined}
-      onClick={onSelect}
+      onClick={(e) => onSelect(e)}
       onDoubleClick={onEditCommand}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -436,6 +440,7 @@ function DraggableCaseNode(props: {
         className={cn(
           'group flex items-center gap-1 px-1.5 cursor-pointer hover:bg-accent rounded transition-colors',
           shared.selectedCaseId === case_.id && 'bg-accent',
+          shared.multiSelection.has(case_.id) && 'bg-blue-100 dark:bg-blue-900/30',
           showInside && 'ring-2 ring-blue-500',
           !case_.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
           isDragging && 'opacity-30',
@@ -445,7 +450,7 @@ function DraggableCaseNode(props: {
           minHeight: `${testCaseRowHeight}px`,
           ...style,
         }}
-        onClick={() => shared.onSelectCase(case_.id)}
+        onClick={(e) => shared.onSelectCase(case_.id, e)}
         onDoubleClick={() => onEditCase(case_.id)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -537,7 +542,8 @@ function DraggableCaseNode(props: {
                 caseId={case_.id}
                 level={level}
                 selected={shared.selectedCommandId === child.id}
-                onSelect={() => shared.onSelectCommand(child.id)}
+                multiSelected={shared.multiSelection.has(child.id)}
+                onSelect={(e) => shared.onSelectCommand(child.id, e)}
                 onContextMenu={(e) => shared.onContextMenu(e, case_.id, child.id)}
                 onEditCommand={() => onEditCommand(case_.id, child.id)}
                 onUpdateCommand={(patch) => onUpdateCommand(case_.id, child.id, patch)}
@@ -716,7 +722,8 @@ export function TestCaseTree(props: TestCaseTreeProps) {
                   caseId={root.id}
                   level={-1}
                   selected={shared.selectedCommandId === child.id}
-                  onSelect={() => shared.onSelectCommand(child.id)}
+                  multiSelected={shared.multiSelection.has(child.id)}
+                  onSelect={(e) => shared.onSelectCommand(child.id, e)}
                   onContextMenu={(e) => shared.onContextMenu(e, root.id, child.id)}
                   onEditCommand={() => onEditCommand(root.id, child.id)}
                   onUpdateCommand={(patch) => onUpdateCommand(root.id, child.id, patch)}

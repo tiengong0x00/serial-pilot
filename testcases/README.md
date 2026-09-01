@@ -1,179 +1,382 @@
-# 测试用例格式规范 (Test Case Format Specification)
+# 测试用例格式规范
 
-本目录存放自动化测试用例 JSON 文件，每个文件代表一个完整的测试场景。
+本目录存放自动化测试用例 JSON 文件。每个文件代表一个完整的测试场景，支持树形嵌套、变量提取、循环重试等高级功能。
 
 ---
 
-## 一、文件格式概览
+## 📋 目录
 
-每个 `.json` 文件包含一个根用例（root case），根用例下可以嵌套子用例和命令，形成树形结构。
+1. [快速开始](#快速开始)
+2. [文件结构](#文件结构)
+3. [字段详解](#字段详解)
+4. [命令类型](#命令类型)
+5. [变量系统](#变量系统)
+6. [失败策略](#失败策略)
+7. [完整示例](#完整示例)
+8. [常见问题](#常见问题)
 
-**基本结构：**
+---
+
+## 🚀 快速开始
+
+### 最小示例
+
+只需填写关键字段，其余使用默认值：
 
 ```json
 {
   "version": "2.0",
-  "createdAt": "2026-08-13T00:00:00.000Z",
   "rootCase": {
-    "id": "case_demo_root",
-    "name": "测试场景名称",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
-    "children": [ /* 命令或子用例 */ ]
+    "name": "基础 AT 测试",
+    "children": [
+      {
+        "type": "command",
+        "name": "AT 握手",
+        "content": "AT"
+      }
+    ]
   }
 }
 ```
 
+**自动补全的默认值：**
+- 数据格式：UTF-8，行尾符：CRLF
+- 发送次数：1，超时：2000ms
+- 校验方式：标准（响应含 OK）
+- 失败策略：中断测试
+
+### 添加自己的用例
+
+1. **复制示例文件** - 从 `demo.json` 开始
+2. **修改用例名称和命令** - 按需调整 `content` 字段
+3. **调整参数**（可选）- 修改超时、重试次数等
+4. **保存并导入** - 在应用中选择文件加载
+
 ---
 
-## 二、字段详细说明
+## 📦 文件结构
 
-> **只填关键参数即可。** 导入时软件会自动补齐缺失字段的默认值，你手写 / 用 AI 生成 JSON 时通常只需填写标记为 ✅ 的字段，其余可省略（省略即用下表"默认值"）。
-> 另外这几项**填了也会被覆盖**，无需关心：`id`（导入时自动重新分配，避免冲突）、`status`（自动重置为 `"pending"`）、`selected`（导入后自动取消勾选，由你在界面上再勾选要跑的项）。
+```
+test-case.json
+├── version          # 格式版本（固定 "2.0"）
+├── createdAt        # 创建时间（可选）
+└── rootCase         # 根用例
+    ├── name         # 用例名称
+    ├── targetPort   # 目标串口（可省略=自动）
+    ├── runCount     # 循环次数
+    ├── onFailure    # 失败策略
+    └── children     # 子项数组
+        ├── 命令 1   # type="command"
+        ├── 守护     # type="urc-guard"
+        └── 子用例   # 嵌套用例
+```
+
+**层级关系：**
+- **根用例**：最顶层，定义目标串口和全局策略
+- **子用例**：可嵌套多层，实现模块化测试
+- **命令**：实际发送的 AT 指令
+- **守护**：后台监听 URC 上报
+
+---
+
+## 📖 字段详解
 
 ### 根级字段
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `version` | `string` | ✅ | 格式版本，当前固定为 `"2.0"` |
+| `version` | `string` | ✅ | 格式版本，固定 `"2.0"` |
 | `createdAt` | `string` | ❌ | ISO 8601 时间戳（可选） |
 | `rootCase` | `object` | ✅ | 根用例对象 |
 
-### 根用例 (rootCase) 字段
+### 用例字段（rootCase / 子用例）
 
-| 字段 | 类型 | 必填 | 说明 | 取值范围/默认值 |
-|------|------|------|------|-----------------|
-| `id` | `string` | ❌ | 唯一标识（导入时自动重新分配，可省略） | 建议格式：`case_<timestamp>_<random>` |
-| `name` | `string` | ✅ | 用例名称（建议填写，省略默认 `"Unnamed Case"`） | 任意字符串 |
-| `description` | `string` | ❌ | 用例说明（可选） | - |
-| `targetPort` | `string` | ❌ | **目标端口**（根用例特有，不填=自动） | `"P1"` / `"P2"`，省略或留空 = 自动 |
-| `runCount` | `number` | ❌ | 循环次数 | `≥1`（普通循环），`0`（无限循环，需手动停止），默认 `1` |
-| `onFailure` | `string` | ❌ | 失败策略（枚举） | `"continue"` / `"end-round"` / `"retry-self"` / `"abort"`，默认 `"abort"` |
-| `maxSelfRetries` | `number` | ❌ | `retry-self` 的重试上限 | 默认 `1`，耗尽后转 `continue` |
-| `selected` | `boolean` | ❌ | 是否执行（导入后自动取消勾选，可省略） | `true` / `false` |
-| `isExpanded` | `boolean` | ❌ | UI 展开状态 | `true` / `false`，默认 `true` |
-| `status` | `string` | ❌ | 运行状态（导入时自动重置，可省略） | `"pending"` / `"running"` / `"success"` / `"failed"` / `"interrupted"` / `"skipped"` |
-| `children` | `array` | ✅ | 子项数组（命令或子用例） | 至少包含 1 个子项 |
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| **基本信息** ||||
+| `name` | `string` | 用例名称 | `"Unnamed Case"` |
+| `description` | `string` | 用例说明 | - |
+| `targetPort` | `string` | 目标串口（仅根用例）| 自动 |
+| **执行控制** ||||
+| `runCount` | `number` | 循环次数（0=无限循环）| `1` |
+| `onFailure` | `string` | 失败策略 | `"abort"` |
+| `maxSelfRetries` | `number` | `retry-self` 重试次数 | `1` |
+| **UI 状态** ||||
+| `selected` | `boolean` | 是否勾选执行 | `false` |
+| `isExpanded` | `boolean` | 是否展开 | `true` |
+| `status` | `string` | 运行状态 | `"pending"` |
+| **子项** ||||
+| `children` | `array` | 命令或子用例数组 | 必填 |
 
-**targetPort 说明：**
-- 省略或不填 —— **自动模式**（推荐）：单串口时使用已连接的口；双串口时跟随发送区选择（P1/P2/ALL）
-- `"P1"` —— 固定使用第一个串口
-- `"P2"` —— 固定使用第二个串口
-- 仅根用例需要该字段，子用例自动继承
+#### targetPort 说明
 
-**onFailure 策略详解：**
-- `continue` —— 跳过失败，继续执行下一个兄弟节点
-- `end-round` —— 结束本轮（父用例有循环则进入下一轮；无循环则结束本用例）
-- `retry-self` —— 重新执行本用例（受 `maxSelfRetries` 限制，仅用例支持）
-- `abort` —— 中断整个测试
+- **省略或留空**（推荐）- 自动模式：
+  - 单串口：使用已连接的串口
+  - 双串口：跟随发送区选择（P1/P2/ALL）
+- **`"P1"`** - 固定使用第一个串口
+- **`"P2"`** - 固定使用第二个串口
 
-### 子用例 (sub-case) 字段
-
-子用例与根用例字段相同，**但无需 `targetPort`**（继承根用例的目标端口）。
+> 💡 **建议**：除非需要固定串口，否则省略此字段
 
 ---
 
-## 三、命令类型
+## 🔧 命令类型
 
-`children` 数组可包含两种命令类型：
+### 1. 标准命令 (type="command")
 
-### 3.1 标准命令 (type="command")
+发送 AT 命令并等待响应。
 
-用于发送 AT 命令并等待响应。
+#### 基本字段
 
-| 字段 | 类型 | 必填 | 说明 | 取值范围/默认值 |
-|------|------|------|------|-----------------|
-| `id` | `string` | ❌ | 唯一标识（导入时自动重新分配，可省略） | 建议格式：`cmd_<timestamp>_<random>` |
-| `type` | `string` | ✅ | 命令类型（省略默认按 `"command"` 处理） | `"command"` |
-| `name` | `string` | ❌ | 命令显示名称 | - |
-| `description` | `string` | ❌ | 命令说明 | - |
-| `content` | `string` | ✅ | **命令内容**（支持变量替换） | 见"变量语法"章节 |
-| `dataFormat` | `string` | ❌ | 数据格式 | `"utf8"` / `"hex"`，默认 `"utf8"` |
-| `lineEnding` | `string` | ❌ | 行尾符 | `"none"` / `"lf"` / `"cr"` / `"crlf"`，默认 `"crlf"` |
-| `preDelay` | `number` | ❌ | 发送前延迟(ms) | `≥0`，默认 `0` |
-| `postDelay` | `number` | ❌ | 成功后延迟(ms) | `≥0`，默认 `0` |
-| `selected` | `boolean` | ❌ | 是否执行（导入后自动取消勾选，可省略） | `true` / `false` |
-| `status` | `string` | ❌ | 运行状态（导入时自动重置，可省略） | 同用例 `status` |
-| **重复策略** | | | | |
-| `repeatCount` | `number` | ❌ | 发送次数 | `≥1`（`1` = 不重复），默认 `1` |
-| `successThreshold` | `number` | ❌ | 需成功几次才算命令成功 | `≤ repeatCount`，默认 `1` |
-| `stopWhenReached` | `boolean` | ❌ | 达到阈值后立即停止 | `true`（立即停）/ `false`（发满 repeatCount），默认 `true` |
-| `attemptInterval` | `number` | ❌ | 重发间隔(ms) | `≥0`，默认 `1000` |
-| **响应校验** | | | | |
-| `timeout` | `number` | ❌ | 单次等待超时(ms) | `≥0`，默认 `2000`，`validation="none"` 时不生效 |
-| `validation` | `string` | ❌ | 校验类型 | `"none"` / `"standard"` / `"custom"`，默认 `"standard"` |
-| `validationPattern` | `string` | ❌ | 校验模式（`custom` 时必需） | 正则或字符串 |
-| `validationMode` | `string` | ❌ | 匹配方式（`custom` 时必需） | `"contains"` / `"exact"` / `"regex"` / `"startsWith"` / `"endsWith"` |
-| **变量提取** | | | | |
-| `extractConfig` | `object` | ❌ | 变量提取配置（可选） | 见"变量提取"章节 |
-| **失败处理** | | | | |
-| `onFailure` | `string` | ❌ | 失败策略 | `"continue"` / `"end-round"` / `"abort"`（命令不支持 `retry-self`），默认 `"abort"` |
-| **文件发送** | | | | |
-| `fileData` | `object` | ❌ | 文件数据（可选） | `{ name, size, base64 }` |
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `type` | `string` | 命令类型 | `"command"` |
+| `name` | `string` | 命令名称 | - |
+| `content` | `string` | 命令内容（支持变量） | 必填 |
+| `dataFormat` | `string` | 数据格式 | `"utf8"` |
+| `lineEnding` | `string` | 行尾符 | `"crlf"` |
+| `delay` | `number` | 命令延时(ms) | `0` |
 
-**validation 类型详解：**
-- `none` —— 发送后立即成功，不等待响应
-- `standard` —— 标准 AT 校验（响应包含 `OK` 即通过）
-- `custom` —— 自定义模式匹配（需指定 `validationPattern` 和 `validationMode`）
+**dataFormat 选项：** `"utf8"` | `"hex"`  
+**lineEnding 选项：** `"none"` | `"lf"` | `"cr"` | `"crlf"`
 
-**validationMode 详解：**
-- `contains` —— 响应包含指定字符串
-- `exact` —— 响应完全匹配
-- `regex` —— 正则表达式匹配
-- `startsWith` —— 响应以指定字符串开头
-- `endsWith` —— 响应以指定字符串结尾
+#### 重复发送
 
-### 3.2 URC 后台守护 (type="urc-guard")
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `repeatCount` | `number` | 最多发送次数 | `1` |
+| `successThreshold` | `number` | 需成功次数 | `1` |
+| `stopWhenReached` | `boolean` | 达标后立即停止 | `true` |
 
-用于监听设备主动上报（Unsolicited Result Code），触发后执行指定动作。
+**示例：** "发送 10 次，至少成功 8 次"
+```json
+{
+  "repeatCount": 10,
+  "successThreshold": 8,
+  "stopWhenReached": false
+}
+```
 
-| 字段 | 类型 | 必填 | 说明 | 取值范围/默认值 |
-|------|------|------|------|-----------------|
-| `id` | `string` | ❌ | 唯一标识（导入时自动重新分配，可省略） | - |
-| `type` | `string` | ✅ | 命令类型（固定） | `"urc-guard"` |
-| `name` | `string` | ❌ | 守护名称 | - |
-| `description` | `string` | ❌ | 守护说明 | - |
-| `content` | `string` | ❌ | 无实际意义（历史兼容，留空） | `""` |
-| `dataFormat` | `string` | ❌ | 固定 | `"utf8"` |
-| `lineEnding` | `string` | ❌ | 固定 | `"none"` |
-| `preDelay` | `number` | ❌ | 固定 | `0` |
-| `postDelay` | `number` | ❌ | 固定 | `0` |
-| `selected` | `boolean` | ❌ | 是否执行（导入后自动取消勾选，可省略） | `true` / `false` |
-| `status` | `string` | ❌ | 运行状态（导入时自动重置，可省略） | - |
-| **守护配置** | | | | |
-| `pattern` | `string` | ✅ | 匹配模式 | 正则或字符串 |
-| `matchMode` | `string` | ❌ | 匹配方式 | 同标准命令的 `validationMode`，默认 `"contains"` |
-| `scope` | `string` | ❌ | 作用域 | `"root"` / `"case"`，默认 `"case"` |
-| `action` | `string` | ❌ | 命中后动作 | `"restart-round"` / `"abort"` / `"fail-current"` / `"capture-only"` / `"log-only"`，默认 `"fail-current"` |
-| `rearm` | `string` | ❌ | 触发后行为 | `"once"` / `"continuous"`，默认 `"continuous"` |
-| `extractConfig` | `object` | ❌ | 变量提取配置（可选） | - |
+#### 响应校验
 
-**scope 详解：**
-- `root` —— 全局作用域（整个测试期间生效）
-- `case` —— 用例作用域（仅在所属用例执行期间生效）
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `timeout` | `number` | 等待超时(ms) | `2000` |
+| `validation` | `string` | 校验类型 | `"standard"` |
+| `validationPattern` | `string` | 校验模式（custom 时必填） | - |
+| `validationMode` | `string` | 匹配方式（custom 时必填） | - |
 
-**action 详解：**
-- `restart-round` —— 重新开始当前轮次
-- `abort` —— 中断整个测试
-- `fail-current` —— 将当前节点标记为失败
-- `capture-only` —— 仅提取变量，不影响执行
-- `log-only` —— 仅记录日志
+**validation 类型：**
 
-**rearm 详解：**
-- `once` —— 触发一次后停止监听
-- `continuous` —— 持续监听（每次收到匹配数据都触发）
+| 类型 | 说明 | 适用场景 |
+|------|------|----------|
+| `"none"` | 发送后立即成功 | 不需要响应的命令 |
+| `"standard"` | 响应含 `OK` | 标准 AT 命令 |
+| `"custom"` | 自定义匹配 | 特殊响应格式 |
+
+**validationMode 选项：**
+
+| 模式 | 说明 | 示例 |
+|------|------|------|
+| `"contains"` | 包含字符串 | 响应含 `+CSQ:` |
+| `"exact"` | 完全匹配 | 响应等于 `OK` |
+| `"regex"` | 正则表达式 | 匹配 `\+CSQ:\s*\d+` |
+| `"startsWith"` | 以...开头 | 响应以 `AT+` 开头 |
+| `"endsWith"` | 以...结尾 | 响应以 `OK` 结尾 |
+
+#### 文件发送
+
+命令可以关联文件进行发送（如证书、固件、配置文件等）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fileData` | `object` | 文件数据 `{ id, name, size }` |
+
+**文件存放规则：**
+
+文件必须放在与用例同名的子目录中：
+```
+testcases/
+├── https-test.json          # 用例文件
+└── https-test/              # 同名目录
+    ├── ca-cert.pem         # 证书文件
+    └── config.txt          # 配置文件
+```
+
+**在用例中引用文件：**
+
+```json
+{
+  "type": "command",
+  "name": "上传 CA 证书",
+  "content": "AT+QSSLCFG=\"cacert\",2",
+  "fileData": {
+    "id": "https-test/ca-cert.pem",
+    "name": "ca-cert.pem",
+    "size": 1234
+  },
+  "validation": "standard"
+}
+```
+
+**字段说明：**
+- `id` - 相对路径格式：`"用例名/文件名"`（用例名不含 `.json` 后缀）
+- `name` - 文件名（显示用）
+- `size` - 文件大小（字节数）
+
+**完整示例：HTTPS 证书配置**
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "HTTPS 证书配置",
+    "children": [
+      {
+        "type": "command",
+        "name": "配置 SSL 版本",
+        "content": "AT+QSSLCFG=\"sslversion\",2,4"
+      },
+      {
+        "type": "command",
+        "name": "准备上传 CA 证书",
+        "content": "AT+QSSLCFG=\"cacert\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "发送 CA 证书文件",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/ca-cert.pem",
+          "name": "ca-cert.pem",
+          "size": 1456
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "准备上传客户端证书",
+        "content": "AT+QSSLCFG=\"clientcert\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "发送客户端证书文件",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/client-cert.pem",
+          "name": "client-cert.pem",
+          "size": 1234
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "准备上传客户端密钥",
+        "content": "AT+QSSLCFG=\"clientkey\",2",
+        "timeout": 2000
+      },
+      {
+        "type": "command",
+        "name": "发送客户端密钥文件",
+        "content": "",
+        "fileData": {
+          "id": "https-cert/client-key.pem",
+          "name": "client-key.pem",
+          "size": 1678
+        },
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "name": "启用证书验证",
+        "content": "AT+QSSLCFG=\"seclevel\",2,2"
+      }
+    ]
+  }
+}
+```
+
+**文件发送流程说明：**
+
+文件发送采用**两步模式**：
+1. **准备命令** - 发送 AT 指令通知设备（`content` 有内容，无 `fileData`）
+2. **文件命令** - 发送实际文件（`content` 为空，有 `fileData`）
+
+**示例流程：**
+```
+步骤1: 发送 "AT+QSSLCFG=\"cacert\",2"  ← 告诉设备准备接收证书
+步骤2: 发送文件 ca-cert.pem           ← 实际发送证书内容
+```
+
+**AI 生成用例时如何处理文件：**
+
+当需要生成包含文件发送的用例时，提供以下提示词：
+
+```
+生成包含文件发送的测试用例，文件放置规则：
+1. 用例文件名：<用例名>.json
+2. 附件目录：testcases/<用例名>/
+3. 在命令中通过 fileData 引用：
+   {
+     "fileData": {
+       "id": "<用例名>/<文件名>",
+       "name": "<文件名>",
+       "size": <预估字节数>
+     }
+   }
+4. 文件需要用户手动准备并放入附件目录
+```
+
+**注意事项：**
+- ⚠️ **文件需要手动准备** - AI 只生成用例 JSON，实际文件需要用户准备
+- ✅ **命名规范** - 用例名和附件目录名必须一致（不含 `.json` 后缀）
+- ✅ **size 字段** - 可以填写预估值，不影响发送功能
+- ✅ **导入用例** - 在应用中拖放文件到命令编辑器，自动生成 `fileData`
 
 ---
 
-## 四、变量提取与替换
+### 2. URC 守护 (type="urc-guard")
 
-### 4.1 变量提取 (extractConfig)
+后台监听设备主动上报（Unsolicited Result Code）。
 
-从命令响应中提取数据到变量池，供后续命令使用。
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `type` | `string` | 固定 `"urc-guard"` | 必填 |
+| `pattern` | `string` | 匹配模式（正则或字符串） | 必填 |
+| `matchMode` | `string` | 匹配方式 | `"contains"` |
+| `scope` | `string` | 作用域 | `"case"` |
+| `action` | `string` | 触发后动作 | `"fail-current"` |
+| `rearm` | `string` | 触发后行为 | `"continuous"` |
+
+#### scope 作用域
+
+- **`"root"`** - 全局守护（整个测试期间生效）
+- **`"case"`** - 用例守护（仅在所属用例执行期间生效）
+
+#### action 动作
+
+| 动作 | 说明 | 适用场景 |
+|------|------|----------|
+| `"restart-round"` | 重新开始当前轮次 | 检测到异常需要重试 |
+| `"abort"` | 中断整个测试 | 致命错误 |
+| `"fail-current"` | 标记当前节点失败 | 警告性错误 |
+| `"capture-only"` | 仅提取变量 | 数据收集 |
+| `"log-only"` | 仅记录日志 | 调试信息 |
+
+#### rearm 触发模式
+
+- **`"once"`** - 触发一次后停止监听
+- **`"continuous"`** - 持续监听（每次匹配都触发）
+
+---
+
+## 🔄 变量系统
+
+### 变量提取
+
+从命令响应中提取数据，供后续命令使用。
 
 ```json
 "extractConfig": {
@@ -187,167 +390,117 @@
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 | 取值范围 |
-|------|------|------|------|---------|
-| `enabled` | `boolean` | ✅ | 是否启用提取 | `true` / `false` |
-| `parseType` | `string` | ✅ | 解析方式 | `"regex"` / `"split"` |
-| `parsePattern` | `string` | ✅ | 正则表达式或分隔符 | `regex`：正则表达式<br>`split`：分隔符字符串 |
-| `parameterMap` | `object` | ✅ | 变量映射表 | `{ "变量名": "捕获组索引或分片索引" }` |
-
-**parseType 详解：**
-- `regex` —— 用正则表达式匹配，`parameterMap` 的值是捕获组索引（`"1"`, `"2"`, ...）
-- `split` —— 用分隔符切分，`parameterMap` 的值是分片索引（`"0"`, `"1"`, ...）
-
-### 4.2 变量替换
-
-命令内容 (`content`) 支持以下变量语法：
-
-| 语法 | 说明 | 示例 |
+| 字段 | 类型 | 说明 |
 |------|------|------|
-| `${变量名}` | 提取型变量（从响应中提取） | `AT+CMD=${token}` |
-| `${rand:str:N}` | 生成 N 个随机可见字符 | `${rand:str:8}` → `A3kF9pQz` |
-| `${rand:hex:N}` | 生成 N 字节随机数据，输出 2N 个大写 HEX 字符 | `${rand:hex:4}` → `3FA8B21C`（4 字节 = 8 个 hex） |
-| `${seq:起始:步长}` | 序列生成器，每次调用自增 | `${seq:60:20}` → 60, 80, 100... |
-| `${seq:起始:步长:上限}` | 带上限的序列生成器（达到上限后保持） | `${seq:10:5:30}` → 10, 15, 20, 25, 30, 30... |
+| `enabled` | `boolean` | 是否启用 |
+| `parseType` | `string` | `"regex"` 或 `"split"` |
+| `parsePattern` | `string` | 正则表达式或分隔符 |
+| `parameterMap` | `object` | 变量映射 `{"变量名": "捕获组索引"}` |
 
-**示例：**
+**parseType 对比：**
 
-```json
-{
-  "content": "AT+AUTH=${token},${rand:hex:8}",
-  ...
-}
-```
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `"regex"` | 正则匹配，捕获组索引 | `"1"`, `"2"` |
+| `"split"` | 分隔符切分，分片索引 | `"0"`, `"1"` |
 
-如果 `token` 变量值为 `abc123`，实际发送内容可能为：
+### 变量替换
 
-```
-AT+AUTH=abc123,4F9A2E1B3C7D6A8F
-```
+在命令 `content` 中使用变量：
 
-**动态长度：** 变量替换是先字典后函数，所以长度参数也可用提取变量：
+| 语法 | 说明 | 示例 | 结果 |
+|------|------|------|------|
+| `${变量名}` | 提取的变量 | `AT+AUTH=${token}` | `AT+AUTH=abc123` |
+| `${rand:str:N}` | N 个随机字符 | `${rand:str:8}` | `A3kF9pQz` |
+| `${rand:hex:N}` | N 字节随机 HEX | `${rand:hex:4}` | `3FA8B21C` |
+| `${seq:起始:步长}` | 序列生成器 | `${seq:60:20}` | 60→80→100... |
+| `${seq:起始:步长:上限}` | 带上限序列 | `${seq:10:5:30}` | 10→15→...→30 |
 
-```json
-{
-  "content": "${rand:hex:${len}}"
-}
-```
+#### 序列生成器特性
 
-如果 `len=4`，先替换成 `${rand:hex:4}`，再生成 8 个 hex 字符。
+- **每轮重置** - 用例每轮循环时自动重置到初始值
+- **独立计数** - 不同参数组合互不干扰
+- **支持负数** - `${seq:100:-10}` 实现递减（100→90→80...）
+- **上限保护** - 达到上限后保持不变
 
-**序列生成器说明：**
-
-序列生成器用于实现参数自动递增，适用于超时测试、功率扫描等场景：
+**实际应用：**
 
 ```json
 {
-  "content": "AT+HTTPGET=${seq:60:20}",
+  "content": "AT+TIMEOUT=${seq:60:20}",
   "repeatCount": 5
 }
 ```
 
-实际发送：`AT+HTTPGET=60` → `AT+HTTPGET=80` → `AT+HTTPGET=100` → `AT+HTTPGET=120` → `AT+HTTPGET=140`
-
-特性：
-- **每轮重置**：用例每轮（`runCount` 的每次循环）开始时，计数器自动重置到初始值
-- **独立计数**：不同参数组合的序列生成器各自独立计数（如 `${seq:60:20}` 和 `${seq:0:1}` 互不干扰）
-- **支持负数**：起始值、步长均可为负数，实现递减（如 `${seq:100:-10}` → 100, 90, 80...）
-- **上限保护**：带上限时，达到最大值后保持该值不再递增
-
-详细文档请参考：[序列生成器完整说明](../docs/sequence-generator.md)
+发送序列：`AT+TIMEOUT=60` → `80` → `100` → `120` → `140`
 
 ---
 
-## 五、完整示例
+## ⚠️ 失败策略
 
-### 示例 0：最小写法（只填关键参数，其余用默认值）
+### onFailure 策略表
 
-导入后软件自动补齐 `dataFormat`/`lineEnding`/`repeatCount`/`timeout`/`validation`/`onFailure` 等字段：
+| 策略 | 说明 | 适用于 |
+|------|------|--------|
+| `"continue"` | 跳过失败，继续下一个 | 用例、命令 |
+| `"end-round"` | 结束本轮，进入下一轮 | 用例、命令 |
+| `"retry-self"` | 重新执行本用例 | 仅用例 |
+| `"abort"` | 中断整个测试 | 用例、命令 |
 
-```json
-{
-  "version": "2.0",
-  "rootCase": {
-    "name": "Minimal AT Test",
-    "children": [
-      { "type": "command", "name": "AT Handshake", "content": "AT" }
-    ]
-  }
-}
+### 策略详解
+
+#### continue - 跳过失败
+
+```
+命令A [失败] → 跳过 → 命令B [执行]
 ```
 
-上面这条命令等价于：发一次 `AT`（CRLF 结尾），标准校验（响应含 `OK` 即通过），超时 2000ms，失败即中断。省略 `targetPort` 即自动模式。需要覆盖某项时再显式写出对应字段即可。
+适用场景：可选步骤、不影响后续的命令
 
-### 示例 1：基础 AT 握手（完整字段）
+#### end-round - 结束本轮
 
-```json
-{
-  "version": "2.0",
-  "createdAt": "2026-08-13T00:00:00.000Z",
-  "rootCase": {
-    "id": "case_basic",
-    "name": "Basic AT Test",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
-    "children": [
-      {
-        "id": "cmd_at",
-        "type": "command",
-        "name": "AT Handshake",
-        "content": "AT",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 100,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 3,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 500,
-        "timeout": 2000,
-        "validation": "standard",
-        "onFailure": "abort"
-      }
-    ]
-  }
-}
+```
+[第1轮] 命令A → 命令B [失败] → 结束本轮
+[第2轮] 命令A → 命令B → ...
 ```
 
-### 示例 2：变量提取与替换
+适用场景：父用例有循环时，失败后直接进入下一轮
+
+#### retry-self - 重试本用例
+
+```
+用例A
+  ├─ 命令1
+  ├─ 命令2 [失败]
+  └─ 触发重试 → 重新执行用例A（最多 maxSelfRetries 次）
+```
+
+适用场景：网络注册、连接建立等可重试场景
+
+#### abort - 中断测试
+
+```
+命令A → 命令B [失败] → 中断测试 [停止]
+```
+
+适用场景：致命错误、前置条件失败
+
+---
+
+## 📝 完整示例
+
+### 示例 1：信号质量查询与提取
 
 ```json
 {
   "version": "2.0",
   "rootCase": {
-    "id": "case_extract",
-    "name": "Variable Extract and Substitute",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
+    "name": "信号质量查询",
     "children": [
       {
-        "id": "cmd_csq",
         "type": "command",
-        "name": "Query Signal",
+        "name": "查询信号",
         "content": "AT+CSQ",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 0,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 1,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 1000,
         "timeout": 3000,
         "validation": "custom",
         "validationPattern": "\\+CSQ:",
@@ -360,70 +513,37 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
             "rssi": "1",
             "ber": "2"
           }
-        },
-        "onFailure": "abort"
+        }
       },
       {
-        "id": "cmd_log_rssi",
         "type": "command",
-        "name": "Log RSSI Value",
-        "content": "AT+LOG=RSSI,${rssi}",
-        "dataFormat": "utf8",
-        "lineEnding": "crlf",
-        "preDelay": 0,
-        "postDelay": 0,
-        "selected": true,
-        "status": "pending",
-        "repeatCount": 1,
-        "successThreshold": 1,
-        "stopWhenReached": true,
-        "attemptInterval": 1000,
-        "timeout": 2000,
-        "validation": "standard",
-        "onFailure": "continue"
+        "name": "记录信号值",
+        "content": "AT+LOG=RSSI:${rssi},BER:${ber}",
+        "validation": "standard"
       }
     ]
   }
 }
 ```
 
-### 示例 3：URC 守护 + 嵌套子用例
+### 示例 2：网络注册守护
 
 ```json
 {
   "version": "2.0",
   "rootCase": {
-    "id": "case_network",
-    "name": "Network Registration with Guard",
-    "targetPort": "P1",
-    "runCount": 1,
-    "onFailure": "abort",
-    "selected": true,
-    "isExpanded": true,
-    "status": "pending",
+    "name": "网络注册测试",
     "children": [
       {
-        "id": "case_sub",
-        "name": "Registration Sub-Case",
-        "runCount": 1,
-        "onFailure": "end-round",
+        "id": "case_registration",
+        "name": "注册子用例",
+        "runCount": 3,
+        "onFailure": "retry-self",
         "maxSelfRetries": 2,
-        "selected": true,
-        "isExpanded": true,
-        "status": "pending",
         "children": [
           {
-            "id": "guard_dereg",
             "type": "urc-guard",
-            "name": "Deregistration Guard",
-            "description": "Restart round on +CREG: 0",
-            "content": "",
-            "dataFormat": "utf8",
-            "lineEnding": "none",
-            "preDelay": 0,
-            "postDelay": 0,
-            "selected": true,
-            "status": "pending",
+            "name": "掉网守护",
             "pattern": "+CREG: 0",
             "matchMode": "contains",
             "scope": "case",
@@ -431,25 +551,13 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
             "rearm": "continuous"
           },
           {
-            "id": "cmd_creg",
             "type": "command",
-            "name": "Wait for Registration",
-            "content": "AT+CREG=1",
-            "dataFormat": "utf8",
-            "lineEnding": "crlf",
-            "preDelay": 0,
-            "postDelay": 0,
-            "selected": true,
-            "status": "pending",
-            "repeatCount": 1,
-            "successThreshold": 1,
-            "stopWhenReached": true,
-            "attemptInterval": 1000,
+            "name": "等待注册",
+            "content": "AT+CREG?",
             "timeout": 15000,
             "validation": "custom",
-            "validationPattern": "\\+CREG:\\s*[15]",
-            "validationMode": "regex",
-            "onFailure": "end-round"
+            "validationPattern": "\\+CREG:\\s*0,[15]",
+            "validationMode": "regex"
           }
         ]
       }
@@ -458,85 +566,155 @@ AT+AUTH=abc123,4F9A2E1B3C7D6A8F
 }
 ```
 
+### 示例 3：HTTP 超时扫描
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "HTTP 超时扫描",
+    "description": "测试 60-140 秒的超时参数",
+    "children": [
+      {
+        "type": "command",
+        "name": "HTTP GET 请求",
+        "content": "AT+HTTPGET=http://example.com,${seq:60:20:140}",
+        "repeatCount": 5,
+        "timeout": 150000,
+        "validation": "custom",
+        "validationPattern": "\\+HTTPGET:\\s*200",
+        "validationMode": "regex",
+        "onFailure": "continue"
+      }
+    ]
+  }
+}
+```
+
+### 示例 4：稳定性测试（无限循环）
+
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "AT 稳定性测试",
+    "runCount": 0,
+    "onFailure": "continue",
+    "children": [
+      {
+        "type": "command",
+        "name": "AT 握手",
+        "content": "AT",
+        "repeatCount": 10,
+        "successThreshold": 9,
+        "stopWhenReached": false,
+        "delay": 100
+      }
+    ]
+  }
+}
+```
+
 ---
 
-## 六、常见问题 (FAQ)
+## ❓ 常见问题
 
-### Q1: 根用例必须有 targetPort 吗？
+### Q1: 必填字段有哪些？
 
-**A:** 不需要。**省略即自动模式**（推荐）：单串口时用已连接的口，双串口时跟随发送区选择（P1/P2/ALL→P1）。只有当你要把某个用例**固定**在特定串口时，才显式写 `"P1"` 或 `"P2"`。子用例会继承根用例的值，无需重复指定。
+**A:** 最少只需 3 个字段：
+```json
+{
+  "version": "2.0",
+  "rootCase": {
+    "name": "用例名",
+    "children": [
+      { "type": "command", "content": "AT" }
+    ]
+  }
+}
+```
 
-### Q2: 如何让命令失败后不影响后续执行？
+### Q2: targetPort 应该填什么？
 
-**A:** 设置 `onFailure: "continue"`，该命令失败后会跳过，继续执行下一个兄弟节点。
+**A:** **建议省略**（自动模式）。只有需要固定串口时才填 `"P1"` 或 `"P2"`。
 
-### Q3: repeatCount 和 successThreshold 的区别？
+### Q3: 如何让命令失败后不中断测试？
+
+**A:** 设置 `"onFailure": "continue"`。
+
+### Q4: validation="none" 有什么用？
+
+**A:** 发送后立即成功，不等待响应。适用于：
+- 配置类命令（不关心响应）
+- 连续发送场景（无需确认）
+
+### Q5: 正则表达式如何调试？
 
 **A:** 
-- `repeatCount`：最多发送几次（如 `3` = 最多发 3 次）
-- `successThreshold`：需成功几次才算命令成功（如 `1` = 至少成功 1 次）
-- `stopWhenReached`：达到阈值后是否立即停止（`true` = 成功 1 次就停；`false` = 发满 3 次）
+- **工具箱** → "正则匹配校验" - 实时测试
+- 在线工具：https://regex101.com/（选择 JavaScript）
 
-### Q4: validation="none" 和 timeout 的关系？
+### Q6: 变量提取失败会报错吗？
 
-**A:** `validation="none"` 时，命令发送后立即成功，不等待响应，`timeout` 字段无效。
+**A:** 不会报错，变量值为空字符串。建议先用 `validationPattern` 验证响应格式。
 
-### Q5: URC 守护的 scope 选 root 还是 case？
+### Q7: 序列生成器何时重置？
 
-**A:**
-- `root` —— 守护在整个测试期间生效（如监听模块重启、断网）
-- `case` —— 守护仅在所属用例执行期间生效（如监听特定阶段的异常）
+**A:** 每轮循环（`runCount` 的每次迭代）开始时自动重置到初始值。
 
-### Q6: 如何调试正则表达式？
+### Q8: 如何实现条件跳转？
 
-**A:** 
-- 使用工具箱中的"正则匹配校验"工具，输入响应文本和正则表达式，即时查看匹配结果和捕获组
-- 在线工具：<https://regex101.com/>（选择 JavaScript flavor）
-
-### Q7: 变量提取失败会报错吗？
-
-**A:** 不会。提取失败时变量值为空字符串，不影响命令执行。建议在 `validationPattern` 中先校验响应格式，确保提取成功。
-
-### Q8: 如何实现"发送 10 次，至少成功 8 次"？
-
-**A:** 设置 `repeatCount: 10`，`successThreshold: 8`，`stopWhenReached: false`。
+**A:** 本系统不支持跳转。替代方案：
+- 使用 `onFailure: "continue"` 跳过失败步骤
+- 嵌套子用例实现分支逻辑
+- 使用 URC 守护实现异常处理
 
 ---
 
-## 七、使用 AI 生成测试用例
+## 🤖 使用 AI 生成用例
 
-将本文档和你的测试需求（手册、流程图、文字描述）一起提供给 AI，使用以下提示词：
+### 提示词模板
 
 ```
-请根据附件中的测试需求和 testcases/README.md 中的格式规范，生成一个 JSON 格式的测试用例文件。要求：
+请根据以下测试需求和 testcases/README.md 格式规范，生成 JSON 测试用例：
+
+需求：
+[粘贴你的测试需求、手册或流程图]
+
+要求：
 1. 严格遵守字段类型和枚举值
-2. rootCase 的 targetPort 可省略（省略=自动模式，推荐）；仅需固定串口时才写 "P1" 或 "P2"
-3. 所有命令必须指定 type 字段（"command" 或 "urc-guard"）
-4. validation 和 onFailure 必须使用文档中列出的枚举值
-5. 为关键命令添加 description 说明意图
-6. 输出完整的 JSON，可直接保存为 .json 文件
+2. targetPort 省略（使用自动模式）
+3. 为关键命令添加 description 说明
+4. 输出完整 JSON，可直接保存
 ```
 
-**AI 生成后的检查清单：**
+### 生成后检查清单
+
 - ✅ `version` 是否为 `"2.0"`
-- ✅ `rootCase.targetPort` 可省略（推荐自动模式）或为 `"P1"` / `"P2"`
-- ✅ 所有命令是否包含 `type` 字段
-- ✅ `validation` / `onFailure` / `matchMode` 等枚举字段是否合法
-- ✅ `validation="custom"` 时是否指定了 `validationPattern` 和 `validationMode`
-- ✅ JSON 语法是否正确（可用 <https://jsonlint.com/> 校验）
+- ✅ `rootCase.targetPort` 已省略或为 `"P1"`/`"P2"`
+- ✅ 所有命令包含 `type` 字段
+- ✅ 枚举字段值合法（`validation`/`onFailure`/`matchMode` 等）
+- ✅ `validation="custom"` 时有 `validationPattern` 和 `validationMode`
+- ✅ JSON 语法正确（可用 https://jsonlint.com/ 校验）
 
 ---
 
-## 八、技术说明
+## 📚 相关文档
 
-- **执行模型**：递归树遍历，无程序计数器、无扁平化、无跳转（v1 模型）
-- **状态管理**：每个节点独立维护 `status`，父节点根据子节点状态更新自身状态
-- **变量作用域**：全局变量池，所有提取的变量在整个测试期间共享
-- **并发控制**：同一时刻只执行一个命令，URC 守护在后台异步监听
-- **向后兼容**：旧版本（`version: "1.0"`）文件会在导入时自动迁移到 v2 格式
+- [命令库格式规范](../commands/README.md) - AT 命令库格式说明
+- [English Version](./README_EN.md) - 英文版文档
 
 ---
 
-**相关文件：**
-- [命令库格式规范](../commands/README.md)
-- [English Version](./README_EN.md)
+## 🔧 技术说明
+
+**执行模型：** 递归树遍历  
+**状态管理：** 每个节点独立维护状态  
+**变量作用域：** 全局变量池（整个测试期间共享）  
+**并发控制：** 同一时刻仅执行一个命令  
+**向后兼容：** v1.0 格式自动迁移到 v2.0
+
+---
+
+**版本：** 2.0  
+**最后更新：** 2026-09

@@ -64,8 +64,7 @@ export function createCommand(type: CommandType = 'command'): TestCommand {
     content: '',
     dataFormat: 'utf8' as const,
     lineEnding: 'crlf' as const,
-    preDelay: 0,
-    postDelay: 0,
+    delay: 0,
     selected: true,               // v1: 默认勾选执行
     status: 'pending' as const,
   };
@@ -100,7 +99,6 @@ export function createCommand(type: CommandType = 'command'): TestCommand {
     repeatCount: 1,
     successThreshold: 1,
     stopWhenReached: true,
-    attemptInterval: 1000,
     timeout: 2000,
     validation: 'standard',
     validationPattern: '',
@@ -124,8 +122,7 @@ export function convertCommandType(source: TestCommand, targetType: CommandType)
   target.content = source.content || '';
   target.dataFormat = source.dataFormat;
   target.lineEnding = source.lineEnding;
-  target.preDelay = source.preDelay;
-  target.postDelay = source.postDelay;
+  target.delay = source.delay;
   target.selected = source.selected;
   target.status = source.status;
 
@@ -247,7 +244,6 @@ function normalizeLegacyUrcWait(cmd: any): any {
     repeatCount: 1,
     successThreshold: 1,
     stopWhenReached: true,
-    attemptInterval: 1000,
     timeout: cmd.timeout ?? 10000,
     validation: shouldValidate ? 'custom' : 'none',
     validationPattern: shouldValidate ? pattern ?? '' : '',
@@ -270,8 +266,8 @@ export function withCommandDefaults(cmd: any): TestCommand {
     content: cmd.content ?? '',
     dataFormat: cmd.dataFormat ?? 'utf8',
     lineEnding: cmd.lineEnding ?? 'crlf',
-    preDelay: cmd.preDelay ?? 0,
-    postDelay: cmd.postDelay ?? 0,
+    // 兼容旧字段：优先 delay，回退旧 postDelay / attemptInterval
+    delay: cmd.delay ?? cmd.postDelay ?? cmd.attemptInterval ?? 0,
     selected: cmd.selected ?? true,
     status: 'pending' as const,
   };
@@ -311,7 +307,6 @@ export function withCommandDefaults(cmd: any): TestCommand {
     repeatCount: cmd.repeatCount ?? 1,
     successThreshold: cmd.successThreshold ?? 1,
     stopWhenReached: cmd.stopWhenReached ?? true,
-    attemptInterval: cmd.attemptInterval ?? 1000,
     timeout: cmd.timeout ?? 2000,
     validation: cmd.validation ?? 'standard',
     validationPattern: cmd.validationPattern ?? '',
@@ -405,8 +400,8 @@ function migrateLegacyCommand(old: any): TestCommand {
     content: old.command ?? old.content ?? '',
     dataFormat: (old.dataFormat === 'hex' ? 'hex' : 'utf8') as 'utf8' | 'hex',
     lineEnding: old.lineEnding || 'crlf',
-    preDelay: 0,
-    postDelay: 0,
+    // 旧格式的重发间隔/后置延时映射到统一的命令延时
+    delay: old.retryDelay ?? old.postDelay ?? 0,
     selected: old.selected ?? true,
     status: 'pending' as const,
   };
@@ -441,7 +436,6 @@ function migrateLegacyCommand(old: any): TestCommand {
     repeatCount: 1,
     successThreshold: 1,
     stopWhenReached: true,
-    attemptInterval: old.retryDelay ?? 1000,
     timeout: old.waitTime ?? 2000,
     validation,
     validationPattern: old.validationPattern || old.expectedResponse || '',

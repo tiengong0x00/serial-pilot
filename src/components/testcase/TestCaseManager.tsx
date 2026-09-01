@@ -8,7 +8,7 @@ import { useTestExecution } from '@/hooks/useTestExecution';
 import { useUrcListener } from '@/hooks/useUrcListener';
 import { useTestCaseFiles } from '@/hooks/useTestCaseFiles';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { findCase, findCommand, walkCases, isCommand, isUrcGuard } from '@/lib/testCaseUtils';
+import { findCase, findCommand, walkCases, isCommand, isUrcGuard, flattenTree } from '@/lib/testCaseUtils';
 import type { StandardCommand } from '@/types/testCase';
 import { TestCaseTree } from './TestCaseTree';
 import { ContextMenu } from './ContextMenu';
@@ -32,6 +32,7 @@ export function TestCaseManager() {
     selectedCaseId,
     selectedCommandId,
     isDirty,
+    isBatchProcessing,
     addCase,
     removeCase,
     updateCase,
@@ -47,6 +48,7 @@ export function TestCaseManager() {
     importAsGroup,
     markClean,
     getRootCase,
+    batchUpdate,
     moveChildRelative,
     moveChildToPosition,
     reset,
@@ -99,6 +101,10 @@ export function TestCaseManager() {
   }, []);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // 多选状态
+  const [multiSelection, setMultiSelection] = useState<Set<string>>(new Set());
+
   const [editingCase, setEditingCase] = useState<string | null>(null);
   const [editingCommand, setEditingCommand] = useState<{
     caseId: string;
@@ -140,6 +146,32 @@ export function TestCaseManager() {
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
   }, []);
+
+  // Ctrl+A 全选、Esc 取消多选
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+A 或 Cmd+A 全选
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        // 只有焦点在树区域时才拦截(避免影响输入框)
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          return;
+        }
+        e.preventDefault();
+        const root = getRootCase();
+        if (root) {
+          const allNodes = flattenTree([root]);
+          setMultiSelection(new Set(allNodes.map((n) => n.id)));
+        }
+      }
+      // Esc 取消多选
+      if (e.key === 'Escape' && multiSelection.size > 0) {
+        setMultiSelection(new Set());
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [getRootCase, multiSelection.size]);
 
   // 计算添加目标：优先选中的用例，其次根用例
   const resolveTargetCaseId = useCallback((): string | null => {
@@ -289,6 +321,113 @@ export function TestCaseManager() {
     [cases, updateCase, updateCommand],
   );
 
+  // 批量切换 selected 状态
+  const handleBatchToggleSelected = useCallback(
+    (ids: Set<string>, enable: boolean) => {
+      // 立即关闭上下文菜单
+      setContextMenu(null);
+
+      // 使用 batchUpdate 一次性提交所有变更，避免多次重渲染
+      batchUpdate((state) => {
+        ids.forEach((id) => {
+          const cmd = findCommand(state.cases, id);
+          if (cmd) {
+            // 是命令 - 直接更新
+            Object.assign(cmd.command, { selected: enable });
+          } else {
+            // 是用例
+            const case_ = findCase(state.cases, id);
+            if (case_) {
+              const isRoot = 'targetPort' in case_;
+              if (isRoot && !enable) return; // 根用例不能禁用
+
+              // 递归更新用例及其子节点
+              walkCases([case_], (c) => {
+                c.selected = enable;
+                c.children.forEach((child) => {
+                  if (isCommand(child)) {
+                    child.selected = enable;
+                  }
+                });
+              });
+            }
+          }
+        });
+      });
+
+      // 操作后清空多选
+      setMultiSelection(new Set());
+    },
+    [batchUpdate],
+  );
+
+  // 批量删除
+  const handleBatchRemove = useCallback(
+    (ids: Set<string>) => {
+      // 分离命令和用例
+      const commands: Array<{ caseId: string; cmdId: string }> = [];
+      const casesToRemove: string[] = [];
+
+      ids.forEach((id) => {
+        const cmd = findCommand(cases, id);
+        if (cmd) {
+          commands.push({ caseId: cmd.owner.id, cmdId: id });
+        } else {
+          const case_ = findCase(cases, id);
+          if (case_ && !('targetPort' in case_)) {
+            // 非根用例才能删除
+            casesToRemove.push(id);
+          }
+        }
+      });
+
+      // 先删命令,再删用例(避免父子冲突)
+      commands.forEach(({ caseId, cmdId }) => removeCommand(caseId, cmdId));
+      casesToRemove.forEach((id) => removeCase(id));
+
+      setMultiSelection(new Set());
+    },
+    [cases, removeCase, removeCommand],
+  );
+
+  // 支持多选的用例选择处理
+  const handleSelectCase = useCallback(
+    (id: string, e?: React.MouseEvent) => {
+      if (e && (e.ctrlKey || e.metaKey)) {
+        // Ctrl+点击: 切换多选状态
+        setMultiSelection((prev) => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+      } else {
+        // 普通点击: 清空多选,使用单选
+        setMultiSelection(new Set());
+        selectCase(id);
+      }
+    },
+    [selectCase],
+  );
+
+  // 支持多选的命令选择处理
+  const handleSelectCommand = useCallback(
+    (id: string, e?: React.MouseEvent) => {
+      if (e && (e.ctrlKey || e.metaKey)) {
+        // Ctrl+点击: 切换多选状态
+        setMultiSelection((prev) => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+      } else {
+        // 普通点击: 清空多选,使用单选
+        setMultiSelection(new Set());
+        selectCommand(id);
+      }
+    },
+    [selectCommand],
+  );
+
   // 打开用例编辑弹窗
   const handleEditCase = useCallback((caseId: string) => {
     setEditingCase(caseId);
@@ -388,10 +527,18 @@ export function TestCaseManager() {
     const success = await saveFile(currentFile, json);
     if (success) {
       markClean();
+
+      // 如果不是自动保存模式，显示保存成功提示
+      if (!testCaseAutoSave) {
+        alert(t('testCase.saveSuccess'));
+      }
+
+      // 刷新文件列表
+      await refreshFiles();
     } else {
       alert(t('testCase.saveFailed', { error: filesError }));
     }
-  }, [currentFile, exportJson, saveFile, markClean, filesError, t]);
+  }, [currentFile, exportJson, saveFile, markClean, filesError, testCaseAutoSave, refreshFiles, t]);
 
   // 自动保存：开启 + 有修改 + 有文件时，2秒防抖后静默保存
   // 依赖 handleSaveFile，故定义在其后，避免暂时性死区
@@ -434,16 +581,88 @@ export function TestCaseManager() {
   }, [refreshFiles, currentFile, isDirty, loadFile, importJson, markClean, reset, t]);
 
   // 导出当前用例（下载）
-  const handleExportCurrentFile = useCallback(() => {
-    if (!currentFile) return;
-    const json = exportJson(currentFile);
-    downloadJson(json, currentFile);
-  }, [exportJson, currentFile]);
+  const handleExportCurrentFile = useCallback(async () => {
+    if (!currentFile) {
+      console.warn('导出失败：没有当前文件');
+      return;
+    }
+    try {
+      console.log('开始导出文件:', currentFile);
+      const json = exportJson(currentFile);
+      console.log('导出 JSON 长度:', json.length);
+
+      // 使用 Tauri 保存对话框
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await save({
+        defaultPath: currentFile.endsWith('.json') ? currentFile : `${currentFile}.json`,
+        filters: [
+          {
+            name: 'JSON',
+            extensions: ['json'],
+          },
+        ],
+      });
+
+      if (filePath) {
+        // 使用 Tauri writeTextFile API 保存文件
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+        await writeTextFile(filePath, json);
+        console.log('文件保存成功:', filePath);
+        alert(t('testCase.exportSuccess'));
+      } else {
+        console.log('用户取消了保存');
+      }
+    } catch (err) {
+      console.error('导出失败:', err);
+      alert(`导出失败: ${err}`);
+    }
+  }, [exportJson, currentFile, t]);
 
   // 导入用例（作为组添加到当前用例）
   const handleImportAsGroup = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  // 打开外部路径的用例文件
+  const handleOpenExternalCase = useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await open({
+        multiple: false,
+        directory: false,
+        filters: [
+          {
+            name: 'JSON',
+            extensions: ['json'],
+          },
+        ],
+      });
+
+      if (filePath) {
+        // 读取文件内容
+        const { readTextFile } = await import('@tauri-apps/plugin-fs');
+        const content = await readTextFile(filePath as string);
+
+        // 提取文件名
+        const filename = (filePath as string).split(/[\\/]/).pop() || 'external.json';
+
+        // 替换当前用例
+        if (isDirty) {
+          const confirmed = confirm(t('testCase.unsavedChangesDesc'));
+          if (!confirmed) return;
+        }
+
+        reset();
+        importJson(content, filename, true);
+        markClean();
+
+        alert(t('testCase.openExternalSuccess', { file: filename }));
+      }
+    } catch (err) {
+      console.error('打开外部用例失败:', err);
+      alert(`打开失败: ${err}`);
+    }
+  }, [isDirty, reset, importJson, markClean, t]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -644,7 +863,13 @@ export function TestCaseManager() {
 
       {/* 主区域：用例树占满全宽 */}
       <div
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-auto relative"
+        onClick={(e) => {
+          // 点击空白处取消多选
+          if (e.target === e.currentTarget && multiSelection.size > 0) {
+            setMultiSelection(new Set());
+          }
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           const root = getRootCase();
@@ -653,12 +878,23 @@ export function TestCaseManager() {
           }
         }}
       >
+        {/* 批量处理中的加载指示器 */}
+        {isBatchProcessing && (
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-40 flex items-center justify-center">
+            <div className="bg-card border border-border rounded-lg shadow-lg p-6 flex flex-col items-center gap-3">
+              <RefreshCw className="h-8 w-8 text-primary animate-spin" />
+              <p className="text-sm font-medium">{t('testCase.batchProcessing')}</p>
+            </div>
+          </div>
+        )}
+
         <TestCaseTree
           cases={cases}
           selectedCaseId={selectedCaseId}
           selectedCommandId={selectedCommandId}
-          onSelectCase={selectCase}
-          onSelectCommand={selectCommand}
+          multiSelection={multiSelection}
+          onSelectCase={handleSelectCase}
+          onSelectCommand={handleSelectCommand}
           onToggleExpanded={toggleExpanded}
           onContextMenu={handleContextMenu}
           onEditCase={handleEditCase}
@@ -677,9 +913,12 @@ export function TestCaseManager() {
         open={caseSelectorOpen}
         files={files}
         currentFile={currentFile}
+        loading={filesLoading}
         onClose={() => setCaseSelectorOpen(false)}
         onSelect={handleFileSelect}
         onCreateNew={handleCreateNewFile}
+        onRefresh={refreshFiles}
+        onOpenExternal={handleOpenExternalCase}
       />
 
       {/* 隐藏的文件输入（用于导入） */}
@@ -742,12 +981,15 @@ export function TestCaseManager() {
               return c?.selected ?? false;
             }
           })()}
+          multiSelection={multiSelection}
           onClose={() => setContextMenu(null)}
           onAddCase={addCase}
           onAddCommand={addCommand}
           onRemoveCase={removeCase}
           onRemoveCommand={removeCommand}
           onToggleSelected={handleToggleSelected}
+          onBatchToggleSelected={handleBatchToggleSelected}
+          onBatchRemove={handleBatchRemove}
           onEditCase={handleEditCase}
           onEditCommand={handleEditCommand}
         />
@@ -774,15 +1016,4 @@ export function TestCaseManager() {
       />
     </div>
   );
-}
-
-// 下载 JSON 文件
-function downloadJson(content: string, filename: string) {
-  const blob = new Blob([content], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }

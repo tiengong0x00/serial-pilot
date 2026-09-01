@@ -47,8 +47,9 @@ export function CaseExtensionMenu({
   }, [isOpen]);
 
   const handleAction = (action: () => void) => {
-    action();
+    console.log('CaseExtensionMenu handleAction 被调用');
     setIsOpen(false);
+    action();
   };
 
   return (

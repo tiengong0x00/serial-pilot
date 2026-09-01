@@ -28,12 +28,16 @@ interface TestCaseState {
   selectedCommandId: string | null;
   isDirty: boolean;
   currentFile: string | null; // 当前加载的文件名（与 cases 同步，跨界面切换保留）
+  isBatchProcessing: boolean; // 批量处理中状态
 
   // 用例操作
   addCase: (parentId: string | null) => void;
   removeCase: (id: string) => void;
   updateCase: (id: string, patch: Partial<TestCase>) => void;
   toggleExpanded: (id: string) => void;
+
+  // 批量更新操作（一次性提交所有变更）
+  batchUpdate: (fn: (state: TestCaseState) => void) => void;
 
   // 命令操作
   addCommand: (caseId: string, type?: CommandType) => void;
@@ -228,6 +232,7 @@ export const useTestCaseStore = create<TestCaseState>()(
     selectedCommandId: null,
     isDirty: false,
     currentFile: null,
+    isBatchProcessing: false,
 
     addCase: (parentId) =>
       set((state) => {
@@ -397,6 +402,14 @@ export const useTestCaseStore = create<TestCaseState>()(
     markClean: () =>
       set((state) => {
         state.isDirty = false;
+      }),
+
+    batchUpdate: (fn) =>
+      set((state) => {
+        state.isBatchProcessing = true;
+        fn(state as TestCaseState);
+        state.isDirty = true;
+        state.isBatchProcessing = false;
       }),
 
     getRootCase: () => {
