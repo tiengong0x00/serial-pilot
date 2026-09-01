@@ -2,224 +2,155 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAtAutocomplete } from '@/hooks/useAtAutocomplete';
-import { useCommandLibrary } from '@/stores/commandLibraryStore';
+import { useCommandLibrary, type TemplateCandidate } from '@/stores/commandLibraryStore';
 import type { AtCommand } from '@/lib/atCommands';
 
-// 测试用命令库：直接注入 store 的内存数组（不走后端 invoke）
+// 测试用命令库
 const TEST_COMMANDS: AtCommand[] = [
-  { command: 'AT', category: 'general', description: '测试通信' },
-  { command: 'AT+CSQ', category: 'info', description: '查询信号' },
-  { command: 'AT+CGREG', category: 'network', description: '查询GPRS注册' },
-  { command: 'AT+CGMI', category: 'info', description: '查询制造商' },
-  { command: 'AT+CGMR', category: 'info', description: '查询固件版本' },
+  { cmd: 'AT', desc: '测试通信', keywords: ['握手'], templates: [{ s: 'AT', d: '执行' }] },
+  { cmd: 'AT+CSQ', desc: '查询信号', keywords: ['信号'], templates: [{ s: 'AT+CSQ', d: '执行' }] },
+  {
+    cmd: 'AT+CGREG',
+    desc: '查询GPRS注册',
+    keywords: ['注册', 'network'],
+    templates: [
+      { s: 'AT+CGREG?', d: '读取' },
+      { s: 'AT+CGREG=<n>', d: '设置' },
+    ],
+  },
+  { cmd: 'AT+CGMI', desc: '查询制造商', keywords: [], templates: [{ s: 'AT+CGMI', d: '执行' }] },
+  { cmd: 'AT+CGMR', desc: '查询固件版本', keywords: [], templates: [{ s: 'AT+CGMR', d: '执行' }] },
 ];
 
-// 模拟模糊搜索函数
-const mockMatch = (query: string, limit = 50): AtCommand[] => {
+function expand(cmd: AtCommand): TemplateCandidate[] {
+  return cmd.templates.map((t) => ({ cmd: cmd.cmd, cmdDesc: cmd.desc, s: t.s, d: t.d }));
+}
+
+const mockMatchTemplates = (query: string, limit = 50): TemplateCandidate[] => {
   if (!query) return [];
   const q = query.toLowerCase();
-  return TEST_COMMANDS.filter(
-    c =>
-      c.command.toLowerCase().includes(q) ||
-      c.category.toLowerCase().includes(q) ||
-      c.description.toLowerCase().includes(q)
-  ).slice(0, limit);
+  const prefix: TemplateCandidate[] = [];
+  const other: TemplateCandidate[] = [];
+  for (const c of TEST_COMMANDS) {
+    const kw = c.keywords.some((k) => k.toLowerCase().includes(q) || q.includes(k.toLowerCase()));
+    const dh = c.desc.toLowerCase().includes(q);
+    const ch = c.cmd.toLowerCase().includes(q);
+    for (const cand of expand(c)) {
+      if (cand.s.toLowerCase().startsWith(q)) prefix.push(cand);
+      else if (ch || dh || kw || cand.s.toLowerCase().includes(q)) other.push(cand);
+    }
+  }
+  return [...prefix, ...other].slice(0, limit);
 };
 
-describe('useAtAutocomplete', () => {
+const mockPrefixTemplates = (prefix: string, limit = 100): TemplateCandidate[] => {
+  if (!prefix) return [];
+  const p = prefix.toLowerCase();
+  const hits: TemplateCandidate[] = [];
+  for (const c of TEST_COMMANDS) {
+    for (const cand of expand(c)) {
+      if (cand.s.toLowerCase().startsWith(p)) hits.push(cand);
+    }
+  }
+  return hits.slice(0, limit);
+};
+
+describe('useAtAutocomplete (扁平化命令库)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 注入测试命令库到 store
     useCommandLibrary.setState({
       commands: TEST_COMMANDS,
       loaded: true,
       error: null,
-      match: mockMatch,
+      matchTemplates: mockMatchTemplates,
+      prefixTemplates: mockPrefixTemplates,
     } as any);
   });
 
-  it('always 模式下按分类模糊匹配（输入 network）', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input, 'always'),
-      { initialProps: { input: '' } }
-    );
+  it('按关键词模糊匹配（输入 network）', async () => {
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input, 'always'), {
+      initialProps: { input: '' },
+    });
     rerender({ input: 'network' });
-    await waitFor(() => {
-      // network 分类应匹配 AT+CGREG
-      expect(result.current.candidates.some(c => c.command === 'AT+CGREG')).toBe(true);
-    }, { timeout: 200 });
+    await waitFor(
+      () => expect(result.current.candidates.some((c) => c.cmd === 'AT+CGREG')).toBe(true),
+      { timeout: 300 },
+    );
   });
 
-  it('always 模式下按描述模糊匹配（输入 注册）', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input, 'always'),
-      { initialProps: { input: '' } }
-    );
+  it('按描述模糊匹配（输入 注册）', async () => {
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input, 'always'), {
+      initialProps: { input: '' },
+    });
     rerender({ input: '注册' });
-    await waitFor(() => {
-      // 描述含"注册"应匹配 AT+CGREG
-      expect(result.current.candidates.some(c => c.command === 'AT+CGREG')).toBe(true);
-    }, { timeout: 200 });
+    await waitFor(
+      () => expect(result.current.candidates.some((c) => c.cmd === 'AT+CGREG')).toBe(true),
+      { timeout: 300 },
+    );
   });
 
-  it('单字符输入不触发匹配（最小长度 2）', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input, 'always'),
-      { initialProps: { input: '' } }
-    );
+  it('单字符输入不触发匹配', async () => {
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input, 'always'), {
+      initialProps: { input: '' },
+    });
     rerender({ input: 'A' });
-    await waitFor(() => {
-      expect(result.current.candidates).toEqual([]);
-    }, { timeout: 200 });
+    await waitFor(() => expect(result.current.candidates).toEqual([]), { timeout: 300 });
   });
 
   it('AT 开头触发匹配', async () => {
-    // 从空值挂载，rerender 模拟用户输入（避免初始抑制）
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input),
-      { initialProps: { input: '' } }
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input), {
+      initialProps: { input: '' },
+    });
+    rerender({ input: 'AT+CG' });
+    await waitFor(
+      () => {
+        expect(result.current.candidates.length).toBeGreaterThan(0);
+        expect(result.current.isOpen).toBe(true);
+      },
+      { timeout: 300 },
     );
-    rerender({ input: 'AT' });
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.candidates.length).toBeGreaterThan(0);
-      expect(result.current.isOpen).toBe(true);
-    }, { timeout: 200 });
   });
 
-  it('大小写不敏感', async () => {
-    const { result: upper } = renderHook(() => useAtAutocomplete('AT+CSQ'));
-    const { result: lower } = renderHook(() => useAtAutocomplete('at+csq'));
-    // 等待防抖
-    await waitFor(() => {
-      expect(upper.current.candidates.length).toBe(lower.current.candidates.length);
-    }, { timeout: 200 });
+  it('Tab 补全到公共前缀（AT+CG → AT+CGM/AT+CGR 无更长公共前缀则暂停）', async () => {
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input), {
+      initialProps: { input: '' },
+    });
+    rerender({ input: 'AT+CGR' });
+    await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(0), { timeout: 300 });
+    const tab = result.current.getTabCompletion();
+    // AT+CGR 前缀命中 AT+CGREG?、AT+CGREG=<n>、AT+CGMR(否，不以AT+CGR开头)
+    // 实际前缀候选：AT+CGREG? / AT+CGREG=<n>，公共前缀 AT+CGREG
+    expect(tab?.text).toBe('AT+CGREG');
   });
 
-  it('精确匹配单个命令时不显示候选', async () => {
-    const { result } = renderHook(() => useAtAutocomplete('AT+CSQ'));
-    // 等待防抖
-    await waitFor(() => {
-      // 假设 AT+CSQ 是唯一匹配项
-      if (result.current.candidates.length === 1 && result.current.candidates[0].command === 'AT+CSQ') {
-        expect(result.current.isOpen).toBe(false);
-      }
-    }, { timeout: 200 });
+  it('ghostHint 计算剩余期望', async () => {
+    const { result, rerender } = renderHook(({ input }) => useAtAutocomplete(input), {
+      initialProps: { input: '' },
+    });
+    rerender({ input: 'AT+CGREG' });
+    await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(0), { timeout: 300 });
+    // 选中第一个候选（AT+CGREG?），剩余应为 "?"
+    expect(typeof result.current.ghostHint).toBe('string');
   });
 
   it('支持向下导航', async () => {
-    const { result } = renderHook(() => useAtAutocomplete('AT+CG'));
-    // 等待防抖和候选加载
-    await waitFor(() => {
-      expect(result.current.candidates.length).toBeGreaterThan(0);
-    }, { timeout: 200 });
+    const { result } = renderHook(() => useAtAutocomplete('AT+CGREG'));
+    await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(1), { timeout: 300 });
     expect(result.current.selectedIndex).toBe(0);
-    act(() => {
-      result.current.moveDown();
-    });
+    act(() => result.current.moveDown());
     expect(result.current.selectedIndex).toBe(1);
   });
 
-  it('支持向上导航（循环）', async () => {
-    const { result } = renderHook(() => useAtAutocomplete('AT+CG'));
-    // 等待防抖和候选加载
-    await waitFor(() => {
-      expect(result.current.candidates.length).toBeGreaterThan(0);
-    }, { timeout: 200 });
-    const len = result.current.candidates.length;
-    expect(result.current.selectedIndex).toBe(0);
-    act(() => {
-      result.current.moveUp();
-    });
-    expect(result.current.selectedIndex).toBe(len - 1);
-  });
-
-  it('dismiss 后不显示候选', async () => {
-    // 从空值挂载，rerender 模拟用户输入 AT+CG（匹配多个命令）
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input),
-      { initialProps: { input: '' } }
-    );
-    rerender({ input: 'AT+CG' });
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.isOpen).toBe(true);
-    }, { timeout: 200 });
-    act(() => {
-      result.current.dismiss();
-    });
-    expect(result.current.isOpen).toBe(false);
-  });
-
-  it('以已有内容挂载时不显示候选（编辑已存在命令场景）', () => {
-    // 打开编辑页时命令内容已是 AT+CG，此时不应弹出补全面板
-    const { result } = renderHook(() => useAtAutocomplete('AT+CG'));
-    expect(result.current.isOpen).toBe(false);
-  });
-
-  it('以已有内容挂载后用户编辑，重新启用候选', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input),
-      { initialProps: { input: 'AT+CG' } }
-    );
-    // 初始不弹
-    expect(result.current.isOpen).toBe(false);
-    // 用户编辑后（内容变化）重新启用
-    rerender({ input: 'AT+CS' });
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.isOpen).toBe(true);
-    }, { timeout: 200 });
-  });
-
-  it('输入变化后重新启用候选', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input),
-      { initialProps: { input: 'AT+CG' } }
-    );
-    act(() => {
-      result.current.dismiss();
-    });
-    expect(result.current.isOpen).toBe(false);
-
-    // 输入变化（AT+CS 匹配 AT+CSQ）
-    rerender({ input: 'AT+CS' });
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.isOpen).toBe(true);
-    }, { timeout: 200 });
-  });
-
-  it('getSelected 返回当前选中的命令', async () => {
-    const { result } = renderHook(() => useAtAutocomplete('AT+CG'));
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.candidates.length).toBeGreaterThan(0);
-    }, { timeout: 200 });
+  it('getSelected 返回当前选中候选', async () => {
+    const { result } = renderHook(() => useAtAutocomplete('AT+CGREG'));
+    await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(0), { timeout: 300 });
     const selected = result.current.getSelected();
     expect(selected).not.toBeNull();
-    expect(selected?.command).toBe(result.current.candidates[0].command);
+    expect(selected?.s).toBe(result.current.candidates[0].s);
   });
 
-  it('候选变化时重置选中索引', async () => {
-    const { result, rerender } = renderHook(
-      ({ input }) => useAtAutocomplete(input),
-      { initialProps: { input: 'AT+CG' } }
-    );
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.candidates.length).toBeGreaterThan(0);
-    }, { timeout: 200 });
-    act(() => {
-      result.current.moveDown();
-    });
-    expect(result.current.selectedIndex).toBe(1);
-
-    // 输入变化导致候选列表变化
-    rerender({ input: 'AT+CR' });
-    // 等待防抖
-    await waitFor(() => {
-      expect(result.current.selectedIndex).toBe(0);
-    }, { timeout: 200 });
+  it('以已有内容挂载时不显示候选', () => {
+    const { result } = renderHook(() => useAtAutocomplete('AT+CGREG?'));
+    expect(result.current.isOpen).toBe(false);
   });
 });

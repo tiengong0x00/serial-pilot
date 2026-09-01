@@ -1,89 +1,83 @@
 /**
- * AT 命令库 + Trie 前缀匹配（运行时加载）
+ * AT 命令库类型定义 + 兼容旧格式解析
  *
  * 命令库从 .exe/../commands/*.json 动态加载，不再编译期硬编码。
- * Trie 树结构保留，加速输入时的前缀匹配。
+ * 结构：{ cmd, desc, keywords, templates:[{s,d}] }，无 protocol/type/modes/urc/params。
  */
 
-/** AT 命令分类（推荐使用预设值，也可自定义） */
-export type AtCategory = "info" | "network" | "sim" | "call" | "sms" | "general" | (string & {});
+/** 单条模板：s=纯字符串语法（<>内为占位符），d=描述 */
+export interface CmdTemplate {
+  /** 语法字符串，如 "AT+CEREG=<n>" 或 URC "+CEREG: <stat>" */
+  s: string;
+  /** 描述，如 "设置：n=0禁用/1启用" */
+  d: string;
+}
 
 /** 单条 AT 命令定义 */
 export interface AtCommand {
-  /** 命令语法，如 "AT+CSQ" */
-  command: string;
-  /** 分类 */
-  category: AtCategory;
+  /** 基础命令名，如 "AT+CEREG" */
+  cmd: string;
   /** 简短说明 */
-  description: string;
-  /** 用法示例（可选） */
+  desc: string;
+  /** 关键词（自然语言搜索用） */
+  keywords: string[];
+  /** 模板列表（含执行/读取/设置/示例/URC 各分支） */
+  templates: CmdTemplate[];
+}
+
+/** 旧格式命令（V1.0），用于兼容解析 */
+interface LegacyAtCommand {
+  command: string;
+  category?: string;
+  description?: string;
   example?: string;
 }
 
-/** Trie 节点 */
-interface TrieNode {
-  children: Map<string, TrieNode>;
-  /** 以该节点为结尾的命令索引（指向传入的命令数组） */
-  indices: number[];
-}
-
-function createNode(): TrieNode {
-  return { children: new Map(), indices: [] };
-}
-
 /**
- * AT 命令 Trie 树，用于前缀匹配。
- *
- * 大小写不敏感（统一转大写存储与查询）。
- * 每个节点记录经过它的所有命令索引，便于前缀查询直接返回。
+ * 将单条命令归一化为扁平结构。
+ * 新格式（有 cmd/templates）原样返回并补齐字段；旧格式（有 command）迁移。
  */
-export class AtCommandTrie {
-  private root: TrieNode = createNode();
-  private commands: AtCommand[];
+export function normalizeCommand(raw: unknown): AtCommand | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
 
-  constructor(commands: AtCommand[]) {
-    this.commands = commands;
-    commands.forEach((cmd, index) => this.insert(cmd.command, index));
+  // 新格式
+  if (typeof obj.cmd === "string") {
+    const templates = Array.isArray(obj.templates)
+      ? (obj.templates as unknown[])
+          .map((t) => {
+            if (!t || typeof t !== "object") return null;
+            const to = t as Record<string, unknown>;
+            const s = typeof to.s === "string" ? to.s : "";
+            if (!s) return null;
+            return { s, d: typeof to.d === "string" ? to.d : "" } as CmdTemplate;
+          })
+          .filter((t): t is CmdTemplate => t !== null)
+      : [];
+    // 无模板时至少放一条与 cmd 同名的模板，保证补全可用
+    if (templates.length === 0) templates.push({ s: obj.cmd, d: typeof obj.desc === "string" ? obj.desc : "" });
+    return {
+      cmd: obj.cmd,
+      desc: typeof obj.desc === "string" ? obj.desc : "",
+      keywords: Array.isArray(obj.keywords) ? (obj.keywords as unknown[]).filter((k): k is string => typeof k === "string") : [],
+      templates,
+    };
   }
 
-  private insert(command: string, index: number): void {
-    let node = this.root;
-    const key = command.toUpperCase();
-    for (const ch of key) {
-      let child = node.children.get(ch);
-      if (!child) {
-        child = createNode();
-        node.children.set(ch, child);
-      }
-      node = child;
-      node.indices.push(index); // 记录经过此节点的命令
+  // 旧格式迁移
+  if (typeof obj.command === "string") {
+    const legacy = obj as unknown as LegacyAtCommand;
+    const templates: CmdTemplate[] = [{ s: legacy.command, d: legacy.description ?? "" }];
+    if (legacy.example && legacy.example !== legacy.command) {
+      templates.push({ s: legacy.example, d: legacy.description ?? "" });
     }
+    return {
+      cmd: legacy.command,
+      desc: legacy.description ?? "",
+      keywords: legacy.category ? [legacy.category] : [],
+      templates,
+    };
   }
 
-  /**
-   * 查询以 prefix 开头的命令索引列表。
-   * 空前缀返回空数组（不主动弹出全部命令）。
-   */
-  search(prefix: string): number[] {
-    const key = prefix.toUpperCase();
-    if (key.length === 0) return [];
-    let node = this.root;
-    for (const ch of key) {
-      const child = node.children.get(ch);
-      if (!child) return []; // 无匹配
-      node = child;
-    }
-    return node.indices;
-  }
-
-  /**
-   * 匹配 AT 命令。
-   * @param prefix 输入前缀
-   * @param limit 最大候选数
-   * @returns 匹配的命令列表
-   */
-  match(prefix: string, limit = 8): AtCommand[] {
-    const indices = this.search(prefix.trim());
-    return indices.slice(0, limit).map((i) => this.commands[i]);
-  }
+  return null;
 }

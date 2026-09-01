@@ -61,7 +61,7 @@ const ToolboxWindow = () => {
         </nav>
 
         {/* 右侧内容区 */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-w-0 overflow-y-auto">
           {activeCategory === "conversion" && <ConversionTools />}
           {activeCategory === "string" && <StringTools />}
           {activeCategory === "network" && <NetworkTools />}

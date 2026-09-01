@@ -20,6 +20,8 @@ interface AtAutocompleteInputProps {
   onFileDrop?: (file: File) => void;
   /** Ctrl+S 回调（可选）：提供后焦点在本输入框时按 Ctrl+S 触发，传入当前值 */
   onCtrlS?: (value: string) => void;
+  /** 候选面板展开方向，默认向下（用于页面上方的表单输入框） */
+  placement?: "top" | "bottom";
 }
 
 export function AtAutocompleteInput({
@@ -30,22 +32,72 @@ export function AtAutocompleteInput({
   triggerMode = "at-prefix",
   onFileDrop,
   onCtrlS,
+  placement = "bottom",
 }: AtAutocompleteInputProps) {
   const autocomplete = useAtAutocomplete(value, triggerMode);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // 高亮选中候选的模板语法 s；若含占位符，选中第一个占位符区域便于覆盖输入
   const applyCandidate = useCallback(() => {
     const selected = autocomplete.getSelected();
     if (selected) {
-      onChange(selected.command);
+      onChange(selected.s);
       autocomplete.dismiss();
-      inputRef.current?.focus();
+      const el = inputRef.current;
+      el?.focus();
+      // 下一帧设置占位符高亮（等 value 更新后）
+      const ph = selected.s.indexOf("<");
+      const phEnd = ph !== -1 ? selected.s.indexOf(">", ph + 1) : -1;
+      if (el && ph !== -1 && phEnd !== -1) {
+        requestAnimationFrame(() => el.setSelectionRange(ph, phEnd + 1));
+      }
     }
   }, [autocomplete, onChange]);
 
+  // Tab 补全：公共前缀 + 歧义暂停 + 占位符高亮
+  const handleTab = useCallback(() => {
+    const result = autocomplete.getTabCompletion();
+    if (!result || result.ambiguous) return; // 歧义暂停：不补全，等更多输入
+    onChange(result.text);
+    const el = inputRef.current;
+    el?.focus();
+    if (el && result.highlight) {
+      const { start, end } = result.highlight;
+      requestAnimationFrame(() => el.setSelectionRange(start, end));
+    }
+  }, [autocomplete, onChange]);
+
+  // 高亮态按 Tab 跳到下一个占位符
+  const jumpNextPlaceholder = useCallback((): boolean => {
+    const el = inputRef.current;
+    if (!el) return false;
+    const from = el.selectionEnd ?? 0;
+    const next = value.indexOf("<", from);
+    if (next === -1) return false;
+    const nextEnd = value.indexOf(">", next + 1);
+    if (nextEnd === -1) return false;
+    el.setSelectionRange(next, nextEnd + 1);
+    return true;
+  }, [value]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Tab：优先在占位符间跳转（选中态），否则做补全
+      if (e.key === "Tab" && !e.shiftKey) {
+        const el = inputRef.current;
+        const hasSelection = el && el.selectionStart !== el.selectionEnd;
+        if (hasSelection && jumpNextPlaceholder()) {
+          e.preventDefault();
+          return;
+        }
+        if (autocomplete.isOpen) {
+          e.preventDefault();
+          handleTab();
+          return;
+        }
+      }
+
       if (autocomplete.isOpen) {
         switch (e.key) {
           case "ArrowDown":
@@ -55,10 +107,6 @@ export function AtAutocompleteInput({
           case "ArrowUp":
             e.preventDefault();
             autocomplete.moveUp();
-            return;
-          case "Tab":
-            e.preventDefault();
-            applyCandidate();
             return;
           case "Escape":
             e.preventDefault();
@@ -81,7 +129,7 @@ export function AtAutocompleteInput({
         if (v) onCtrlS(v);
       }
     },
-    [autocomplete, applyCandidate, onCtrlS, value]
+    [autocomplete, applyCandidate, handleTab, jumpNextPlaceholder, onCtrlS, value]
   );
 
   const handleDragOver = useCallback(
@@ -118,9 +166,19 @@ export function AtAutocompleteInput({
 
   return (
     <div className="relative">
+      {/* 灰显「剩余期望」覆盖层：与 input 同字体/内距，透明占位 + 灰色续写 */}
+      {autocomplete.ghostHint && (
+        <div
+          aria-hidden
+          className="absolute inset-0 px-3 py-2 text-sm font-mono whitespace-pre overflow-hidden pointer-events-none border border-transparent"
+        >
+          <span className="invisible">{value}</span>
+          <span className="text-muted-foreground/60">{autocomplete.ghostHint}</span>
+        </div>
+      )}
       <input
         ref={inputRef}
-        className={`${className}${isDragging ? " ring-2 ring-primary border-primary" : ""}`}
+        className={`relative bg-transparent ${className}${isDragging ? " ring-2 ring-primary border-primary" : ""}`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -136,6 +194,7 @@ export function AtAutocompleteInput({
         selectedIndex={autocomplete.selectedIndex}
         onSelect={applyCandidate}
         onHover={autocomplete.setSelectedIndex}
+        placement={placement}
       />
     </div>
   );

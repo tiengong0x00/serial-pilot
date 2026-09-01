@@ -1,6 +1,6 @@
 # 命令库格式规范 (Command Library Format Specification)
 
-本目录存放串口 AT 命令库文件，用于自动补全和快速参考。
+本目录存放串口 AT 命令库文件，用于命令自动补全、灰色续写提示和快速参考。
 
 ---
 
@@ -12,14 +12,15 @@
 
 ```json
 {
-  "version": "1.0",
   "name": "命令库显示名称",
   "commands": [
     {
-      "command": "AT+CSQ",
-      "category": "network",
-      "description": "查询信号质量",
-      "example": "AT+CSQ"
+      "cmd": "AT+CSQ",
+      "desc": "查询信号质量",
+      "keywords": ["网络", "信号"],
+      "templates": [
+        { "s": "AT+CSQ", "d": "执行：查询信号强度" }
+      ]
     }
   ]
 }
@@ -33,82 +34,55 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `version` | `string` | ✅ | 格式版本，当前固定为 `"1.0"` |
-| `name` | `string` | ✅ | 命令库名称（显示用，如 "General Commands"） |
+| `name` | `string` | 建议 | 命令库名称（显示用，如 "General Commands"）；缺省时用文件名 |
 | `commands` | `array` | ✅ | 命令列表，至少包含 1 个命令 |
 
 ### commands 数组元素字段
 
-| 字段 | 类型 | 必填 | 说明 | 示例/取值范围 |
-|------|------|------|------|--------------|
-| `command` | `string` | ✅ | AT 命令语法 | `"AT"`, `"AT+CSQ"`, `"AT+CGDCONT=1,\"IP\",\"cmnet\""` |
-| `category` | `string` | ✅ | 命令分类（可自定义） | 任意字符串，建议参考：`"info"` / `"network"` / `"sim"` / `"call"` / `"sms"` / `"general"` |
-| `description` | `string` | ✅ | 简短说明（建议 1-2 句话） | `"查询信号质量"` |
-| `example` | `string` | ❌ | 用法示例（可选） | `"AT+CFUN=1"` |
+| 字段 | 类型 | 必填 | 说明 | 示例 |
+|------|------|------|------|------|
+| `cmd` | `string` | ✅ | 归属命令名（不含参数） | `"AT"`, `"AT+CSQ"`, `"AT+CGDCONT"` |
+| `desc` | `string` | 建议 | 命令简短说明（1-2 句话） | `"查询信号质量"` |
+| `keywords` | `string[]` | ❌ | 关键词数组，用于模糊搜索 | `["网络", "信号", "csq"]` |
+| `templates` | `array` | ✅ | 该命令下的示例列表，至少 1 条 |  |
 
-**category 分类建议：**
-- `info` —— 设备信息（如固件版本、IMEI）
-- `network` —— 网络相关（信号、注册、数据连接）
-- `sim` —— SIM 卡操作（PIN、电话本）
-- `call` —— 通话控制（拨号、接听、挂断）
-- `sms` —— 短信操作（发送、读取、删除）
-- `general` —— 通用命令（AT 握手、回显、复位）
+### templates 数组元素字段
 
-**注意：** category 为自由字符串字段，可根据实际需求自定义分类（如 `"mqtt"`、`"http"`），上述仅为常见参考。
+| 字段 | 类型 | 必填 | 说明 | 示例 |
+|------|------|------|------|------|
+| `s` | `string` | ✅ | 示例语法，可含占位符 `<...>` | `"AT+CGDCONT=<cid>,<PDP_type>,<APN>"` |
+| `d` | `string` | ❌ | 示例说明 | `"设置：定义 PDP 上下文"` |
+
+**占位符与可选段：**
+- 用尖括号表示参数占位符，如 `<cid>`、`<APN>`，补全时按占位符匹配任意取值。
+- 用方括号表示可选段（源自 3GPP 写法），如 `AT+CGDCONT=<cid>[,<PDP_type>[,<APN>]]`，补全时会自动展平方括号。
 
 ---
 
 ## 三、完整示例
 
-### 示例 1：基础命令库
-
 ```json
 {
-  "version": "1.0",
-  "name": "General Commands",
-  "commands": [
-    {
-      "command": "AT",
-      "category": "general",
-      "description": "测试 AT 通信"
-    },
-    {
-      "command": "ATE0",
-      "category": "general",
-      "description": "关闭命令回显"
-    },
-    {
-      "command": "AT+CFUN",
-      "category": "general",
-      "description": "设置功能级别",
-      "example": "AT+CFUN=1"
-    }
-  ]
-}
-```
-
-### 示例 2：网络命令库
-
-```json
-{
-  "version": "1.0",
   "name": "Network Commands",
   "commands": [
     {
-      "command": "AT+CSQ",
-      "category": "network",
-      "description": "查询信号质量"
+      "cmd": "AT+CSQ",
+      "desc": "查询信号质量",
+      "keywords": ["网络", "信号", "csq"],
+      "templates": [
+        { "s": "AT+CSQ", "d": "执行：返回信号强度与误码率" }
+      ]
     },
     {
-      "command": "AT+CREG?",
-      "category": "network",
-      "description": "查询网络注册状态"
-    },
-    {
-      "command": "AT+COPS",
-      "category": "network",
-      "description": "运营商选择",
-      "example": "AT+COPS=0"
+      "cmd": "AT+CGDCONT",
+      "desc": "定义 PDP 上下文",
+      "keywords": ["网络", "pdp", "apn"],
+      "templates": [
+        { "s": "AT+CGDCONT?", "d": "读取：查询已配置的 PDP 上下文" },
+        { "s": "AT+CGDCONT=?", "d": "测试：查询支持的取值范围" },
+        { "s": "AT+CGDCONT=<cid>[,<PDP_type>[,<APN>]]", "d": "设置：定义 PDP 上下文" },
+        { "s": "AT+CGDCONT=1,\"IP\",\"cmnet\"", "d": "示例：配置 IP 类型、APN 为 cmnet" }
+      ]
     }
   ]
 }
@@ -120,7 +94,7 @@
 
 ### Q1: 文件名有要求吗？
 
-**A:** 无强制要求，但建议用 `at-<category>.json` 格式（如 `at-network.json`），按分类组织便于维护。文件名按字母序影响去重优先级（靠前文件优先）。
+**A:** 无强制要求。文件名按字母序影响去重优先级（靠前文件优先）。
 
 ### Q2: 命令大小写敏感吗？
 
@@ -130,13 +104,13 @@
 
 **A:** 按文件名排序，首次出现的版本保留，后续重复项被跳过。如需覆盖，可删除或重命名旧文件。
 
-### Q4: 支持命令参数的动态补全吗？
+### Q4: 补全提示是如何工作的？
 
-**A:** 当前版本仅支持命令前缀匹配（如输入 `AT+C` 会列出所有 `AT+C` 开头的命令）。参数补全需根据设备文档手动编写。
+**A:** 输入命令时，会优先展示与当前输入兼容的示例续写（占位符可匹配任意值），并给出灰色续写提示；无兼容续写时回退到对 `cmd` / `desc` / `keywords` 的模糊搜索。
 
 ### Q5: 如何添加新命令？
 
-**A:** 编辑 `commands/` 目录下的任意 `.json` 文件，或新建文件，添加到 `commands` 数组。保存后应用下次启动时自动加载（或在设置中触发"刷新命令库"）。
+**A:** 编辑 `commands/` 目录下任意 `.json` 文件，或新建文件，添加到 `commands` 数组。保存后在设置中触发"刷新命令库"即可立即生效，无需重启。也可在软件内输入命令后按 Ctrl+S 保存到库。
 
 ---
 
@@ -146,28 +120,26 @@
 
 ```
 请根据附件中的 AT 命令手册，按照 commands/README.md 中的格式规范，生成一个 JSON 格式的命令库文件。要求：
-1. 严格遵守字段类型和枚举值
-2. category 字段可以自定义吗？
-   - **可以**。虽然建议使用 info/network/sim/call/sms/general 这些常见分类便于统一管理，但你可以根据实际需求自定义任意分类名（如 `"mqtt"`、`"http"`、`"custom"`）。
-3. description 简短清晰，1-2 句话
-4. 仅包含手册中明确列出的命令
-5. 输出完整的 JSON，可直接保存为 .json 文件
+1. 严格遵守字段结构：{ name, commands:[{ cmd, desc, keywords, templates:[{ s, d }] }] }
+2. cmd 为归属命令名（不含参数），同一命令的不同用法归入其 templates
+3. desc 简短清晰，1-2 句话；keywords 提供便于搜索的中英文关键词
+4. 示例 s 可用占位符 <...> 表示参数，可选段用 [...]
+5. 仅包含手册中明确列出的命令
+6. 输出完整的 JSON，可直接保存为 .json 文件
 ```
 
 **AI 生成后的检查清单：**
-- ✅ `version` 是否为 `"1.0"`
-- ✅ `category` 是否在 6 个枚举值中
-- ✅ 所有必填字段（command/category/description）是否齐全
+- ✅ 根级是否为 `{ name, commands }`，不含多余字段
+- ✅ 每条命令是否有 `cmd` 与至少 1 条 `templates`
 - ✅ JSON 语法是否正确（可用 <https://jsonlint.com/> 校验）
 
 ---
 
 ## 六、技术说明
 
-- **加载机制**：应用启动时通过 Tauri 后端读取 `commands/` 下所有 `.json`，前端构建内存 Trie 树实现毫秒级前缀匹配
-- **性能**：支持数千条命令无性能损失，查找复杂度 O(前缀长度)
+- **加载机制**：应用启动时通过 Tauri 后端读取 `commands/` 下所有 `.json`，前端归一化并合并为内存命令库
 - **热更新**：修改文件后可在设置中点击"刷新命令库"立即生效，无需重启
-- **向后兼容**：未来版本可能新增字段（如 `syntax`、`response`），旧文件保持兼容
+- **兼容性**：加载时会对旧格式做归一化处理，尽量兼容早期字段
 
 ---
 

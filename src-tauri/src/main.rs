@@ -348,7 +348,7 @@ fn ensure_scripts_seeded() -> Result<(), Box<dyn std::error::Error>> {
 /// 原样返回给前端，去重与合并在前端完成（保留来源文件信息以便按文件名排序去重）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CommandLibFile {
-    /// 文件名（如 at-general.json），前端按字母序排序决定去重优先级
+    /// 文件名（如 TS_27.007.json），前端按字母序排序决定去重优先级
     pub filename: String,
     /// 文件原始 JSON 内容
     pub content: String,

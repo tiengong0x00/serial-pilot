@@ -838,19 +838,66 @@ const DataTerminal = () => {
     autoGrowInput();
   }, [input, autoGrowInput]);
 
-  // 应用选中的候选命令到输入框
+  // 应用选中的候选模板到输入框；含占位符则选中第一个便于覆盖输入
   const applyCandidate = useCallback(() => {
     const selected = autocomplete.getSelected();
     if (selected) {
-      setInput(selected.command);
+      setInput(selected.s);
       autocomplete.dismiss();
-      inputRef.current?.focus();
+      const el = inputRef.current;
+      el?.focus();
+      const ph = selected.s.indexOf("<");
+      const phEnd = ph !== -1 ? selected.s.indexOf(">", ph + 1) : -1;
+      if (el && ph !== -1 && phEnd !== -1) {
+        requestAnimationFrame(() => el.setSelectionRange(ph, phEnd + 1));
+      }
     }
   }, [autocomplete]);
+
+  // Tab 补全：公共前缀 + 歧义暂停 + 占位符高亮
+  const handleTabComplete = useCallback(() => {
+    const result = autocomplete.getTabCompletion();
+    if (!result || result.ambiguous) return;
+    setInput(result.text);
+    const el = inputRef.current;
+    el?.focus();
+    if (el && result.highlight) {
+      const { start, end } = result.highlight;
+      requestAnimationFrame(() => el.setSelectionRange(start, end));
+    }
+  }, [autocomplete]);
+
+  // 高亮态按 Tab 跳到下一个占位符
+  const jumpNextPlaceholder = useCallback((): boolean => {
+    const el = inputRef.current;
+    if (!el) return false;
+    const from = el.selectionEnd ?? 0;
+    const next = input.indexOf("<", from);
+    if (next === -1) return false;
+    const nextEnd = input.indexOf(">", next + 1);
+    if (nextEnd === -1) return false;
+    el.setSelectionRange(next, nextEnd + 1);
+    return true;
+  }, [input]);
 
   // 输入框键盘处理：候选面板打开时拦截导航键
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Tab：优先在占位符间跳转（选中态），否则补全
+      if (e.key === "Tab" && !e.shiftKey) {
+        const el = inputRef.current;
+        const hasSelection = el && el.selectionStart !== el.selectionEnd;
+        if (hasSelection && jumpNextPlaceholder()) {
+          e.preventDefault();
+          return;
+        }
+        if (autocomplete.isOpen) {
+          e.preventDefault();
+          handleTabComplete();
+          return;
+        }
+      }
+
       if (autocomplete.isOpen) {
         switch (e.key) {
           case "ArrowDown":
@@ -860,10 +907,6 @@ const DataTerminal = () => {
           case "ArrowUp":
             e.preventDefault();
             autocomplete.moveUp();
-            return;
-          case "Tab":
-            e.preventDefault();
-            applyCandidate();
             return;
           case "Escape":
             e.preventDefault();
@@ -896,7 +939,7 @@ const DataTerminal = () => {
         void handleSend();
       }
     },
-    [autocomplete, applyCandidate, pendingFile, handleSend, enterToSend, input]
+    [autocomplete, applyCandidate, handleTabComplete, jumpNextPlaceholder, pendingFile, handleSend, enterToSend, input]
   );
 
   // 发送文件：下沉后端流式发送，前端只订阅进度事件刷新单行进度条。
@@ -1362,10 +1405,20 @@ const DataTerminal = () => {
 
         <div className="flex items-start gap-2 relative">
           <div className="flex-1 relative">
+            {/* 灰显「剩余期望」覆盖层：输入部分透明占位，剩余部分灰色斜体 */}
+            {!hexMode && !pendingFile && autocomplete.ghostHint && (
+              <div
+                aria-hidden
+                className="absolute inset-0 px-2 py-1.5 pb-6 text-sm leading-5 whitespace-pre-wrap break-words overflow-hidden pointer-events-none font-mono border border-transparent"
+              >
+                <span className="invisible">{input}</span>
+                <span className="text-muted-foreground/60">{autocomplete.ghostHint}</span>
+              </div>
+            )}
             <textarea
               ref={inputRef}
               rows={1}
-              className="w-full min-h-[36px] px-2 py-1.5 pb-6 text-sm leading-5 rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 resize-y"
+              className="relative w-full min-h-[36px] px-2 py-1.5 pb-6 text-sm leading-5 font-mono rounded-md border border-input bg-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 resize-y"
               placeholder={
                 pendingFile
                   ? t("terminal.filePending")

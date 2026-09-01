@@ -1,6 +1,6 @@
 # Command Library Format Specification
 
-This directory stores serial AT command library files, used for autocomplete and quick reference.
+This directory stores serial AT command library files, used for command autocomplete, ghost-text hints, and quick reference.
 
 ---
 
@@ -12,14 +12,15 @@ Each `.json` file represents a command library. On startup, the app auto-loads a
 
 ```json
 {
-  "version": "1.0",
   "name": "Command Library Display Name",
   "commands": [
     {
-      "command": "AT+CSQ",
-      "category": "network",
-      "description": "Query signal quality",
-      "example": "AT+CSQ"
+      "cmd": "AT+CSQ",
+      "desc": "Query signal quality",
+      "keywords": ["network", "signal"],
+      "templates": [
+        { "s": "AT+CSQ", "d": "Exec: query signal strength" }
+      ]
     }
   ]
 }
@@ -33,82 +34,55 @@ Each `.json` file represents a command library. On startup, the app auto-loads a
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | `string` | ✅ | Format version, currently fixed at `"1.0"` |
-| `name` | `string` | ✅ | Library name (for display, e.g. "General Commands") |
+| `name` | `string` | recommended | Library name (for display, e.g. "General Commands"); falls back to filename if omitted |
 | `commands` | `array` | ✅ | Command list, at least 1 command |
 
 ### `commands` array element fields
 
-| Field | Type | Required | Description | Example / Allowed values |
-|-------|------|----------|-------------|--------------------------|
-| `command` | `string` | ✅ | AT command syntax | `"AT"`, `"AT+CSQ"`, `"AT+CGDCONT=1,\"IP\",\"cmnet\""` |
-| `category` | `string` | ✅ | Command category (customizable) | Any string; suggested: `"info"` / `"network"` / `"sim"` / `"call"` / `"sms"` / `"general"` |
-| `description` | `string` | ✅ | Short description (1-2 sentences) | `"Query signal quality"` |
-| `example` | `string` | ❌ | Usage example (optional) | `"AT+CFUN=1"` |
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `cmd` | `string` | ✅ | Owner command name (without params) | `"AT"`, `"AT+CSQ"`, `"AT+CGDCONT"` |
+| `desc` | `string` | recommended | Short description (1-2 sentences) | `"Query signal quality"` |
+| `keywords` | `string[]` | ❌ | Keyword array for fuzzy search | `["network", "signal", "csq"]` |
+| `templates` | `array` | ✅ | Example list under this command, at least 1 |  |
 
-**`category` suggested values:**
-- `info` — Device info (firmware version, IMEI)
-- `network` — Network related (signal, registration, data connection)
-- `sim` — SIM card operations (PIN, phonebook)
-- `call` — Call control (dial, answer, hang up)
-- `sms` — SMS operations (send, read, delete)
-- `general` — General commands (AT handshake, echo, reset)
+### `templates` array element fields
 
-**Note:** `category` is a free-form string. You can define custom categories (e.g. `"mqtt"`, `"http"`, `"custom"`) as needed; the values above are just common suggestions.
+| Field | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `s` | `string` | ✅ | Example syntax, may contain placeholders `<...>` | `"AT+CGDCONT=<cid>,<PDP_type>,<APN>"` |
+| `d` | `string` | ❌ | Example description | `"Set: define PDP context"` |
+
+**Placeholders and optional segments:**
+- Angle brackets denote parameter placeholders, e.g. `<cid>`, `<APN>`; during completion a placeholder matches any value.
+- Square brackets denote optional segments (per 3GPP notation), e.g. `AT+CGDCONT=<cid>[,<PDP_type>[,<APN>]]`; brackets are flattened automatically during matching.
 
 ---
 
-## 3. Complete Examples
-
-### Example 1: Basic command library
+## 3. Complete Example
 
 ```json
 {
-  "version": "1.0",
-  "name": "General Commands",
-  "commands": [
-    {
-      "command": "AT",
-      "category": "general",
-      "description": "Test AT communication"
-    },
-    {
-      "command": "ATE0",
-      "category": "general",
-      "description": "Disable command echo"
-    },
-    {
-      "command": "AT+CFUN",
-      "category": "general",
-      "description": "Set functionality level",
-      "example": "AT+CFUN=1"
-    }
-  ]
-}
-```
-
-### Example 2: Network command library
-
-```json
-{
-  "version": "1.0",
   "name": "Network Commands",
   "commands": [
     {
-      "command": "AT+CSQ",
-      "category": "network",
-      "description": "Query signal quality"
+      "cmd": "AT+CSQ",
+      "desc": "Query signal quality",
+      "keywords": ["network", "signal", "csq"],
+      "templates": [
+        { "s": "AT+CSQ", "d": "Exec: returns signal strength and bit error rate" }
+      ]
     },
     {
-      "command": "AT+CREG?",
-      "category": "network",
-      "description": "Query network registration status"
-    },
-    {
-      "command": "AT+COPS",
-      "category": "network",
-      "description": "Operator selection",
-      "example": "AT+COPS=0"
+      "cmd": "AT+CGDCONT",
+      "desc": "Define PDP context",
+      "keywords": ["network", "pdp", "apn"],
+      "templates": [
+        { "s": "AT+CGDCONT?", "d": "Read: query configured PDP contexts" },
+        { "s": "AT+CGDCONT=?", "d": "Test: query supported value ranges" },
+        { "s": "AT+CGDCONT=<cid>[,<PDP_type>[,<APN>]]", "d": "Set: define PDP context" },
+        { "s": "AT+CGDCONT=1,\"IP\",\"cmnet\"", "d": "Example: IP type, APN cmnet" }
+      ]
     }
   ]
 }
@@ -120,7 +94,7 @@ Each `.json` file represents a command library. On startup, the app auto-loads a
 
 ### Q1: Are there filename requirements?
 
-**A:** No hard requirement, but `at-<category>.json` (e.g. `at-network.json`) is recommended. Filename alphabetical order affects dedup priority (earlier files win).
+**A:** No hard requirement. Filename alphabetical order affects dedup priority (earlier files win).
 
 ### Q2: Are commands case-sensitive?
 
@@ -130,13 +104,13 @@ Each `.json` file represents a command library. On startup, the app auto-loads a
 
 **A:** Sorted by filename; the first occurrence is kept, later duplicates are skipped. To override, delete or rename the old file.
 
-### Q4: Is dynamic parameter completion supported?
+### Q4: How does completion work?
 
-**A:** The current version only supports command prefix matching (typing `AT+C` lists all commands starting with `AT+C`). Parameter completion must be written manually per device docs.
+**A:** While typing, the app first shows example continuations compatible with the current input (placeholders match any value) with a ghost-text hint; when there is no compatible continuation, it falls back to fuzzy search over `cmd` / `desc` / `keywords`.
 
 ### Q5: How to add new commands?
 
-**A:** Edit any `.json` file under `commands/`, or create a new file, and add to the `commands` array. Changes load on next startup (or trigger "Refresh command library" in settings).
+**A:** Edit any `.json` file under `commands/`, or create a new file, and add to the `commands` array. Click "Refresh command library" in settings for immediate effect, no restart needed. You can also press Ctrl+S in the app to save a typed command into a library.
 
 ---
 
@@ -147,28 +121,26 @@ If you have your device's AT command manual (PDF, Word, web page, etc.), provide
 ```
 Based on the attached AT command manual and the format spec in commands/README_EN.md,
 generate a JSON command library file. Requirements:
-1. Strictly follow field types and enum values
-2. Can I customize the category field?
-   - **Yes**. While we suggest using common categories like info/network/sim/call/sms/general for consistency, you can define custom categories (e.g. `"mqtt"`, `"http"`, `"custom"`) based on your needs.
-3. Keep descriptions short and clear, 1-2 sentences
-4. Only include commands explicitly listed in the manual
-5. Output complete JSON that can be saved directly as a .json file
+1. Strictly follow the structure: { name, commands:[{ cmd, desc, keywords, templates:[{ s, d }] }] }
+2. cmd is the owner command name (without params); group different usages under its templates
+3. Keep desc short and clear, 1-2 sentences; provide searchable keywords
+4. Example s may use placeholders <...> for params and [...] for optional segments
+5. Only include commands explicitly listed in the manual
+6. Output complete JSON that can be saved directly as a .json file
 ```
 
 **Post-generation checklist:**
-- ✅ Is `version` set to `"1.0"`?
-- ✅ Is `category` one of the 6 enum values?
-- ✅ Are all required fields (command/category/description) present?
+- ✅ Is the root `{ name, commands }` with no extra fields?
+- ✅ Does each command have `cmd` and at least 1 `templates` entry?
 - ✅ Is the JSON syntax valid? (verify at <https://jsonlint.com/>)
 
 ---
 
 ## 6. Technical Notes
 
-- **Loading**: On startup, the Tauri backend reads all `.json` under `commands/`, and the frontend builds an in-memory Trie for millisecond prefix matching
-- **Performance**: Handles thousands of commands with no perf loss; lookup complexity O(prefix length)
+- **Loading**: On startup, the Tauri backend reads all `.json` under `commands/`; the frontend normalizes and merges them into an in-memory command library
 - **Hot reload**: After editing files, click "Refresh command library" in settings for immediate effect, no restart needed
-- **Forward compatibility**: Future versions may add fields (e.g. `syntax`, `response`); old files remain compatible
+- **Compatibility**: Older formats are normalized on load for best-effort backward compatibility
 
 ---
 
