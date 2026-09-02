@@ -73,6 +73,8 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
 
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
   const [bgAdvancedOpen, setBgAdvancedOpen] = useState(false); // 背景图高级选项折叠状态
+  const [terminalColorsOpen, setTerminalColorsOpen] = useState(false); // 终端配色自定义折叠状态
+  const [backgroundOpen, setBackgroundOpen] = useState(true); // 背景图分组折叠状态（默认展开）
   const [appVersion, setAppVersion] = useState<string>("0.1.0"); // 应用版本号
 
   // 路径配置
@@ -109,6 +111,91 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     } catch (err) {
       toast.error(String(err));
     }
+  };
+
+  // 背景图上传处理
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 检查文件大小（限制 5MB）
+    if (file.size > 5 * 1024 * 1024) {
+      alert(t("settings.backgroundTooLarge"));
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target?.result as string;
+
+      // 按用户配置压缩图片
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = backgroundMaxResolution;
+        const maxHeight = Math.round((backgroundMaxResolution * 9) / 16);
+        let { width, height } = img;
+
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.floor(width * ratio);
+          height = Math.floor(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', backgroundQuality);
+          if (compressed.length > 4 * 1024 * 1024) {
+            alert(t("settings.backgroundCompressedTooLarge"));
+            return;
+          }
+          setBackgroundImage(compressed);
+          resetBackgroundTransform();
+        }
+      };
+      img.src = base64;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // 背景图拖拽处理
+  const handleBackgroundDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPosX = backgroundPositionX;
+    const startPosY = backgroundPositionY;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      const newX = Math.max(-50, Math.min(50, startPosX + deltaX / 3));
+      const newY = Math.max(-50, Math.min(50, startPosY + deltaY / 3));
+      setBackgroundPosition(newX, newY);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // 背景图缩放处理
+  const handleBackgroundZoom = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -10 : 10;
+    const base = backgroundCover ? 100 : backgroundScale;
+    const newScale = Math.max(50, Math.min(300, base + delta));
+    setBackgroundScale(newScale);
   };
 
   // 浏览选择目录
@@ -200,6 +287,9 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     backgroundCover,
     backgroundMaxResolution,
     backgroundQuality,
+    backgroundPreset,
+    overlayStrength,
+    overlayBlur,
     filePacketSize,
     filePacketInterval,
     serialFrameTimeout,
@@ -226,6 +316,9 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     setBackgroundCover,
     setBackgroundMaxResolution,
     setBackgroundQuality,
+    setBackgroundPreset,
+    setOverlayStrength,
+    setOverlayBlur,
     resetBackgroundTransform,
     setFilePacketSize,
     setFilePacketInterval,
@@ -549,9 +642,20 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   <p className="text-xs text-muted-foreground">{t("settings.themeModeHint")}</p>
                 </div>
 
-                {/* 整体配色预设 */}
-                <div className="flex flex-col gap-1.5 mt-3">
-                  <label className="text-sm font-medium">{t("settings.terminalThemePreset")}</label>
+                {/* ========== 终端配色分组 ========== */}
+                <div className="flex flex-col gap-3 mt-3 p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">{t("settings.terminalColors")}</label>
+                    <button
+                      type="button"
+                      onClick={() => setTerminalColorsOpen(!terminalColorsOpen)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {terminalColorsOpen ? "收起 ▲" : "展开 ▼"}
+                    </button>
+                  </div>
+
+                  {/* 快速预设 */}
                   <div className="flex gap-2 flex-wrap">
                     {TERMINAL_THEME_PRESETS.map((preset) => {
                       const active = terminalBgColor === preset.bg && terminalTextColor === preset.text;
@@ -573,300 +677,354 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                       );
                     })}
                   </div>
-                  <p className="text-xs text-muted-foreground">{t("settings.terminalThemePresetHint")}</p>
+
+                  {/* 自定义颜色（折叠） */}
+                  {terminalColorsOpen && (
+                    <div className="flex flex-col gap-3 pt-2 border-t border-border/30">
+                      <ColorSwatchRow
+                        label={t("settings.terminalBgColor")}
+                        hint={t("settings.terminalBgColorHint")}
+                        customLabel={t("settings.terminalBgCustom")}
+                        presets={TERMINAL_BG_PRESETS}
+                        value={terminalBgColor}
+                        onChange={setTerminalBgColor}
+                      />
+
+                      <ColorSwatchRow
+                        label={t("settings.terminalRxColor")}
+                        hint={t("settings.terminalRxColorHint")}
+                        customLabel={t("settings.terminalBgCustom")}
+                        presets={TERMINAL_TEXT_PRESETS}
+                        value={terminalTextColor}
+                        onChange={setTerminalTextColor}
+                      />
+
+                      <ColorSwatchRow
+                        label={t("settings.terminalTxColor")}
+                        hint={t("settings.terminalTxColorHint")}
+                        customLabel={t("settings.terminalBgCustom")}
+                        presets={TERMINAL_TEXT_PRESETS}
+                        value={terminalTxColor}
+                        onChange={setTerminalTxColor}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* 背景色：纯色块 */}
-                <ColorSwatchRow
-                  label={t("settings.terminalBgColor")}
-                  hint={t("settings.terminalBgColorHint")}
-                  customLabel={t("settings.terminalBgCustom")}
-                  presets={TERMINAL_BG_PRESETS}
-                  value={terminalBgColor}
-                  onChange={setTerminalBgColor}
-                />
+                {/* ========== 背景图与效果分组 ========== */}
+                <div className="flex flex-col gap-3 mt-3 p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">{t("settings.backgroundAndEffects")}</label>
+                    <button
+                      type="button"
+                      onClick={() => setBackgroundOpen(!backgroundOpen)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {backgroundOpen ? "收起 ▲" : "展开 ▼"}
+                    </button>
+                  </div>
 
-                {/* RX 接收文字色：纯色块 */}
-                <ColorSwatchRow
-                  label={t("settings.terminalRxColor")}
-                  hint={t("settings.terminalRxColorHint")}
-                  customLabel={t("settings.terminalBgCustom")}
-                  presets={TERMINAL_TEXT_PRESETS}
-                  value={terminalTextColor}
-                  onChange={setTerminalTextColor}
-                />
-
-                {/* TX 发送文字色：纯色块 */}
-                <ColorSwatchRow
-                  label={t("settings.terminalTxColor")}
-                  hint={t("settings.terminalTxColorHint")}
-                  customLabel={t("settings.terminalBgCustom")}
-                  presets={TERMINAL_TEXT_PRESETS}
-                  value={terminalTxColor}
-                  onChange={setTerminalTxColor}
-                />
-
-                {/* 背景图配置 */}
-                <div className="flex flex-col gap-1.5 mt-3 border-t pt-4">
-                  <label className="text-sm font-medium">{t("settings.backgroundImage")}</label>
-
-                  {backgroundImage ? (
-                    <div className="flex flex-col gap-2">
-                      {/* 交互式背景图预览 */}
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">{t("settings.backgroundAdjust")}</span>
-                          <span className="font-mono">{backgroundCover ? t("settings.backgroundFit") : `${backgroundScale}%`}</span>
-                        </div>
-                        <div
-                          className="relative w-full h-40 rounded-md border border-border overflow-hidden bg-secondary/20 group"
-                          onMouseDown={(e) => {
-                            if (e.button !== 0) return; // 只响应左键
-                            e.preventDefault();
-                            const startX = e.clientX;
-                            const startY = e.clientY;
-                            const startPosX = backgroundPositionX;
-                            const startPosY = backgroundPositionY;
-
-                            const handleMouseMove = (moveEvent: MouseEvent) => {
-                              const deltaX = moveEvent.clientX - startX;
-                              const deltaY = moveEvent.clientY - startY;
-                              // 每 3px 鼠标移动 = 1% 位置偏移（灵敏度调节）
-                              const newX = Math.max(-50, Math.min(50, startPosX + deltaX / 3));
-                              const newY = Math.max(-50, Math.min(50, startPosY + deltaY / 3));
-                              setBackgroundPosition(newX, newY);
-                            };
-
-                            const handleMouseUp = () => {
-                              document.removeEventListener('mousemove', handleMouseMove);
-                              document.removeEventListener('mouseup', handleMouseUp);
-                            };
-
-                            document.addEventListener('mousemove', handleMouseMove);
-                            document.addEventListener('mouseup', handleMouseUp);
-                          }}
-                          onWheel={(e) => {
-                            e.preventDefault();
-                            const delta = e.deltaY > 0 ? -10 : 10; // 滚轮缩放步进 10%
-                            const base = backgroundCover ? 100 : backgroundScale; // cover 模式从 100% 起算
-                            const newScale = Math.max(50, Math.min(300, base + delta));
-                            setBackgroundScale(newScale);
-                          }}
-                        >
-                          <div
-                            className="absolute inset-0 bg-no-repeat cursor-move"
-                            style={{
-                              backgroundImage: `url(${backgroundImage})`,
-                              backgroundPosition: `${50 + backgroundPositionX}% ${50 + backgroundPositionY}%`,
-                              backgroundSize: backgroundCover ? 'cover' : `${backgroundScale}%`,
-                            }}
-                          />
-                          {/* 控制按钮（hover 时显示） */}
-                          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {backgroundOpen && (
+                    <>
+                      {backgroundImage ? (
+                        <div className="flex flex-col gap-3">
+                          {/* 操作按钮 */}
+                          <div className="flex gap-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                              id="background-image-replace"
+                            />
+                            <label
+                              htmlFor="background-image-replace"
+                              className="flex-1 px-3 py-1.5 text-xs rounded-md border border-input hover:bg-muted transition-colors cursor-pointer inline-block text-center"
+                            >
+                              {t("settings.replaceImage")}
+                            </label>
                             <button
                               type="button"
-                              onClick={() => { setBackgroundCover(true); setBackgroundPosition(0, 0); }}
-                              className={`w-7 h-7 rounded text-white text-xs flex items-center justify-center ${backgroundCover ? 'bg-primary/80 hover:bg-primary' : 'bg-black/60 hover:bg-black/80'}`}
-                              title={t("settings.backgroundFit")}
+                              onClick={() => { setBackgroundImage(''); resetBackgroundTransform(); }}
+                              className="flex-1 px-3 py-1.5 text-xs rounded-md border border-input hover:bg-destructive/10 hover:border-destructive transition-colors"
                             >
-                              ⤢
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setBackgroundScale(Math.min(300, (backgroundCover ? 100 : backgroundScale) + 10))}
-                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
-                              title={t("settings.zoomIn")}
-                            >
-                              +
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setBackgroundScale(Math.max(50, (backgroundCover ? 100 : backgroundScale) - 10))}
-                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
-                              title={t("settings.zoomOut")}
-                            >
-                              −
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resetBackgroundTransform()}
-                              className="w-7 h-7 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
-                              title={t("settings.backgroundReset")}
-                            >
-                              ↻
+                              {t("settings.removeBackground")}
                             </button>
                           </div>
-                          {/* 提示文字 */}
-                          <div className="absolute top-2 left-2 text-[10px] text-white bg-black/50 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            {t("settings.backgroundAdjustHint")}
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* 背景图不透明度滑块 */}
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">{t("settings.backgroundOpacity")}</span>
-                          <span className="font-mono">{backgroundOpacity}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={backgroundOpacity}
-                          onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
-                          className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
-                        />
-                      </div>
-
-                      {/* 终端背景不透明度滑块（背景图模式下控制终端透出程度） */}
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">{t("settings.terminalOpacity")}</span>
-                          <span className="font-mono">{terminalOpacity}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={terminalOpacity}
-                          onChange={(e) => setTerminalOpacity(Number(e.target.value))}
-                          className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
-                        />
-                        <span className="text-[10px] text-muted-foreground/60">{t("settings.terminalOpacityHint")}</span>
-                      </div>
-
-                      {/* 移除背景图按钮 */}
-                      <button
-                        type="button"
-                        onClick={() => { setBackgroundImage(''); resetBackgroundTransform(); }}
-                        className="px-3 py-1.5 text-xs rounded-md border border-input hover:bg-muted transition-colors"
-                      >
-                        {t("settings.removeBackground")}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-
-                          // 检查文件大小（限制 5MB）
-                          if (file.size > 5 * 1024 * 1024) {
-                            alert(t("settings.backgroundTooLarge"));
-                            e.target.value = '';
-                            return;
-                          }
-
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            const base64 = evt.target?.result as string;
-
-                            // 按用户配置压缩图片（分辨率上限 + JPEG 质量），避免 localStorage 超限
-                            const img = new Image();
-                            img.onload = () => {
-                              // 宽度上限来自配置，高度按 16:9 推算上限（宽屏背景常见比例）
-                              const maxWidth = backgroundMaxResolution;
-                              const maxHeight = Math.round((backgroundMaxResolution * 9) / 16);
-                              let { width, height } = img;
-
-                              if (width > maxWidth || height > maxHeight) {
-                                const ratio = Math.min(maxWidth / width, maxHeight / height);
-                                width = Math.floor(width * ratio);
-                                height = Math.floor(height * ratio);
-                              }
-
-                              // 使用 canvas 压缩
-                              const canvas = document.createElement('canvas');
-                              canvas.width = width;
-                              canvas.height = height;
-                              const ctx = canvas.getContext('2d');
-                              if (ctx) {
-                                ctx.drawImage(img, 0, 0, width, height);
-                                // 输出 JPEG，质量取自配置
-                                const compressed = canvas.toDataURL('image/jpeg', backgroundQuality);
-                                // 体积保护：压缩后 base64 超过 ~4MB（localStorage 安全线）时提示
-                                if (compressed.length > 4 * 1024 * 1024) {
-                                  alert(t("settings.backgroundCompressedTooLarge"));
-                                  return;
-                                }
-                                setBackgroundImage(compressed);
-                                resetBackgroundTransform(); // 新图重置位置和缩放
-                              }
-                            };
-                            img.src = base64;
-                          };
-                          reader.readAsDataURL(file);
-                          e.target.value = '';
-                        }}
-                        className="hidden"
-                        id="background-image-upload"
-                      />
-                      <label
-                        htmlFor="background-image-upload"
-                        className="px-3 py-1.5 text-sm rounded-md border border-input hover:bg-muted transition-colors cursor-pointer inline-block text-center"
-                      >
-                        {t("settings.chooseImage")}
-                      </label>
-                      <p className="text-xs text-muted-foreground">{t("settings.backgroundHint")}</p>
-
-                      {/* 高级选项折叠面板 */}
-                      <div className="mt-2 border-t pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setBgAdvancedOpen(!bgAdvancedOpen)}
-                          className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <span>{t("settings.backgroundAdvanced")}</span>
-                          <span className="text-[10px]">{bgAdvancedOpen ? '▲' : '▼'}</span>
-                        </button>
-
-                        {bgAdvancedOpen && (
-                          <div className="flex flex-col gap-3 mt-3">
-                            {/* 分辨率上限 */}
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">{t("settings.backgroundMaxResolution")}</span>
-                                <span className="font-mono">{backgroundMaxResolution}px</span>
-                              </div>
-                              <select
-                                value={backgroundMaxResolution}
-                                onChange={(e) => setBackgroundMaxResolution(Number(e.target.value))}
-                                className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background"
+                          {/* 清晰度预设（一键配置） */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs text-muted-foreground">{t("settings.clarityPreset")}</span>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setBackgroundPreset('clear')}
+                                className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                                  backgroundPreset === 'clear' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-muted'
+                                }`}
                               >
-                                <option value={1920}>1920px (1080p)</option>
-                                <option value={2560}>2560px (1440p)</option>
-                                <option value={3840}>3840px (4K)</option>
-                              </select>
-                              <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundMaxResolutionHint")}</span>
+                                {t("settings.presetClear")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBackgroundPreset('balanced')}
+                                className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                                  backgroundPreset === 'balanced' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-muted'
+                                }`}
+                              >
+                                {t("settings.presetBalanced")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBackgroundPreset('beautiful')}
+                                className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                                  backgroundPreset === 'beautiful' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-muted'
+                                }`}
+                              >
+                                {t("settings.presetBeautiful")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBackgroundPreset('custom')}
+                                className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                                  backgroundPreset === 'custom' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-muted'
+                                }`}
+                              >
+                                {t("settings.presetCustom")}
+                              </button>
                             </div>
-
-                            {/* 压缩质量 */}
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">{t("settings.backgroundQuality")}</span>
-                                <span className="font-mono">{Math.round(backgroundQuality * 100)}%</span>
-                              </div>
-                              <input
-                                type="range"
-                                min="50"
-                                max="100"
-                                step="5"
-                                value={backgroundQuality * 100}
-                                onChange={(e) => setBackgroundQuality(Number(e.target.value) / 100)}
-                                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
-                              />
-                              <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundQualityHint")}</span>
-                            </div>
+                            <p className="text-[10px] text-muted-foreground/60">{t("settings.clarityPresetHint")}</p>
                           </div>
-                        )}
-                      </div>
-                    </div>
+
+                          {/* 高级调整（折叠） */}
+                          <div className="border-t border-border/30 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setBgAdvancedOpen(!bgAdvancedOpen)}
+                              className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
+                            >
+                              <span>{t("settings.advancedAdjust")}</span>
+                              <span>{bgAdvancedOpen ? "▲" : "▼"}</span>
+                            </button>
+
+                            {bgAdvancedOpen && (
+                              <div className="flex flex-col gap-3">
+                                {/* 背景强度 */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{t("settings.backgroundStrength")}</span>
+                                    <span className="font-mono">{backgroundOpacity}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="5"
+                                    value={backgroundOpacity}
+                                    onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
+                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                                  />
+                                </div>
+
+                                {/* 遮罩强度 */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{t("settings.overlayStrength")}</span>
+                                    <span className="font-mono">{overlayStrength}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="5"
+                                    value={overlayStrength}
+                                    onChange={(e) => setOverlayStrength(Number(e.target.value))}
+                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                                  />
+                                </div>
+
+                                {/* 模糊强度 */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{t("settings.overlayBlur")}</span>
+                                    <span className="font-mono">{overlayBlur}px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="20"
+                                    step="2"
+                                    value={overlayBlur}
+                                    onChange={(e) => setOverlayBlur(Number(e.target.value))}
+                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                                  />
+                                  <span className="text-[10px] text-muted-foreground/60">{t("settings.overlayBlurHint")}</span>
+                                </div>
+
+                                {/* 终端透明度 */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{t("settings.terminalOpacity")}</span>
+                                    <span className="font-mono">{terminalOpacity}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="5"
+                                    value={terminalOpacity}
+                                    onChange={(e) => setTerminalOpacity(Number(e.target.value))}
+                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                                  />
+                                  <span className="text-[10px] text-muted-foreground/60">{t("settings.terminalOpacityHint")}</span>
+                                </div>
+
+                                {/* 位置和缩放调整（升级为完整界面预览） */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">{t("settings.backgroundAdjust")}</span>
+                                    <span className="font-mono">{backgroundCover ? t("settings.backgroundFit") : `${backgroundScale}%`}</span>
+                                  </div>
+                                  <div
+                                    className="relative w-full h-32 rounded-md border border-border overflow-hidden bg-secondary/20 group cursor-move"
+                                    onMouseDown={handleBackgroundDrag}
+                                    onWheel={handleBackgroundZoom}
+                                  >
+                                    {/* 背景图层 */}
+                                    <div
+                                      className="absolute inset-0 bg-no-repeat"
+                                      style={{
+                                        backgroundImage: `url(${backgroundImage})`,
+                                        backgroundPosition: `${50 + backgroundPositionX}% ${50 + backgroundPositionY}%`,
+                                        backgroundSize: backgroundCover ? 'cover' : `${backgroundScale}%`,
+                                      }}
+                                    />
+                                    {/* 透明度遮罩层 */}
+                                    <div
+                                      className="absolute inset-0 pointer-events-none bg-mask-layer"
+                                      style={{ opacity: 1 - backgroundOpacity / 100 }}
+                                    />
+                                    {/* 保护遮罩层 */}
+                                    <div
+                                      className="absolute inset-0 pointer-events-none"
+                                      style={{
+                                        backgroundColor: `rgba(0, 0, 0, ${overlayStrength / 100})`,
+                                        backdropFilter: overlayBlur > 0 ? `blur(${overlayBlur}px)` : 'none',
+                                      }}
+                                    />
+                                    {/* 模拟终端区域 */}
+                                    <div
+                                      className="absolute inset-2 rounded border border-border/30"
+                                      style={{
+                                        backgroundColor: `hsl(var(--terminal-bg) / ${terminalOpacity / 100})`,
+                                      }}
+                                    >
+                                      <div className="p-2 space-y-1 text-[10px] font-mono">
+                                        <div style={{ color: 'hsl(var(--terminal-text))' }}>$ serial-pilot started</div>
+                                        <div style={{ color: 'hsl(var(--terminal-tx))' }}>TX: AT+CGMR</div>
+                                        <div style={{ color: 'hsl(var(--terminal-rx))' }}>RX: OK</div>
+                                      </div>
+                                    </div>
+                                    {/* 控制按钮 */}
+                                    <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        type="button"
+                                        onClick={() => { setBackgroundCover(true); setBackgroundPosition(0, 0); }}
+                                        className={`w-6 h-6 rounded text-white text-xs flex items-center justify-center ${backgroundCover ? 'bg-primary/80 hover:bg-primary' : 'bg-black/60 hover:bg-black/80'}`}
+                                        title={t("settings.backgroundFit")}
+                                      >
+                                        ⤢
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setBackgroundScale(Math.min(300, (backgroundCover ? 100 : backgroundScale) + 10))}
+                                        className="w-6 h-6 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                                        title={t("settings.zoomIn")}
+                                      >
+                                        +
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setBackgroundScale(Math.max(50, (backgroundCover ? 100 : backgroundScale) - 10))}
+                                        className="w-6 h-6 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                                        title={t("settings.zoomOut")}
+                                      >
+                                        −
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => resetBackgroundTransform()}
+                                        className="w-6 h-6 rounded bg-black/60 hover:bg-black/80 text-white text-xs flex items-center justify-center"
+                                        title={t("settings.backgroundReset")}
+                                      >
+                                        ↻
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundAdjustHint")} · 实时预览最终效果</span>
+                                </div>
+
+                                {/* 压缩设置 */}
+                                <div className="flex flex-col gap-2 pt-2 border-t border-border/30">
+                                  <span className="text-xs font-medium">{t("settings.compressionSettings")}</span>
+
+                                  <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-muted-foreground">{t("settings.backgroundMaxResolution")}</span>
+                                      <span className="font-mono">{backgroundMaxResolution}px</span>
+                                    </div>
+                                    <select
+                                      value={backgroundMaxResolution}
+                                      onChange={(e) => setBackgroundMaxResolution(Number(e.target.value))}
+                                      className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background"
+                                    >
+                                      <option value={1920}>1920px (1080p)</option>
+                                      <option value={2560}>2560px (1440p)</option>
+                                      <option value={3840}>3840px (4K)</option>
+                                    </select>
+                                    <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundMaxResolutionHint")}</span>
+                                  </div>
+
+                                  <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-muted-foreground">{t("settings.backgroundQuality")}</span>
+                                      <span className="font-mono">{Math.round(backgroundQuality * 100)}%</span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="50"
+                                      max="100"
+                                      step="5"
+                                      value={backgroundQuality * 100}
+                                      onChange={(e) => setBackgroundQuality(Number(e.target.value) / 100)}
+                                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted"
+                                    />
+                                    <span className="text-[10px] text-muted-foreground/60">{t("settings.backgroundQualityHint")}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="hidden"
+                            id="background-image-upload"
+                          />
+                          <label
+                            htmlFor="background-image-upload"
+                            className="px-3 py-2 text-sm rounded-md border border-dashed border-input hover:bg-muted transition-colors cursor-pointer inline-block text-center"
+                          >
+                            📁 {t("settings.chooseImage")}
+                          </label>
+                          <p className="text-xs text-muted-foreground">{t("settings.backgroundHint")}</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

@@ -14,10 +14,12 @@ import WindowControls from "@/components/WindowControls";
 import { useSerialListener } from "@/hooks/useSerialListener";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useTestCaseStore } from "@/stores/testCaseStore";
 
 const Index = () => {
   const { t } = useTranslation();
-  const { backgroundImage, backgroundOpacity, backgroundPositionX, backgroundPositionY, backgroundScale, backgroundCover } = useSettingsStore();
+  const { backgroundImage, backgroundOpacity, backgroundPositionX, backgroundPositionY, backgroundScale, backgroundCover, overlayStrength, overlayMode, overlayBlur } = useSettingsStore();
+  const { selectCase, selectCommand } = useTestCaseStore();
 
   // 挂载串口数据监听器
   useSerialListener();
@@ -43,6 +45,19 @@ const Index = () => {
     onOpenSettings: () => setSettingsOpen(true),
   });
 
+  // 全局点击处理：点击非测试用例区域时取消选中
+  const handleGlobalClick = (e: React.MouseEvent) => {
+    // 检查点击目标是否在测试用例管理器内部
+    const target = e.target as HTMLElement;
+    const testCaseContainer = target.closest('[data-testcase-container]');
+
+    // 如果不在测试用例容器内，清除选中状态
+    if (!testCaseContainer && leftPanelTab === 'testcase') {
+      selectCase(null);
+      selectCommand(null);
+    }
+  };
+
   return (
     <div
       className={`h-[100svh] md:h-screen w-full overflow-hidden bg-background animate-fade-in flex flex-col relative ${
@@ -58,14 +73,27 @@ const Index = () => {
             }
           : undefined
       }
+      onClick={handleGlobalClick}
     >
       {/* 背景图遮罩层（降低不透明度，不影响前景内容） */}
       {/* 用内联 backgroundColor 而非 bg-background 类，避免受 bg-image-active 半透明规则影响 */}
       {backgroundImage && (
-        <div
-          className="absolute inset-0 pointer-events-none bg-mask-layer"
-          style={{ opacity: 1 - backgroundOpacity / 100 }}
-        />
+        <>
+          {/* 第一层：背景图透明度遮罩 */}
+          <div
+            className="absolute inset-0 pointer-events-none bg-mask-layer"
+            style={{ opacity: 1 - backgroundOpacity / 100 }}
+          />
+          {/* 第二层：保护遮罩层（提升控件可见性） */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundColor: overlayMode === 'light' ? 'rgba(255, 255, 255, ' + overlayStrength / 100 + ')' : 'rgba(0, 0, 0, ' + overlayStrength / 100 + ')',
+              backdropFilter: overlayBlur > 0 ? `blur(${overlayBlur}px)` : 'none',
+              WebkitBackdropFilter: overlayBlur > 0 ? `blur(${overlayBlur}px)` : 'none',
+            }}
+          />
+        </>
       )}
 
       {/* 内容层 */}
@@ -143,7 +171,9 @@ const Index = () => {
                 {leftPanelTab === "connection" ? (
                   <SerialConnection />
                 ) : (
-                  <TestCaseManager />
+                  <div data-testcase-container>
+                    <TestCaseManager />
+                  </div>
                 )}
               </div>
             </div>

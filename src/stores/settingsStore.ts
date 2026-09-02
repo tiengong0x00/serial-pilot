@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 
 type Language = 'zh-CN' | 'en-US';
 type ThemeMode = 'light' | 'dark' | 'system';
+type BackgroundPreset = 'clear' | 'balanced' | 'beautiful' | 'custom';
+type OverlayMode = 'auto' | 'dark' | 'light';
 
 interface SettingsStore {
   // 通用设置
@@ -22,6 +24,12 @@ interface SettingsStore {
   backgroundCover: boolean; // true=填满容器(CSS cover)，false=按 backgroundScale 百分比缩放
   backgroundMaxResolution: number; // 背景图压缩分辨率上限(宽度 px)，1920|2560|3840，超过按比例缩小
   backgroundQuality: number; // 背景图 JPEG 压缩质量 0.5~1.0（0.8 为平衡点）
+
+  // 背景保护层配置
+  backgroundPreset: BackgroundPreset; // 预设模式：clear(清晰) | balanced(平衡) | beautiful(美观) | custom(自定义)
+  overlayStrength: number; // 遮罩强度 0-100（0=无遮罩，100=完全遮罩）
+  overlayMode: OverlayMode; // 遮罩模式：auto(自动) | dark(深色) | light(浅色)
+  overlayBlur: number; // 模糊强度 0-20px
 
   // 文件分包配置
   filePacketSize: number; // 单包字节数上限，0 表示不分包
@@ -67,6 +75,10 @@ interface SettingsStore {
   setBackgroundMaxResolution: (px: number) => void;
   setBackgroundQuality: (quality: number) => void;
   resetBackgroundTransform: () => void;
+  setBackgroundPreset: (preset: BackgroundPreset) => void;
+  setOverlayStrength: (strength: number) => void;
+  setOverlayMode: (mode: OverlayMode) => void;
+  setOverlayBlur: (blur: number) => void;
   setFilePacketSize: (size: number) => void;
   setFilePacketInterval: (interval: number) => void;
   setSerialFrameTimeout: (timeout: number) => void;
@@ -105,6 +117,12 @@ export const useSettingsStore = create<SettingsStore>()(
       backgroundMaxResolution: 1920, // 默认 1920px 宽度上限（1080p，稳妥）
       backgroundQuality: 0.8, // 默认质量 0.8（平衡清晰度与体积）
 
+      // 背景保护层默认值
+      backgroundPreset: 'balanced', // 默认平衡模式
+      overlayStrength: 40, // 默认遮罩强度 40%
+      overlayMode: 'dark', // 默认深色遮罩
+      overlayBlur: 0, // 默认无模糊（性能考虑）
+
       // 默认值：不分包（0=一次性写入），包间隔 0（连续发送）
       filePacketSize: 0,
       filePacketInterval: 0,
@@ -141,6 +159,20 @@ export const useSettingsStore = create<SettingsStore>()(
       setBackgroundMaxResolution: (px) => set({ backgroundMaxResolution: px }),
       setBackgroundQuality: (quality) => set({ backgroundQuality: quality }),
       resetBackgroundTransform: () => set({ backgroundPositionX: 0, backgroundPositionY: 0, backgroundScale: 100, backgroundCover: true }),
+      setBackgroundPreset: (preset) => {
+        // 切换预设时自动应用对应配置
+        const presets = {
+          clear: { overlayStrength: 70, overlayMode: 'dark' as OverlayMode, overlayBlur: 0 },
+          balanced: { overlayStrength: 40, overlayMode: 'dark' as OverlayMode, overlayBlur: 0 },
+          beautiful: { overlayStrength: 20, overlayMode: 'dark' as OverlayMode, overlayBlur: 4 },
+          custom: {}, // 自定义模式不改变现有配置
+        };
+        const config = presets[preset];
+        set({ backgroundPreset: preset, ...config });
+      },
+      setOverlayStrength: (strength) => set({ overlayStrength: Math.max(0, Math.min(100, strength)), backgroundPreset: 'custom' }),
+      setOverlayMode: (mode) => set({ overlayMode: mode, backgroundPreset: 'custom' }),
+      setOverlayBlur: (blur) => set({ overlayBlur: Math.max(0, Math.min(20, blur)), backgroundPreset: 'custom' }),
       setFilePacketSize: (size) => set({ filePacketSize: size }),
       setFilePacketInterval: (interval) => set({ filePacketInterval: interval }),
       setSerialFrameTimeout: (timeout) => set({ serialFrameTimeout: timeout }),

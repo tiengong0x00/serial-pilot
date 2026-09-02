@@ -165,11 +165,14 @@ function MessageRow({
 }) {
   const contentClass = msg.type === "TX" ? "terminal-sent" : "terminal-text";
   const content = renderContent(msg, format);
+  // 时间戳颜色跟随消息类型
+  const timestampClass = msg.type === "TX" ? "terminal-sent" : msg.type === "SYS" ? "text-warning" : "terminal-text";
+
   return (
     <div className="whitespace-pre-wrap break-all">
       {showTimestamp && (
         <>
-          <span className="text-muted-foreground/60">[{formatTimestamp(msg.timestamp)}]</span>{" "}
+          <span className={timestampClass}>[{formatTimestamp(msg.timestamp)}]</span>{" "}
         </>
       )}
       {showPort && msg.port_label && (
@@ -177,17 +180,21 @@ function MessageRow({
           <span className={portLabelClass(msg.port_label)}>[{msg.port_label}]</span>{" "}
         </>
       )}
-      <span
-        className={
-          msg.type === "TX"
-            ? "terminal-sent"
-            : msg.type === "SYS"
-            ? "text-warning"
-            : "terminal-text"
-        }
-      >
-        [{msg.type}]
-      </span>{" "}
+      {showTimestamp && (
+        <>
+          <span
+            className={
+              msg.type === "TX"
+                ? "terminal-sent"
+                : msg.type === "SYS"
+                ? "text-warning"
+                : "terminal-text"
+            }
+          >
+            [{msg.type}]
+          </span>{" "}
+        </>
+      )}
       {highlightRules.length > 0 ? (
         <HighlightedText text={content} rules={highlightRules} className={contentClass} />
       ) : (

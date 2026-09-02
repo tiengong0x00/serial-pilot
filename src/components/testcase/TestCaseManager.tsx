@@ -171,7 +171,7 @@ export function TestCaseManager() {
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [getRootCase, multiSelection.size]);
+  }, [getRootCase, multiSelection]);
 
   // 计算添加目标：优先选中的用例，其次根用例
   const resolveTargetCaseId = useCallback((): string | null => {
@@ -746,7 +746,7 @@ export function TestCaseManager() {
       <div className="flex items-center gap-1.5 p-2 border-b bg-muted/30">
         {/* 当前用例名称按钮 */}
         <button
-          className="flex-1 h-8 px-3 text-sm text-left rounded-md border border-input bg-background hover:bg-accent transition-colors truncate"
+          className="flex-1 h-8 px-3 text-sm text-left rounded-md border border-border bg-background hover:bg-accent transition-colors truncate"
           onClick={() => setCaseSelectorOpen(true)}
           title={t('testCase.selectCaseFile')}
         >
@@ -889,9 +889,16 @@ export function TestCaseManager() {
       <div
         className="flex-1 overflow-y-auto relative"
         onClick={(e) => {
-          // 点击空白处取消多选
-          if (e.target === e.currentTarget && multiSelection.size > 0) {
-            setMultiSelection(new Set());
+          // 点击空白处取消选中状态
+          if (e.target === e.currentTarget) {
+            if (multiSelection.size > 0) {
+              setMultiSelection(new Set());
+            }
+            // 取消单选
+            if (selectedCaseId || selectedCommandId) {
+              selectCase(null);
+              selectCommand(null);
+            }
           }
         }}
         onContextMenu={(e) => {

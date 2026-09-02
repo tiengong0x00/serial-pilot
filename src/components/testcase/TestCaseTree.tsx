@@ -499,7 +499,7 @@ function DraggableCaseNode(props: {
           {case_.name}
         </span>
         {case_.runCount !== 1 && (
-          <span className={cn("px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded", textSizeClass)}>
+          <span className={cn("px-1.5 py-0.5 text-blue-600 dark:text-blue-400 rounded", textSizeClass)}>
             {case_.runCount === 0 ? t('testCase.infiniteLoop') : `×${case_.runCount}`}
           </span>
         )}
