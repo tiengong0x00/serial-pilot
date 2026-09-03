@@ -171,7 +171,7 @@ const Index = () => {
                 {leftPanelTab === "connection" ? (
                   <SerialConnection />
                 ) : (
-                  <div data-testcase-container>
+                  <div data-testcase-container className="h-full">
                     <TestCaseManager />
                   </div>
                 )}
