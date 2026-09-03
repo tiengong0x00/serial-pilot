@@ -246,6 +246,52 @@ impl SerialManager {
             .open()
             .map_err(|e| SerialError::OpenFailed(format!("{}: {}", name, e)))?;
 
+        // 执行健康检测
+        let health_result = crate::serial::health_check::check_serial_health(&mut port);
+
+        // 检查驱动状态
+        if health_result.driver_status == crate::serial::health_check::DriverStatus::Broken {
+            return Err(SerialError::DriverBroken(format!(
+                "驱动异常，所有接口操作失败。警告: {}",
+                health_result.warnings.join("; ")
+            )));
+        }
+
+        // 检查接收通路
+        match health_result.receive_status {
+            crate::serial::health_check::ReceiveStatus::Broken(err) => {
+                return Err(SerialError::ReceivePathBroken(format!(
+                    "接收功能异常: {}。建议: 重新插拔USB或重装驱动",
+                    err
+                )));
+            }
+            crate::serial::health_check::ReceiveStatus::Disconnected => {
+                return Err(SerialError::OpenFailed(format!(
+                    "{}: 设备已断开",
+                    name
+                )));
+            }
+            crate::serial::health_check::ReceiveStatus::Ok => {
+                // 接收通路正常
+            }
+        }
+
+        // 记录警告信息
+        if !health_result.warnings.is_empty() {
+            eprintln!("[{}] 健康检测警告: {}", label, health_result.warnings.join("; "));
+        }
+
+        // 记录驱动状态
+        match health_result.driver_status {
+            crate::serial::health_check::DriverStatus::RealHardware => {
+                println!("[{}] 检测到真实硬件串口", label);
+            }
+            crate::serial::health_check::DriverStatus::VirtualOrLimited => {
+                println!("[{}] 检测到虚拟串口或简化驱动", label);
+            }
+            _ => {}
+        }
+
         // 设置初始 DTR/RTS 电平（硬件流控时 RTS 由驱动接管，此处仍尝试设置以覆盖非流控场景）
         // 忽略设置失败（部分虚拟串口不支持信号线控制），不阻断连接
         let _ = port.write_data_terminal_ready(cfg.dtr);

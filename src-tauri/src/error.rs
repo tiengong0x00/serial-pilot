@@ -11,6 +11,8 @@ pub enum SerialError {
     ConfigInvalid(String),
     NotFound(String),
     Internal(String),
+    DriverBroken(String),
+    ReceivePathBroken(String),
 }
 
 impl fmt::Display for SerialError {
@@ -23,6 +25,8 @@ impl fmt::Display for SerialError {
             SerialError::ConfigInvalid(m) => write!(f, "Invalid serial port config: {m}"),
             SerialError::NotFound(m) => write!(f, "Not found: {m}"),
             SerialError::Internal(m) => write!(f, "Internal error: {m}"),
+            SerialError::DriverBroken(m) => write!(f, "串口驱动异常: {m}"),
+            SerialError::ReceivePathBroken(m) => write!(f, "串口接收功能异常: {m}"),
         }
     }
 }
