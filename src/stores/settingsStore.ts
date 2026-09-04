@@ -6,6 +6,14 @@ type ThemeMode = 'light' | 'dark' | 'system';
 type BackgroundPreset = 'clear' | 'balanced' | 'beautiful' | 'custom';
 type OverlayMode = 'auto' | 'dark' | 'light';
 
+// 全局变量
+export interface GlobalVariable {
+  id: string;
+  name: string;
+  value: string;
+  enabled: boolean;
+}
+
 interface SettingsStore {
   // 通用设置
   language: Language;
@@ -60,6 +68,9 @@ interface SettingsStore {
   // 日志导出路径记忆
   lastExportDir?: string;
 
+  // 全局变量
+  globalVariables: GlobalVariable[];
+
   // Actions
   setLanguage: (lang: Language) => void;
   setThemeMode: (mode: ThemeMode) => void;
@@ -94,6 +105,13 @@ interface SettingsStore {
   setTestCaseButtonContent: (mode: 'icon' | 'text' | 'auto') => void;
   setEnterToSend: (enabled: boolean) => void;
   setLastExportDir: (dir: string) => void;
+
+  // 全局变量操作
+  addGlobalVariable: (name: string, value: string) => void;
+  updateGlobalVariable: (id: string, name: string, value: string) => void;
+  deleteGlobalVariable: (id: string) => void;
+  toggleGlobalVariable: (id: string) => void;
+  getEnabledVariables: () => Record<string, string>;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -145,6 +163,9 @@ export const useSettingsStore = create<SettingsStore>()(
       // 终端时间戳默认显示
       showTimestamp: true,
 
+      // 全局变量默认为空数组
+      globalVariables: [],
+
       setLanguage: (lang) => set({ language: lang }),
       setThemeMode: (mode) => set({ themeMode: mode }),
       setTerminalBgColor: (color) => set({ terminalBgColor: color }),
@@ -188,6 +209,42 @@ export const useSettingsStore = create<SettingsStore>()(
       setTestCaseButtonContent: (mode) => set({ testCaseButtonContent: mode }),
       setEnterToSend: (enabled) => set({ enterToSend: enabled }),
       setLastExportDir: (dir) => set({ lastExportDir: dir }),
+
+      // 全局变量操作
+      addGlobalVariable: (name, value) => set((state) => ({
+        globalVariables: [
+          ...state.globalVariables,
+          {
+            id: `var_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name,
+            value,
+            enabled: true,
+          },
+        ],
+      })),
+      updateGlobalVariable: (id, name, value) => set((state) => ({
+        globalVariables: state.globalVariables.map((v) =>
+          v.id === id ? { ...v, name, value } : v
+        ),
+      })),
+      deleteGlobalVariable: (id) => set((state) => ({
+        globalVariables: state.globalVariables.filter((v) => v.id !== id),
+      })),
+      toggleGlobalVariable: (id) => set((state) => ({
+        globalVariables: state.globalVariables.map((v) =>
+          v.id === id ? { ...v, enabled: !v.enabled } : v
+        ),
+      })),
+      getEnabledVariables: () => {
+        const state = useSettingsStore.getState();
+        const vars: Record<string, string> = {};
+        state.globalVariables.forEach((v) => {
+          if (v.enabled) {
+            vars[v.name] = v.value;
+          }
+        });
+        return vars;
+      },
     }),
     {
       name: 'serial-pilot-settings', // localStorage key

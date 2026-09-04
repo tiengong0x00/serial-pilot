@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Calculator, Type, Network, Cpu, Database } from "lucide-react";
+import { Calculator, Type, Network, Cpu, Database, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import WindowControls from "@/components/WindowControls";
 
 // 工具分类
-type ToolCategory = "conversion" | "string" | "network" | "embedded" | "command-lib";
+type ToolCategory = "conversion" | "string" | "network" | "embedded" | "command-lib" | "variables";
 
 // 导入各分类工具
 import ConversionTools from "./ConversionTools";
@@ -12,6 +12,7 @@ import StringTools from "./StringTools";
 import EmbeddedTools from "./EmbeddedTools";
 import NetworkTools from "./NetworkTools";
 import CommandLibraryManager from "./CommandLibraryManager";
+import VariableManager from "./VariableManager";
 
 const ToolboxWindow = () => {
   const { t } = useTranslation();
@@ -23,6 +24,7 @@ const ToolboxWindow = () => {
     { id: "network" as const, label: t("toolbox.categoryNetwork"), icon: Network },
     { id: "embedded" as const, label: t("toolbox.categoryEmbedded"), icon: Cpu },
     { id: "command-lib" as const, label: t("toolbox.categoryCommandLib"), icon: Database },
+    { id: "variables" as const, label: t("toolbox.categoryVariables"), icon: FileText },
   ];
 
   return (
@@ -67,6 +69,7 @@ const ToolboxWindow = () => {
           {activeCategory === "network" && <NetworkTools />}
           {activeCategory === "embedded" && <EmbeddedTools />}
           {activeCategory === "command-lib" && <CommandLibraryManager />}
+          {activeCategory === "variables" && <VariableManager />}
         </div>
       </div>
     </div>

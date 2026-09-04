@@ -95,6 +95,9 @@ const resources = {
       common: {
         refresh: "刷新",
         cancel: "取消",
+        confirm: "确认",
+        edit: "编辑",
+        delete: "删除",
       },
       tabs: {
         connection: "连接配置",
@@ -107,6 +110,22 @@ const resources = {
         categoryNetwork: "网络工具",
         categoryEmbedded: "嵌入式",
         categoryCommandLib: "命令库",
+        categoryVariables: "全局变量",
+        // 变量管理器
+        variableManager: {
+          title: "全局变量管理",
+          description: "管理可在测试用例中使用的全局变量",
+          addVariable: "添加变量",
+          namePlaceholder: "变量名（如：tcpip）",
+          valuePlaceholder: "变量值（如：www.baidu.com）",
+          empty: "暂无全局变量",
+          emptyHint: "点击上方按钮添加变量，可在测试用例中使用 ${变量名} 引用",
+          enabledCount: "已启用 {{enabled}} / 共 {{total}} 个变量",
+          usageTitle: "使用说明",
+          usage1: "在测试用例命令中使用 ${变量名} 引用变量值",
+          usage2: "用例内定义的同名变量会覆盖全局变量",
+          usage3: "取消勾选可临时禁用变量，不影响已保存的值",
+        },
         // 网络工具
         network: {
           tcp: "TCP 客户端",
@@ -1048,6 +1067,9 @@ const resources = {
       common: {
         refresh: "Refresh",
         cancel: "Cancel",
+        confirm: "Confirm",
+        edit: "Edit",
+        delete: "Delete",
       },
       tabs: {
         connection: "Connection",
@@ -1060,6 +1082,22 @@ const resources = {
         categoryNetwork: "Network Tools",
         categoryEmbedded: "Embedded Tools",
         categoryCommandLib: "Command Library",
+        categoryVariables: "Global Variables",
+        // Variable Manager
+        variableManager: {
+          title: "Global Variable Manager",
+          description: "Manage global variables for use in test cases",
+          addVariable: "Add Variable",
+          namePlaceholder: "Variable name (e.g., tcpip)",
+          valuePlaceholder: "Variable value (e.g., www.baidu.com)",
+          empty: "No global variables yet",
+          emptyHint: "Click the button above to add variables, reference with ${variableName} in test cases",
+          enabledCount: "{{enabled}} enabled / {{total}} total variables",
+          usageTitle: "Usage Instructions",
+          usage1: "Reference variables in test case commands using ${variableName}",
+          usage2: "Local variables with the same name in a test case override global variables",
+          usage3: "Uncheck to temporarily disable a variable without losing its saved value",
+        },
         // Network tools
         network: {
           tcp: "TCP Client",

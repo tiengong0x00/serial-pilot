@@ -10,6 +10,7 @@ import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import type { ExecutionContext, UrcGuardCommand, UrcGuardAction } from '@/types/testCase';
 import type { PortLabel } from '@/types/serial';
+import { useSettingsStore } from './settingsStore';
 
 // Enable Map/Set support in Immer
 enableMapSet();
@@ -182,9 +183,12 @@ export const useExecutionStore = create<ExecutionState>()(
     criticalEvents: [],
 
     initExecution: (targetPort) => {
+      // 获取启用的全局变量
+      const globalVariables = useSettingsStore.getState().getEnabledVariables();
+
       set((state) => {
         state.context = {
-          variables: {},
+          variables: { ...globalVariables }, // 初始化时加载全局变量
           targetPort,
           startTime: Date.now(),
           activeGuards: new Map(),
