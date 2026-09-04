@@ -1394,6 +1394,10 @@ export function useTestExecution() {
       if (!ctx || ctx.targetPort !== effectivePort) {
         initExecution(effectivePort);
         addLog('info', `Initialize execution context, target port: ${effectivePort}`);
+      } else {
+        // 上下文已存在，刷新全局变量以获取最新值
+        useExecutionStore.getState().refreshGlobalVariables();
+        addLog('info', `Refreshed global variables for single command execution`);
       }
 
       abortRef.current = false;
@@ -1443,6 +1447,15 @@ export function useTestExecution() {
       if (!isConnected) {
         toast.error(i18n.t('terminal.portNotConnected', { port: effectivePort }));
         return;
+      }
+
+      // 确保执行上下文存在，并刷新全局变量
+      const ctx = getContext();
+      if (!ctx || ctx.targetPort !== effectivePort) {
+        initExecution(effectivePort);
+      } else {
+        // 上下文已存在，刷新全局变量以获取最新值
+        useExecutionStore.getState().refreshGlobalVariables();
       }
 
       try {

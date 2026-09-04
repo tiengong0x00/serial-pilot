@@ -211,30 +211,38 @@ export const useSettingsStore = create<SettingsStore>()(
       setLastExportDir: (dir) => set({ lastExportDir: dir }),
 
       // 全局变量操作
-      addGlobalVariable: (name, value) => set((state) => ({
-        globalVariables: [
-          ...state.globalVariables,
-          {
-            id: `var_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name,
-            value,
-            enabled: true,
-          },
-        ],
-      })),
-      updateGlobalVariable: (id, name, value) => set((state) => ({
-        globalVariables: state.globalVariables.map((v) =>
-          v.id === id ? { ...v, name, value } : v
-        ),
-      })),
-      deleteGlobalVariable: (id) => set((state) => ({
-        globalVariables: state.globalVariables.filter((v) => v.id !== id),
-      })),
-      toggleGlobalVariable: (id) => set((state) => ({
-        globalVariables: state.globalVariables.map((v) =>
-          v.id === id ? { ...v, enabled: !v.enabled } : v
-        ),
-      })),
+      addGlobalVariable: (name, value) => {
+        set((state) => ({
+          globalVariables: [
+            ...state.globalVariables,
+            {
+              id: `var_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name,
+              value,
+              enabled: true,
+            },
+          ],
+        }));
+      },
+      updateGlobalVariable: (id, name, value) => {
+        set((state) => ({
+          globalVariables: state.globalVariables.map((v) =>
+            v.id === id ? { ...v, name, value } : v
+          ),
+        }));
+      },
+      deleteGlobalVariable: (id) => {
+        set((state) => ({
+          globalVariables: state.globalVariables.filter((v) => v.id !== id),
+        }));
+      },
+      toggleGlobalVariable: (id) => {
+        set((state) => ({
+          globalVariables: state.globalVariables.map((v) =>
+            v.id === id ? { ...v, enabled: !v.enabled } : v
+          ),
+        }));
+      },
       getEnabledVariables: () => {
         const state = useSettingsStore.getState();
         const vars: Record<string, string> = {};
@@ -279,6 +287,27 @@ export const useSettingsStore = create<SettingsStore>()(
     }
   )
 );
+
+// 跨窗口同步：监听 localStorage 变化
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'serial-pilot-settings' && e.newValue) {
+      try {
+        const newState = JSON.parse(e.newValue);
+        console.log('[settingsStore] Storage event detected, syncing state from another window:', newState);
+
+        // 只同步 globalVariables，避免覆盖其他设置
+        const currentState = useSettingsStore.getState();
+        if (JSON.stringify(currentState.globalVariables) !== JSON.stringify(newState.state?.globalVariables)) {
+          useSettingsStore.setState({ globalVariables: newState.state.globalVariables });
+          console.log('[settingsStore] Global variables synced:', newState.state.globalVariables);
+        }
+      } catch (err) {
+        console.error('[settingsStore] Failed to sync storage event:', err);
+      }
+    }
+  });
+}
 
 // 终端整体配色预设（一键切换背景+文字）
 export const TERMINAL_THEME_PRESETS = [

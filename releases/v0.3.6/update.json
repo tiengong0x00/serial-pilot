@@ -1,0 +1,11 @@
+{
+  "version": "0.3.6",
+  "notes": "## v0.3.6 新功能\n\n### 全局变量管理器\n- 在工具箱新增全局变量管理功能\n- 支持添加、编辑、删除全局变量\n- 支持启用/禁用变量\n- 测试用例中可使用 ${变量名} 引用全局变量\n- 用例内定义的同名变量会覆盖全局变量\n- 变量持久化保存，重启后仍然有效\n\n### 使用场景\n- 管理测试服务器地址（如 ${server_ip}）\n- 保存常用测试参数（如 ${apn}、${username}）\n- 记录设备信息供多个用例使用\n- 快速切换测试环境配置",
+  "pub_date": "2026-09-04T11:20:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/tian340825/serial/releases/download/v0.3.6/SerialPilot_0.3.6_x64-setup.exe"
+    }
+  }
+}

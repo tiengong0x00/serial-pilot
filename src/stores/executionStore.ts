@@ -130,6 +130,7 @@ interface ExecutionState {
 
   // Actions
   initExecution: (targetPort: PortLabel) => void;
+  refreshGlobalVariables: () => void; // 刷新全局变量，保留运行时提取的变量
 
   start: () => void;
   pause: () => void;
@@ -200,6 +201,29 @@ export const useExecutionStore = create<ExecutionState>()(
         state.guardTrigger = null;
         state.logs = [];
         state.criticalEvents = [];
+      });
+    },
+
+    refreshGlobalVariables: () => {
+      set((state) => {
+        if (!state.context) return;
+
+        // 获取最新的全局变量
+        const globalVariables = useSettingsStore.getState().getEnabledVariables();
+
+        // 保存运行时提取的变量（不在全局变量中的变量）
+        const runtimeVariables: Record<string, string> = {};
+        for (const [key, value] of Object.entries(state.context.variables)) {
+          if (!(key in globalVariables)) {
+            runtimeVariables[key] = value;
+          }
+        }
+
+        // 合并：全局变量 + 运行时变量（运行时变量优先级更高）
+        state.context.variables = {
+          ...globalVariables,
+          ...runtimeVariables,
+        };
       });
     },
 
