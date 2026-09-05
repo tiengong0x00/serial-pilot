@@ -1,8 +1,15 @@
 use serde::{Deserialize, Serialize};
 use minisign_verify::{PublicKey, Signature};
+use tauri::Emitter;
 
 /// 从 tauri.conf.json 读取的公钥（编译时内嵌）
 const UPDATER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5MjUxMTcxNTZBNTA1NEYKUldSUEJhVldjUkVsV2FLejMweGVLVGE2cXFCcStKa0VaMXFEd2VDMHZUb0xta2xJUVNLbDNSTGsK";
+
+/// 最大重试次数
+const MAX_RETRIES: u32 = 3;
+
+/// 重试间隔（秒）
+const RETRY_DELAY_SECS: u64 = 2;
 
 #[derive(Debug, Deserialize)]
 struct UpdateManifest {
@@ -24,6 +31,15 @@ struct PlatformInfo {
 pub struct UpdateInfo {
     pub available: bool,
     pub version: Option<String>,
+}
+
+/// 下载进度事件
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: u64,
+    pub percent: u32,
+    pub speed: f64,  // KB/s
 }
 
 /// 验证文件签名（minisign）
@@ -63,9 +79,9 @@ fn verify_signature(file_data: &[u8], signature_base64: &str) -> Result<(), Stri
 pub async fn check_update_portable(_app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let endpoint = crate::dist_type::DistType::Portable.endpoint();
 
-    // 1. 拉取更新清单
+    // 1. 拉取更新清单（超时延长到 60 秒）
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -100,9 +116,9 @@ pub async fn check_update_portable(_app: tauri::AppHandle) -> Result<UpdateInfo,
 pub async fn install_update_portable(app: tauri::AppHandle) -> Result<(), String> {
     let endpoint = crate::dist_type::DistType::Portable.endpoint();
 
-    // 1. 重新拉取清单（确保最新）
+    // 1. 重新拉取清单（确保最新，超时延长到 60 秒）
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -134,17 +150,14 @@ pub async fn install_update_portable(app: tauri::AppHandle) -> Result<(), String
         .ok_or("Failed to get exe stem")?
         .to_string_lossy();
 
-    // 3. 下载新版到 .new.exe
+    // 3. 下载新版到 .new.exe（带重试和进度）
     let new_exe = dir.join(format!("{}.new.exe", exe_stem));
 
-    let bytes = client
-        .get(&platform_info.url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download update: {}", e))?
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read update bytes: {}", e))?;
+    let bytes = download_with_progress_and_retry(
+        &app,
+        &platform_info.url,
+        MAX_RETRIES,
+    ).await?;
 
     // 验证签名
     verify_signature(&bytes, &platform_info.signature)?;
@@ -207,4 +220,107 @@ del "{old_stem}.old.exe" >nul 2>&1
     // 立即退出应用
     app.exit(0);
     Ok(())
+}
+
+/// 带进度和重试的下载函数
+async fn download_with_progress_and_retry(
+    app: &tauri::AppHandle,
+    url: &str,
+    max_retries: u32,
+) -> Result<Vec<u8>, String> {
+    let mut last_error = String::new();
+
+    for attempt in 0..max_retries {
+        if attempt > 0 {
+            eprintln!("Retry download attempt {}/{}", attempt + 1, max_retries);
+            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+        }
+
+        match download_with_progress(app, url).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(e) => {
+                last_error = e;
+                eprintln!("Download failed: {}", last_error);
+            }
+        }
+    }
+
+    Err(format!("Download failed after {} attempts: {}", max_retries, last_error))
+}
+
+/// 流式下载并实时发送进度事件
+async fn download_with_progress(
+    app: &tauri::AppHandle,
+    url: &str,
+) -> Result<Vec<u8>, String> {
+    // 创建 HTTP 客户端，超时设为 600 秒（10 分钟）
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // 发起请求
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {}", e))?;
+
+    // 获取文件总大小
+    let total_size = response.content_length().unwrap_or(0);
+
+    // 准备下载缓冲区
+    let mut buffer = Vec::with_capacity(total_size as usize);
+    let mut downloaded: u64 = 0;
+    let start_time = std::time::Instant::now();
+    let mut last_emit_time = start_time;
+
+    // 分块读取响应体
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Failed to read chunk: {}", e))?;
+
+        buffer.extend_from_slice(&chunk);
+        downloaded += chunk.len() as u64;
+
+        // 计算进度和速度（节流：每 500ms 发送一次进度）
+        let now = std::time::Instant::now();
+        if now.duration_since(last_emit_time).as_millis() >= 500 || downloaded == total_size {
+            let elapsed_secs = start_time.elapsed().as_secs_f64();
+            let speed_kbps = if elapsed_secs > 0.0 {
+                (downloaded as f64 / 1024.0) / elapsed_secs
+            } else {
+                0.0
+            };
+
+            let percent = if total_size > 0 {
+                ((downloaded as f64 / total_size as f64) * 100.0) as u32
+            } else {
+                0
+            };
+
+            let progress = DownloadProgress {
+                downloaded,
+                total: total_size,
+                percent,
+                speed: speed_kbps,
+            };
+
+            // 发送进度事件（忽略错误）
+            let _ = app.emit("download_progress", progress);
+            last_emit_time = now;
+        }
+    }
+
+    // 验证下载完整性
+    if total_size > 0 && downloaded != total_size {
+        return Err(format!(
+            "Incomplete download: expected {} bytes, got {} bytes",
+            total_size, downloaded
+        ));
+    }
+
+    Ok(buffer)
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
@@ -67,7 +68,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     | { status: 'checking' }
     | { status: 'available'; version: string; body?: string; download: () => Promise<void> }
     | { status: 'not-available' }
-    | { status: 'downloading'; percent: number }
+    | { status: 'downloading'; percent: number; speed: number; downloaded: number; total: number }
     | { status: 'ready'; relaunch: () => void }
     | { status: 'error'; message: string };
 
@@ -244,15 +245,31 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
           status: 'available',
           version: updateInfo.version ?? '',
           download: async () => {
-            setUpdateState({ status: 'downloading', percent: 0 });
+            setUpdateState({ status: 'downloading', percent: 0, speed: 0, downloaded: 0, total: 0 });
+
+            // 监听下载进度事件
+            const unlisten = await listen<{ downloaded: number; total: number; percent: number; speed: number }>(
+              'download_progress',
+              (event) => {
+                setUpdateState({
+                  status: 'downloading',
+                  percent: event.payload.percent,
+                  speed: event.payload.speed,
+                  downloaded: event.payload.downloaded,
+                  total: event.payload.total,
+                });
+              }
+            );
 
             try {
               await invoke('install_update');
+              unlisten();
               setUpdateState({
                 status: 'ready',
                 relaunch: () => { void relaunch(); }
               });
             } catch (error) {
+              unlisten();
               console.error('[Update Error]', error);
               setUpdateState({
                 status: 'error',
@@ -1293,15 +1310,30 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
 
                   {/* 下载中 */}
                   {updateState.status === 'downloading' && (
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs text-muted-foreground">
-                        {t("settings.updateDownloading", { percent: updateState.percent })}
-                      </span>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {t("settings.updateDownloading", { percent: updateState.percent })}
+                        </span>
+                        <span className="font-mono">
+                          {formatBytes(updateState.downloaded)} / {formatBytes(updateState.total)}
+                        </span>
+                      </div>
                       <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
                         <div
-                          className="h-full bg-primary transition-all"
+                          className="h-full bg-primary transition-all duration-300"
                           style={{ width: `${updateState.percent}%` }}
                         />
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {t("settings.updateSpeed")}: {updateState.speed.toFixed(1)} KB/s
+                        </span>
+                        {updateState.speed > 0 && updateState.total > 0 && (
+                          <span>
+                            {t("settings.updateTimeRemaining")}: {formatTimeRemaining(updateState.downloaded, updateState.total, updateState.speed)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1416,4 +1448,43 @@ function hexToHsl(hex: string): string {
   }
 
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+// 格式化字节大小
+// 格式：25.7 MB (26,958,848 B)
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+
+  // 小于 1KB，只显示字节数
+  if (bytes < 1024) return `${bytes} B`;
+
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = (bytes / Math.pow(k, i)).toFixed(1);
+
+  // 格式化字节数为带千分位的字符串
+  const formattedBytes = bytes.toLocaleString('en-US');
+
+  return `${value} ${sizes[i]} (${formattedBytes} B)`;
+}
+
+// 格式化剩余时间
+function formatTimeRemaining(downloaded: number, total: number, speedKBps: number): string {
+  if (speedKBps === 0 || total === 0) return '--';
+  const remainingBytes = total - downloaded;
+  const remainingKB = remainingBytes / 1024;
+  const remainingSecs = Math.ceil(remainingKB / speedKBps);
+
+  if (remainingSecs < 60) {
+    return `${remainingSecs}秒`;
+  } else if (remainingSecs < 3600) {
+    const mins = Math.floor(remainingSecs / 60);
+    const secs = remainingSecs % 60;
+    return `${mins}分${secs}秒`;
+  } else {
+    const hours = Math.floor(remainingSecs / 3600);
+    const mins = Math.floor((remainingSecs % 3600) / 60);
+    return `${hours}小时${mins}分`;
+  }
 }

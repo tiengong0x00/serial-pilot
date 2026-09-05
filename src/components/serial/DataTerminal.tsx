@@ -140,11 +140,24 @@ function portLabelClass(port: PortLabel): string {
   return port === "P1" ? "text-blue-500" : "text-emerald-500";
 }
 
-/** 格式化字节数为可读文本 */
+/** 格式化字节数为可读文本
+ * 格式：25.7 MB (26,958,848 B)
+ */
 function formatBytes(n: number): string {
+  if (n === 0) return '0 B';
+
+  // 小于 1KB，只显示字节数
   if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(n) / Math.log(k));
+  const value = (n / Math.pow(k, i)).toFixed(1);
+
+  // 格式化字节数为带千分位的字符串
+  const formattedBytes = n.toLocaleString('en-US');
+
+  return `${value} ${sizes[i]} (${formattedBytes} B)`;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
