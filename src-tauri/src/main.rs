@@ -1,6 +1,8 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// CLI 模式使用控制台，GUI 模式动态隐藏控制台窗口
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod attachments;
+mod cli;
 mod config;
 mod dist_type;
 mod error;
@@ -13,8 +15,9 @@ mod state;
 mod toolbox;
 
 use error::SerialError;
+use serial::port_info::get_available_ports;
 use state::{AppState, ConnectionStatus, PortInfo, SerialConfig};
-use tauri::State;
+use tauri::{Manager, State};
 use tauri_plugin_updater::UpdaterExt;
 use include_dir::{include_dir, Dir};
 
@@ -832,6 +835,37 @@ async fn install_update_nsis(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    use clap::Parser;
+
+    // 解析命令行参数
+    let cli = cli::Cli::parse();
+
+    // 在 Windows 上，如果是 GUI 模式（无 CLI 参数），隐藏控制台窗口
+    #[cfg(target_os = "windows")]
+    if cli.command.is_none() {
+        use windows::Win32::System::Console::FreeConsole;
+        unsafe {
+            let _ = FreeConsole();
+        }
+    }
+
+    // 如果有 CLI 命令，设置控制台 UTF-8 编码
+    #[cfg(target_os = "windows")]
+    if cli.command.is_some() {
+        use windows::Win32::System::Console::SetConsoleOutputCP;
+        unsafe {
+            let _ = SetConsoleOutputCP(65001);
+        }
+    }
+
+    if cli.command.is_some() {
+        run_cli_mode(cli);
+    } else {
+        run_gui_mode();
+    }
+}
+
+fn run_gui_mode() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -888,6 +922,7 @@ fn main() {
             start_serial_listener,
             list_test_case_files,
             load_test_case_file,
+            load_test_case_file_cli,
             save_test_case_file,
             delete_test_case_file,
             rename_test_case_file,
@@ -918,5 +953,456 @@ fn main() {
     {
         eprintln!("Tauri application failed to run: {e}");
         std::process::exit(1);
+    }
+}
+
+/// CLI 专用：读取测试用例文件（支持相对路径和绝对路径）
+#[tauri::command]
+fn load_test_case_file_cli(filepath: String) -> Result<String, String> {
+    use std::path::Path;
+
+    // 将正斜杠统一转换为系统路径分隔符
+    let normalized = filepath.replace('/', std::path::MAIN_SEPARATOR_STR);
+    let path = Path::new(&normalized);
+
+    // 如果是绝对路径，直接使用
+    if path.is_absolute() {
+        return std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read file {}: {}", normalized, e));
+    }
+
+    // 如果是相对路径，先尝试相对于当前目录
+    if path.exists() {
+        return std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read file {}: {}", normalized, e));
+    }
+
+    // 最后尝试相对于 testcases 目录
+    let testcases_path = get_test_cases_dir().join(&normalized);
+    std::fs::read_to_string(&testcases_path)
+        .map_err(|e| format!("Failed to read file {} (tried current dir and testcases dir): {}", normalized, e))
+}
+
+/// CLI 模式：创建隐藏窗口，调用前端逻辑
+fn run_cli_mode(cli: cli::Cli) {
+    use cli::Commands;
+    use tauri::Emitter;
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(AppState::new())
+        .setup(move |app| {
+            // 初始化配置
+            config::init_global();
+
+            // 启动时释放种子文件
+            let _ = ensure_test_cases_seeded();
+            let _ = ensure_command_libs_seeded();
+            let _ = ensure_scripts_seeded();
+            let _ = attachments::gc_orphaned_attachments(&get_test_cases_dir());
+
+            // 启动电源监听器
+            power_monitor::setup_power_monitor(app.handle().clone());
+
+            // 持久化分发类型
+            let dist = dist_type::DistType::detect();
+            let _ = dist.persist_marker();
+
+            // 关闭默认创建的主窗口（如果存在）
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.close();
+            }
+
+            // 创建 CLI 专用窗口
+            let window = tauri::WebviewWindowBuilder::new(
+                app,
+                "cli-window",
+                tauri::WebviewUrl::App("index.html?cli=true".into())
+            )
+            .title("Serial Pilot CLI")
+            .inner_size(1200.0, 800.0)
+            .visible(cli.show_window)
+            .initialization_script(r#"
+                window.__CLI_MODE__ = true;
+            "#)
+            .build()
+            .expect("Failed to create window");
+
+            // 等待前端就绪
+            use tauri::Listener;
+            use std::sync::{Arc, Mutex};
+
+            let ready = Arc::new(Mutex::new(false));
+            let ready_clone = ready.clone();
+
+            let _unlisten_ready = window.listen("cli-ready", move |_event| {
+                let mut is_ready = ready_clone.lock().unwrap();
+                *is_ready = true;
+            });
+
+            // 执行 CLI 命令
+            let window_clone = window.clone();
+            let cli_clone = cli.clone();
+            let ready_clone2 = ready.clone();
+
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+
+                // 等待 cli-ready 事件
+                let ready_timeout = std::time::Duration::from_millis(5000);
+                let ready_start = std::time::Instant::now();
+
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    let is_ready = ready_clone2.lock().unwrap();
+                    if *is_ready {
+                        break;
+                    }
+
+                    if ready_start.elapsed() > ready_timeout {
+                        eprintln!("错误: 前端初始化超时");
+                        std::process::exit(1);
+                    }
+                }
+
+                // 执行对应的 CLI 命令
+                match cli_clone.command.unwrap() {
+                    Commands::ListPorts => {
+                        if let Err(e) = handle_list_ports_cli() {
+                            eprintln!("错误: {}", e);
+                            std::process::exit(1);
+                        }
+                        std::process::exit(0);
+                    }
+                    Commands::Send { command, port, baud, listen, format, line_ending } => {
+                        handle_send_command_cli(&window_clone, command, port, baud, listen, format, line_ending);
+                    }
+                    Commands::Run { test_case, port, baud, output, verbose } => {
+                        handle_run_test_case_cli(&window_clone, test_case, port, baud, output, verbose);
+                    }
+                }
+            });
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_serial_ports,
+            connect_serial_port,
+            disconnect_serial_port,
+            get_connection_status,
+            write_serial_data,
+            save_attachment,
+            save_testcase_attachment,
+            attachment_exists,
+            delete_attachment,
+            send_attachment,
+            cancel_file_send,
+            set_serial_dtr,
+            set_serial_rts,
+            start_serial_listener,
+            list_test_case_files,
+            load_test_case_file,
+            load_test_case_file_cli,
+            save_test_case_file,
+            delete_test_case_file,
+            rename_test_case_file,
+            save_log_file,
+            get_launch_dir,
+            save_log_to_path,
+            load_command_libraries,
+            save_command_library,
+            delete_command_library,
+            toolbox::open_toolbox_window,
+            tcp_connect,
+            tcp_send,
+            udp_connect,
+            udp_send,
+            net_disconnect,
+            script::execute_script,
+            get_build_type,
+            check_update,
+            install_update,
+            get_app_config,
+            set_testcases_dir,
+            set_commands_dir,
+            open_help_manual,
+            portable_updater::check_update_portable,
+            portable_updater::install_update_portable
+        ])
+        .run(tauri::generate_context!())
+        .expect("Failed to run CLI mode");
+}
+
+/// CLI list-ports: 列出可用串口
+fn handle_list_ports_cli() -> Result<(), String> {
+    let ports = get_available_ports().map_err(|e| e.to_string())?;
+
+    if ports.is_empty() {
+        println!("未检测到可用串口");
+    } else {
+        println!("可用串口:");
+        for port in ports {
+            let desc = port.friendly_name.as_deref().unwrap_or("Unknown");
+            println!("  {} - {}", port.port_name, desc);
+        }
+    }
+
+    Ok(())
+}
+
+/// CLI send: 通过前端发送单条命令
+fn handle_send_command_cli(
+    window: &tauri::WebviewWindow,
+    command: String,
+    port: String,
+    baud: u32,
+    listen_ms: u64,
+    format: String,
+    line_ending: String,
+) {
+    use tauri::Listener;
+    use std::sync::{Arc, Mutex};
+
+    let window_clone = window.clone();
+    let completed = Arc::new(Mutex::new(false));
+    let completed_clone = completed.clone();
+
+    // 监听终端数据
+    let _unlisten_terminal = window.listen("cli-terminal-data", move |event| {
+        if let Ok(data) = serde_json::from_str::<cli::TerminalData>(event.payload()) {
+            format_and_print_terminal_data(&data);
+        }
+    });
+
+    // 监听命令完成
+    let _unlisten_complete = window.clone().listen("cli-command-complete", move |event| {
+        let mut done = completed_clone.lock().unwrap();
+        *done = true;
+
+        if let Ok(result) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            if let Some(error) = result.get("error") {
+                eprintln!("错误: {}", error);
+                std::process::exit(1);
+            }
+        }
+    });
+
+    println!("[CLI] Sending command to {} at {} baud...", port, baud);
+
+    // 调用前端函数
+    let script = format!(
+        r#"window.__cliSendCommand({{
+            command: "{}",
+            port: "{}",
+            baud: {},
+            listenMs: {},
+            format: "{}",
+            lineEnding: "{}"
+        }})"#,
+        command.replace('"', "\\\""),
+        port,
+        baud,
+        listen_ms,
+        format,
+        line_ending
+    );
+
+    if let Err(e) = window_clone.eval(&script) {
+        eprintln!("调用前端函数失败: {}", e);
+        std::process::exit(1);
+    }
+
+    // 等待命令完成
+    let timeout = std::time::Duration::from_millis(listen_ms + 10000);
+    let start = std::time::Instant::now();
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let done = completed.lock().unwrap();
+        if *done {
+            break;
+        }
+
+        if start.elapsed() > timeout {
+            eprintln!("\n超时");
+            std::process::exit(1);
+        }
+    }
+
+    std::process::exit(0);
+}
+
+/// CLI run: 通过前端执行测试用例
+fn handle_run_test_case_cli(
+    window: &tauri::WebviewWindow,
+    test_case: String,
+    port: Option<String>,
+    baud: Option<u32>,
+    output: Option<String>,
+    verbose: bool,
+) {
+    use tauri::Listener;
+    use std::sync::{Arc, Mutex};
+
+    let completed = Arc::new(Mutex::new(false));
+    let completed_clone = completed.clone();
+    let test_result = Arc::new(Mutex::new(None));
+    let test_result_clone = test_result.clone();
+
+    // 监听终端数据
+    let _unlisten_terminal = window.listen("cli-terminal-data", move |event| {
+        if let Ok(data) = serde_json::from_str::<cli::TerminalData>(event.payload()) {
+            format_and_print_terminal_data(&data);
+        }
+    });
+
+    // 监听执行日志
+    let verbose_flag = verbose;
+    let _unlisten_log = window.clone().listen("cli-execution-log", move |event| {
+        if let Ok(log) = serde_json::from_str::<cli::ExecutionLog>(event.payload()) {
+            if verbose_flag || log.level == "error" || log.level == "warning" {
+                format_and_print_execution_log(&log);
+            }
+        }
+    });
+
+    // 监听测试完成
+    let _unlisten_complete = window.clone().listen("cli-test-complete", move |event| {
+        let mut done = completed_clone.lock().unwrap();
+        *done = true;
+
+        if let Ok(result) = serde_json::from_str::<cli::TestCompleteResult>(event.payload()) {
+            let mut test_res = test_result_clone.lock().unwrap();
+            *test_res = Some(result);
+        }
+    });
+
+    println!("[CLI] Running test case: {}", test_case);
+
+    // 调用前端函数
+    let port_str = port.as_deref().unwrap_or("null");
+    let baud_str = baud.map(|b| b.to_string()).unwrap_or_else(|| "null".to_string());
+
+    let script = format!(
+        r#"window.__cliRunTestCase({{
+            testCaseFile: "{}",
+            port: {},
+            baud: {},
+            verbose: {}
+        }})"#,
+        test_case.replace('"', "\\\""),
+        if port.is_some() { format!("\"{}\"", port_str) } else { "null".to_string() },
+        baud_str,
+        verbose
+    );
+
+    if let Err(e) = window.eval(&script) {
+        eprintln!("调用前端函数失败: {}", e);
+        std::process::exit(1);
+    }
+
+    // 等待测试完成（最多 30 分钟）
+    let timeout = std::time::Duration::from_secs(1800);
+    let start = std::time::Instant::now();
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let done = completed.lock().unwrap();
+        if *done {
+            break;
+        }
+
+        if start.elapsed() > timeout {
+            eprintln!("\n测试执行超时");
+            std::process::exit(1);
+        }
+    }
+
+    // 输出测试结果
+    let result = test_result.lock().unwrap();
+    if let Some(res) = result.as_ref() {
+        println!("\n{}", "=".repeat(50));
+        if res.success {
+            println!("✓ 测试完成");
+            if let (Some(total), Some(success)) = (res.total_commands, res.success_commands) {
+                println!("  成功: {}/{}", success, total);
+            }
+        } else {
+            println!("✗ 测试失败");
+            if let Some(error) = &res.error {
+                println!("  错误: {}", error);
+            }
+            if let (Some(total), Some(failed)) = (res.total_commands, res.failed_commands) {
+                println!("  失败: {}/{}", failed, total);
+            }
+        }
+        println!("{}", "=".repeat(50));
+
+        // 保存结果到文件
+        if let Some(output_path) = output {
+            if let Ok(json) = serde_json::to_string_pretty(&*result) {
+                if let Err(e) = std::fs::write(&output_path, json) {
+                    eprintln!("保存结果失败: {}", e);
+                } else {
+                    println!("结果已保存到: {}", output_path);
+                }
+            }
+        }
+
+        std::process::exit(if res.success { 0 } else { 1 });
+    } else {
+        eprintln!("未收到测试结果");
+        std::process::exit(1);
+    }
+}
+
+/// 格式化并打印终端数据
+fn format_and_print_terminal_data(data: &cli::TerminalData) {
+    let direction = if data.direction == "TX" { "→" } else { "←" };
+    let port = &data.port;
+
+    let content = if data.format == "hex" {
+        data.data.iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        String::from_utf8_lossy(&data.data).to_string()
+    };
+
+    let timestamp = format_timestamp(data.timestamp as f64);
+    println!("[{}] {} {}: {}", timestamp, direction, port, content);
+}
+
+/// 格式化并打印执行日志
+fn format_and_print_execution_log(log: &cli::ExecutionLog) {
+    let level_symbol = match log.level.as_str() {
+        "error" => "✗",
+        "warning" => "⚠",
+        "info" => "ℹ",
+        _ => "·",
+    };
+
+    let timestamp = format_timestamp(log.timestamp as f64);
+    println!("[{}] {} {}", timestamp, level_symbol, log.message);
+}
+
+/// 格式化时间戳为 HH:MM:SS.mmm
+fn format_timestamp(timestamp: f64) -> String {
+    use chrono::{DateTime, Local};
+    let secs = (timestamp / 1000.0) as i64;
+    let millis = (timestamp % 1000.0) as u32;
+
+    if let Some(dt) = DateTime::from_timestamp(secs, millis * 1_000_000) {
+        let local: DateTime<Local> = dt.into();
+        format!("{}.{:03}", local.format("%H:%M:%S"), millis)
+    } else {
+        format!("{:.3}", timestamp / 1000.0)
     }
 }
