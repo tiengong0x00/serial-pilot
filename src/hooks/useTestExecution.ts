@@ -493,6 +493,7 @@ export function useTestExecution() {
       const startTime = performance.now();
       let lastResponse = '';
       let sentData = '';
+      let allResponses: string[] = []; // 累积所有响应
 
       // 双串口路由：命令 txPort/rxPort 未设置则继承用例有效收发口
       const txPort: PortLabel = cmd.txPort ?? caseTx;
@@ -789,6 +790,9 @@ export function useTestExecution() {
 
             // 保存响应数据
             lastResponse = response;
+            if (response) {
+              allResponses.push(response);
+            }
 
             if (sendError) {
               updateCommand(caseId, cmd.id, { status: 'failed' });
@@ -880,7 +884,7 @@ export function useTestExecution() {
           commandName: cmd.name || cmd.content || 'Unnamed Command',
           action: cmd.fileData ? 'send_file' : 'send',
           sendData: cmd.fileData ? `File: ${cmd.fileData.name}` : sentData,
-          receivedData: lastResponse,
+          receivedData: allResponses.length > 0 ? allResponses.join('\n---\n') : lastResponse,
           expectCondition: cmd.validation === 'none' ? 'none' : `${cmd.validationMode}:${cmd.validationPattern || 'OK'}`,
           result: finalSuccess ? 'PASS' : 'FAIL',
           errorMsg: finalSuccess ? undefined : lastFailureReasonRef.current,

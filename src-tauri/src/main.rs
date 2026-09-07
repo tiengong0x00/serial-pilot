@@ -1499,9 +1499,82 @@ async fn convert_csv_to_excel(
     // 创建Excel
     let mut workbook = Workbook::new();
 
-    // Sheet 1: 摘要
+    // ========== 定义样式 ==========
+
+    // 摘要页标题样式（粗体，深蓝色背景）
+    let summary_header_format = Format::new()
+        .set_bold()
+        .set_font_size(12)
+        .set_background_color(Color::RGB(0x4472C4))
+        .set_font_color(Color::White)
+        .set_align(FormatAlign::Left)
+        .set_border(FormatBorder::Thin);
+
+    // 摘要页数值样式
+    let summary_value_format = Format::new()
+        .set_font_size(11)
+        .set_align(FormatAlign::Left)
+        .set_border(FormatBorder::Thin);
+
+    // PASS 结果样式（绿色背景）
+    let pass_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0xC6EFCE))
+        .set_font_color(Color::RGB(0x006100))
+        .set_border(FormatBorder::Thin);
+
+    // FAIL 结果样式（红色背景）
+    let fail_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0xFFC7CE))
+        .set_font_color(Color::RGB(0x9C0006))
+        .set_border(FormatBorder::Thin);
+
+    // 详细数据表头样式（粗体，浅蓝色背景）
+    let header_format = Format::new()
+        .set_bold()
+        .set_font_size(11)
+        .set_background_color(Color::RGB(0xD9E1F2))
+        .set_align(FormatAlign::Center)
+        .set_border(FormatBorder::Thin);
+
+    // 数据单元格样式
+    let cell_format = Format::new()
+        .set_font_size(10)
+        .set_border(FormatBorder::Thin)
+        .set_align(FormatAlign::Left);
+
+    // PASS 单元格样式（浅绿色）
+    let cell_pass_format = Format::new()
+        .set_font_size(10)
+        .set_bold()
+        .set_background_color(Color::RGB(0xC6EFCE))
+        .set_font_color(Color::RGB(0x006100))
+        .set_border(FormatBorder::Thin)
+        .set_align(FormatAlign::Center);
+
+    // FAIL 单元格样式（浅红色）
+    let cell_fail_format = Format::new()
+        .set_font_size(10)
+        .set_bold()
+        .set_background_color(Color::RGB(0xFFC7CE))
+        .set_font_color(Color::RGB(0x9C0006))
+        .set_border(FormatBorder::Thin)
+        .set_align(FormatAlign::Center);
+
+    // 数字格式
+    let number_format = Format::new()
+        .set_font_size(10)
+        .set_border(FormatBorder::Thin)
+        .set_align(FormatAlign::Right);
+
+    // ========== Sheet 1: 摘要 ==========
     let summary_sheet = workbook.add_worksheet();
     summary_sheet.set_name("Summary").map_err(|e| e.to_string())?;
+
+    // 设置列宽
+    summary_sheet.set_column_width(0, 20).map_err(|e| e.to_string())?;
+    summary_sheet.set_column_width(1, 30).map_err(|e| e.to_string())?;
 
     // 计算统计数据
     let total = records.len();
@@ -1514,26 +1587,52 @@ async fn convert_csv_to_excel(
     let overall_result = if failed == 0 { "PASS" } else { "FAIL" };
 
     // 写入摘要
-    summary_sheet.write_string(0, 0, "Test Case").map_err(|e| e.to_string())?;
-    summary_sheet.write_string(0, 1, &test_case).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(1, 0, "Total Commands").map_err(|e| e.to_string())?;
-    summary_sheet.write_number(1, 1, total as f64).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(2, 0, "Passed").map_err(|e| e.to_string())?;
-    summary_sheet.write_number(2, 1, passed as f64).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(3, 0, "Failed").map_err(|e| e.to_string())?;
-    summary_sheet.write_number(3, 1, failed as f64).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(4, 0, "Result").map_err(|e| e.to_string())?;
-    summary_sheet.write_string(4, 1, overall_result).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(5, 0, "Start Time").map_err(|e| e.to_string())?;
-    summary_sheet.write_string(5, 1, &start_time).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(6, 0, "End Time").map_err(|e| e.to_string())?;
-    summary_sheet.write_string(6, 1, &end_time).map_err(|e| e.to_string())?;
-    summary_sheet.write_string(7, 0, "Total Duration (ms)").map_err(|e| e.to_string())?;
-    summary_sheet.write_number(7, 1, total_duration as f64).map_err(|e| e.to_string())?;
+    summary_sheet.write_string_with_format(0, 0, "Test Case", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_string_with_format(0, 1, &test_case, &summary_value_format).map_err(|e| e.to_string())?;
 
-    // Sheet 2: 详细数据
+    summary_sheet.write_string_with_format(1, 0, "Total Commands", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_number_with_format(1, 1, total as f64, &summary_value_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(2, 0, "Passed", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_number_with_format(2, 1, passed as f64, &summary_value_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(3, 0, "Failed", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_number_with_format(3, 1, failed as f64, &summary_value_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(4, 0, "Result", &summary_header_format).map_err(|e| e.to_string())?;
+    let result_format = if overall_result == "PASS" { &pass_format } else { &fail_format };
+    summary_sheet.write_string_with_format(4, 1, overall_result, result_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(5, 0, "Start Time", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_string_with_format(5, 1, &start_time, &summary_value_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(6, 0, "End Time", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_string_with_format(6, 1, &end_time, &summary_value_format).map_err(|e| e.to_string())?;
+
+    summary_sheet.write_string_with_format(7, 0, "Total Duration (ms)", &summary_header_format).map_err(|e| e.to_string())?;
+    summary_sheet.write_number_with_format(7, 1, total_duration as f64, &summary_value_format).map_err(|e| e.to_string())?;
+
+    // ========== Sheet 2: 详细数据 ==========
     let detail_sheet = workbook.add_worksheet();
     detail_sheet.set_name("Details").map_err(|e| e.to_string())?;
+
+    // 冻结首行
+    detail_sheet.set_freeze_panes(1, 0).map_err(|e| e.to_string())?;
+
+    // 设置列宽
+    detail_sheet.set_column_width(0, 20).map_err(|e| e.to_string())?; // TestCase
+    detail_sheet.set_column_width(1, 10).map_err(|e| e.to_string())?; // Iteration
+    detail_sheet.set_column_width(2, 15).map_err(|e| e.to_string())?; // SequenceNumber
+    detail_sheet.set_column_width(3, 13).map_err(|e| e.to_string())?; // CommandIndex
+    detail_sheet.set_column_width(4, 25).map_err(|e| e.to_string())?; // CommandName
+    detail_sheet.set_column_width(5, 12).map_err(|e| e.to_string())?; // Action
+    detail_sheet.set_column_width(6, 30).map_err(|e| e.to_string())?; // SendData
+    detail_sheet.set_column_width(7, 30).map_err(|e| e.to_string())?; // ReceivedData
+    detail_sheet.set_column_width(8, 25).map_err(|e| e.to_string())?; // ExpectCondition
+    detail_sheet.set_column_width(9, 10).map_err(|e| e.to_string())?; // Result
+    detail_sheet.set_column_width(10, 30).map_err(|e| e.to_string())?; // ErrorMsg
+    detail_sheet.set_column_width(11, 22).map_err(|e| e.to_string())?; // Timestamp
+    detail_sheet.set_column_width(12, 13).map_err(|e| e.to_string())?; // Duration
 
     // 写入表头
     let headers = vec![
@@ -1542,25 +1641,30 @@ async fn convert_csv_to_excel(
         "Timestamp", "Duration(ms)"
     ];
     for (col, header) in headers.iter().enumerate() {
-        detail_sheet.write_string(0, col as u16, *header).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(0, col as u16, *header, &header_format).map_err(|e| e.to_string())?;
     }
 
     // 写入数据
     for (row, record) in records.iter().enumerate() {
         let row = (row + 1) as u32;
-        detail_sheet.write_string(row, 0, &record.test_case).map_err(|e| e.to_string())?;
-        detail_sheet.write_number(row, 1, record.iteration as f64).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 2, &record.sequence_number).map_err(|e| e.to_string())?;
-        detail_sheet.write_number(row, 3, record.command_index as f64).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 4, &record.command_name).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 5, &record.action).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 6, &record.send_data).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 7, &record.received_data).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 8, &record.expect_condition).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 9, &record.result).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 10, &record.error_msg).map_err(|e| e.to_string())?;
-        detail_sheet.write_string(row, 11, &record.timestamp).map_err(|e| e.to_string())?;
-        detail_sheet.write_number(row, 12, record.duration as f64).map_err(|e| e.to_string())?;
+
+        detail_sheet.write_string_with_format(row, 0, &record.test_case, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_number_with_format(row, 1, record.iteration as f64, &number_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 2, &record.sequence_number, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_number_with_format(row, 3, record.command_index as f64, &number_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 4, &record.command_name, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 5, &record.action, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 6, &record.send_data, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 7, &record.received_data, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 8, &record.expect_condition, &cell_format).map_err(|e| e.to_string())?;
+
+        // Result 列根据 PASS/FAIL 应用不同颜色
+        let result_format = if record.result == "PASS" { &cell_pass_format } else { &cell_fail_format };
+        detail_sheet.write_string_with_format(row, 9, &record.result, result_format).map_err(|e| e.to_string())?;
+
+        detail_sheet.write_string_with_format(row, 10, &record.error_msg, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 11, &record.timestamp, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_number_with_format(row, 12, record.duration as f64, &number_format).map_err(|e| e.to_string())?;
     }
 
     // 保存
