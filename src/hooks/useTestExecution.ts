@@ -18,6 +18,7 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSerialStore } from '@/stores/serialStore';
 import { useSerialCommands } from './useSerialCommands';
+import { initTestReport, finalizeTestReport, recordTestCommand } from '@/test-report-integration';
 import type {
   TestCase,
   TestCommand,
@@ -488,6 +489,11 @@ export function useTestExecution() {
     async (cmd: StandardCommand, caseId: string, caseTx: PortLabel, caseRx: PortLabel): Promise<ExecResult> => {
       if (abortRef.current) return 'interrupted';
 
+      // 记录执行开始时间
+      const startTime = performance.now();
+      let lastResponse = '';
+      let sentData = '';
+
       // 双串口路由：命令 txPort/rxPort 未设置则继承用例有效收发口
       const txPort: PortLabel = cmd.txPort ?? caseTx;
       const rxPort: PortLabel = cmd.rxPort ?? caseRx;
@@ -733,6 +739,9 @@ export function useTestExecution() {
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 
+          // 记录发送的数据
+          sentData = content;
+
           // 发送并回显（供 onReady 或直接调用）
           let sendError: unknown = null;
           const sendCommand = async () => {
@@ -777,6 +786,9 @@ export function useTestExecution() {
                 validateResponse(buf, cmd.validation, cmd.validationPattern, cmd.validationMode)
                   .valid,
             );
+
+            // 保存响应数据
+            lastResponse = response;
 
             if (sendError) {
               updateCommand(caseId, cmd.id, { status: 'failed' });
@@ -836,6 +848,48 @@ export function useTestExecution() {
       const finalSuccess = successCount >= cmd.successThreshold;
       updateCommand(caseId, cmd.id, { status: finalSuccess ? 'success' : 'failed' });
 
+      // 计算执行时长
+      const duration = Math.round(performance.now() - startTime);
+
+      // 记录到测试报告
+      try {
+        const rootCase = cases[0];
+        const testCaseName = rootCase?.name || 'Unknown';
+
+        // 查找当前用例和命令索引
+        const findCaseAndIndex = (testCase: TestCase, targetCaseId: string, targetCmdId: string, parentIndex = 0): { caseNode: TestCase | null; cmdIndex: number; iteration: number } => {
+          if (testCase.id === targetCaseId) {
+            const cmdIndex = testCase.children.findIndex((c) => isCommand(c) && c.id === targetCmdId);
+            return { caseNode: testCase, cmdIndex, iteration: 1 }; // TODO: 需要从执行上下文获取实际迭代次数
+          }
+          for (const child of testCase.children) {
+            if (isCase(child)) {
+              const result = findCaseAndIndex(child, targetCaseId, targetCmdId, parentIndex);
+              if (result.caseNode) return result;
+            }
+          }
+          return { caseNode: null, cmdIndex: -1, iteration: 1 };
+        };
+
+        const { cmdIndex, iteration } = findCaseAndIndex(rootCase, caseId, cmd.id);
+
+        await recordTestCommand({
+          testCaseName,
+          iteration,
+          commandIndex: cmdIndex >= 0 ? cmdIndex : 0,
+          commandName: cmd.name || cmd.content || 'Unnamed Command',
+          action: cmd.fileData ? 'send_file' : 'send',
+          sendData: cmd.fileData ? `File: ${cmd.fileData.name}` : sentData,
+          receivedData: lastResponse,
+          expectCondition: cmd.validation === 'none' ? 'none' : `${cmd.validationMode}:${cmd.validationPattern || 'OK'}`,
+          result: finalSuccess ? 'PASS' : 'FAIL',
+          errorMsg: finalSuccess ? undefined : lastFailureReasonRef.current,
+          duration,
+        });
+      } catch (error) {
+        console.error('[TestReport] Failed to record command:', error);
+      }
+
       if (finalSuccess) {
         await sleep(cmd.delay);
         return 'success';
@@ -846,7 +900,7 @@ export function useTestExecution() {
         return 'failed';
       }
     },
-    [abortRef, pausedRef, updateCommand, addLog, setVariable, addMessage, waitForResponse, addCriticalEvent],
+    [abortRef, pausedRef, updateCommand, addLog, setVariable, addMessage, waitForResponse, addCriticalEvent, cases],
   );
 
   /** 执行 URC 内联等待（阻塞等待匹配或超时） */
@@ -1234,6 +1288,16 @@ export function useTestExecution() {
 
       addLog('info', `Start execution: ${rootCase.name}`);
 
+      // 初始化测试报告（CLI 模式下已在 cli-adapter.ts 中初始化）
+      if (!window.__CLI_MODE__) {
+        try {
+          await initTestReport(rootCase.name);
+        } catch (error) {
+          console.error('[TestExecution] Failed to initialize test report:', error);
+          throw error;
+        }
+      }
+
       // 初始化执行统计
       statsRef.current = {
         rootCaseName: rootCase.name,
@@ -1299,6 +1363,9 @@ export function useTestExecution() {
       } catch (error) {
         addLog('error', `Execution error: ${error}`);
       } finally {
+        // 关闭测试报告并显示通知
+        await finalizeTestReport();
+
         // 注销根级守护
         for (const guard of rootGuards) {
           unregisterGuard(guard.id);

@@ -461,4 +461,9 @@
   .animate-fade-in {
     animation: fade-in 0.2s ease-out;
   }
+
+  /* Sonner toast 通知位置覆盖 - 与终端输出区域右上角对齐 */
+  [data-sonner-toaster] {
+    right: 0 !important;
+  }
 }

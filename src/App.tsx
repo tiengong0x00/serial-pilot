@@ -9,6 +9,8 @@ import { useLanguageEffect } from "./hooks/useLanguageEffect";
 import { usePowerMonitor } from "./hooks/usePowerMonitor";
 import { useTestExecution } from "./hooks/useTestExecution";
 import { initCLIMode } from "./cli-adapter";
+import { NotificationContainer } from "./components/TestNotification";
+import { initReportMonitor } from "./report-monitor";
 
 const App = () => {
   // 应用主题和语言设置（从 settingsStore 读取并应用到 DOM）
@@ -24,6 +26,12 @@ const App = () => {
   // 启动时加载命令库（从 .exe/../commands/*.json 构建内存 Trie）
   useEffect(() => {
     void useCommandLibrary.getState().load();
+  }, []);
+
+  // 初始化报告监控器
+  useEffect(() => {
+    const unsubscribe = initReportMonitor();
+    return unsubscribe;
   }, []);
 
   // 初始化 CLI 模式（如果处于 CLI 模式）
@@ -49,8 +57,13 @@ const App = () => {
         richColors
         closeButton
         duration={3000}
+        offset={{
+          top: '6.5rem',
+          right: '1.5rem',
+        }}
         toastOptions={{ className: "font-sans" }}
       />
+      <NotificationContainer />
       <ErrorBoundary>
         <BrowserRouter>
           <Routes>

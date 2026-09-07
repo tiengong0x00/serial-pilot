@@ -9,6 +9,7 @@ mod error;
 mod network;
 mod portable_updater;
 mod power_monitor;
+mod report;
 mod serial;
 mod script;
 mod state;
@@ -873,6 +874,7 @@ fn run_gui_mode() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(Mutex::new(ReportState { writer: None }))
         .setup(|app| {
             // 初始化全局配置（必须在路径函数被调用之前）
             config::init_global();
@@ -947,7 +949,13 @@ fn run_gui_mode() {
             set_commands_dir,
             open_help_manual,
             portable_updater::check_update_portable,
-            portable_updater::install_update_portable
+            portable_updater::install_update_portable,
+            start_report,
+            write_report_record,
+            close_report,
+            convert_csv_to_excel,
+            get_attachments_dir,
+            cleanup_old_excel_reports
         ])
         .run(tauri::generate_context!())
     {
@@ -1406,3 +1414,204 @@ fn format_timestamp(timestamp: f64) -> String {
         format!("{:.3}", timestamp / 1000.0)
     }
 }
+
+// ==================== 报告管理命令 ====================
+
+use std::sync::Mutex;
+
+pub struct ReportState {
+    pub writer: Option<report::ReportWriter>,
+}
+
+#[tauri::command]
+async fn start_report(
+    test_case: String,
+    state: State<'_, Mutex<ReportState>>,
+) -> Result<String, String> {
+    // 确保目录存在
+    let reports_dir = report::ensure_reports_dir()?;
+
+    // 异步清理旧报告（不阻塞）
+    let reports_dir_clone = reports_dir.clone();
+    tokio::spawn(async move {
+        let _ = report::cleanup_old_reports(&reports_dir_clone, 10).await;
+    });
+
+    // 生成报告文件名
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("report_{}_{}.csv", test_case, timestamp);
+    let filepath = reports_dir.join(&filename);
+
+    // 创建写入器
+    let writer = report::ReportWriter::new(filepath.clone())
+        .map_err(|e| format!("Failed to create report writer: {}", e))?;
+    let filepath_str = filepath.to_string_lossy().to_string();
+
+    // 保存到状态
+    let mut state = state.lock().unwrap();
+    state.writer = Some(writer);
+
+    Ok(filepath_str)
+}
+
+#[tauri::command]
+fn write_report_record(
+    record: report::TestRecord,
+    state: State<'_, Mutex<ReportState>>,
+) -> Result<(), String> {
+    let state = state.lock().unwrap();
+
+    if let Some(writer) = &state.writer {
+        writer.write(record);
+        Ok(())
+    } else {
+        Err("报告写入器未初始化".to_string())
+    }
+}
+
+#[tauri::command]
+fn close_report(state: State<'_, Mutex<ReportState>>) -> Result<(), String> {
+    let mut state = state.lock().unwrap();
+    state.writer = None; // 释放writer，触发通道关闭和最终刷新
+    Ok(())
+}
+
+#[tauri::command]
+async fn convert_csv_to_excel(
+    csv_path: String,
+    excel_path: String,
+) -> Result<(), String> {
+    use rust_xlsxwriter::*;
+
+    // 读取CSV
+    let mut reader = csv::Reader::from_path(&csv_path)
+        .map_err(|e| format!("读取CSV失败: {}", e))?;
+
+    let records: Vec<report::TestRecord> = reader
+        .deserialize()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("解析CSV记录失败: {}", e))?;
+
+    if records.is_empty() {
+        return Err("CSV文件为空".to_string());
+    }
+
+    // 创建Excel
+    let mut workbook = Workbook::new();
+
+    // Sheet 1: 摘要
+    let summary_sheet = workbook.add_worksheet();
+    summary_sheet.set_name("Summary").map_err(|e| e.to_string())?;
+
+    // 计算统计数据
+    let total = records.len();
+    let passed = records.iter().filter(|r| r.result == "PASS").count();
+    let failed = total - passed;
+    let test_case = records.first().map(|r| r.test_case.clone()).unwrap_or_default();
+    let start_time = records.first().map(|r| r.timestamp.clone()).unwrap_or_default();
+    let end_time = records.last().map(|r| r.timestamp.clone()).unwrap_or_default();
+    let total_duration: u64 = records.iter().map(|r| r.duration).sum();
+    let overall_result = if failed == 0 { "PASS" } else { "FAIL" };
+
+    // 写入摘要
+    summary_sheet.write_string(0, 0, "Test Case").map_err(|e| e.to_string())?;
+    summary_sheet.write_string(0, 1, &test_case).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(1, 0, "Total Commands").map_err(|e| e.to_string())?;
+    summary_sheet.write_number(1, 1, total as f64).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(2, 0, "Passed").map_err(|e| e.to_string())?;
+    summary_sheet.write_number(2, 1, passed as f64).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(3, 0, "Failed").map_err(|e| e.to_string())?;
+    summary_sheet.write_number(3, 1, failed as f64).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(4, 0, "Result").map_err(|e| e.to_string())?;
+    summary_sheet.write_string(4, 1, overall_result).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(5, 0, "Start Time").map_err(|e| e.to_string())?;
+    summary_sheet.write_string(5, 1, &start_time).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(6, 0, "End Time").map_err(|e| e.to_string())?;
+    summary_sheet.write_string(6, 1, &end_time).map_err(|e| e.to_string())?;
+    summary_sheet.write_string(7, 0, "Total Duration (ms)").map_err(|e| e.to_string())?;
+    summary_sheet.write_number(7, 1, total_duration as f64).map_err(|e| e.to_string())?;
+
+    // Sheet 2: 详细数据
+    let detail_sheet = workbook.add_worksheet();
+    detail_sheet.set_name("Details").map_err(|e| e.to_string())?;
+
+    // 写入表头
+    let headers = vec![
+        "TestCase", "Iteration", "SequenceNumber", "CommandIndex", "CommandName", "Action",
+        "SendData", "ReceivedData", "ExpectCondition", "Result", "ErrorMsg",
+        "Timestamp", "Duration(ms)"
+    ];
+    for (col, header) in headers.iter().enumerate() {
+        detail_sheet.write_string(0, col as u16, *header).map_err(|e| e.to_string())?;
+    }
+
+    // 写入数据
+    for (row, record) in records.iter().enumerate() {
+        let row = (row + 1) as u32;
+        detail_sheet.write_string(row, 0, &record.test_case).map_err(|e| e.to_string())?;
+        detail_sheet.write_number(row, 1, record.iteration as f64).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 2, &record.sequence_number).map_err(|e| e.to_string())?;
+        detail_sheet.write_number(row, 3, record.command_index as f64).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 4, &record.command_name).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 5, &record.action).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 6, &record.send_data).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 7, &record.received_data).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 8, &record.expect_condition).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 9, &record.result).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 10, &record.error_msg).map_err(|e| e.to_string())?;
+        detail_sheet.write_string(row, 11, &record.timestamp).map_err(|e| e.to_string())?;
+        detail_sheet.write_number(row, 12, record.duration as f64).map_err(|e| e.to_string())?;
+    }
+
+    // 保存
+    workbook
+        .save(&excel_path)
+        .map_err(|e| format!("保存Excel失败: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_attachments_dir() -> Result<String, String> {
+    let dir = attachments::get_attachments_dir();
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn cleanup_old_excel_reports(dir: String, keep_count: usize) -> Result<(), String> {
+    use std::path::Path;
+    use tokio::fs;
+
+    let dir_path = Path::new(&dir);
+    let mut entries = fs::read_dir(dir_path)
+        .await
+        .map_err(|e| format!("读取目录失败: {}", e))?;
+
+    let mut files = Vec::new();
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| format!("读取目录项失败: {}", e))?
+    {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("xlsx") {
+            if let Ok(metadata) = entry.metadata().await {
+                if let Ok(modified) = metadata.modified() {
+                    files.push((path, modified));
+                }
+            }
+        }
+    }
+
+    // 按修改时间排序（最新的在前）
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // 删除超出数量的文件
+    for (path, _) in files.iter().skip(keep_count) {
+        let _ = fs::remove_file(path).await;
+    }
+
+    Ok(())
+}
+
