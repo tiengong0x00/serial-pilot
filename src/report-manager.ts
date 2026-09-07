@@ -143,7 +143,7 @@ class ReportManager {
    * - 失败的迭代：始终记录
    */
   shouldRecordIteration(
-    commandId: string,
+    _commandId: string,
     current: number,
     total: number,
     failed: boolean
