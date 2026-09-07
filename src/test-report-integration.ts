@@ -29,8 +29,8 @@ export async function initTestReport(testCaseName: string): Promise<void> {
  */
 export async function recordTestCommand(params: {
   testCaseName: string;
+  sequenceNumber: string;
   iteration: number;
-  commandIndex: number;
   commandName: string;
   action: string;
   sendData: string;
@@ -39,13 +39,24 @@ export async function recordTestCommand(params: {
   result: 'PASS' | 'FAIL';
   errorMsg?: string;
   duration: number;
-  sequenceNumber?: string;
+  totalIterations?: number;
 }): Promise<void> {
+  // 应用采样策略
+  const shouldRecord = reportManager.shouldRecordIteration(
+    params.sequenceNumber,
+    params.iteration,
+    params.totalIterations || params.iteration,
+    params.result === 'FAIL'
+  );
+
+  if (!shouldRecord) {
+    return;
+  }
+
   const record: TestRecord = {
     test_case: params.testCaseName,
+    sequence_number: params.sequenceNumber,
     iteration: params.iteration,
-    sequence_number: params.sequenceNumber || String(params.commandIndex + 1),
-    command_index: params.commandIndex,
     command_name: params.commandName,
     action: params.action,
     send_data: params.sendData,

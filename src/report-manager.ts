@@ -7,9 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface TestRecord {
   test_case: string;
-  iteration: number;
   sequence_number: string;
-  command_index: number;
+  iteration: number;
   command_name: string;
   action: string;
   send_data: string;

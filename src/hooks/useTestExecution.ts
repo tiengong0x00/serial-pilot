@@ -331,12 +331,12 @@ export function useTestExecution() {
 
   /** 执行单条命令（处理 repeatCount + successThreshold） */
   const runCommand = useCallback(
-    async (cmd: TestCommand, caseId: string, caseTx: PortLabel, caseRx: PortLabel): Promise<ExecResult> => {
+    async (cmd: TestCommand, caseId: string, caseTx: PortLabel, caseRx: PortLabel, sequenceNumber?: string, iteration: number = 1, totalIterations: number = 1): Promise<ExecResult> => {
       if (!getContext()) return 'interrupted';
 
       // 标准命令
       if (isStandardCommand(cmd)) {
-        return await runStandardCommand(cmd, caseId, caseTx, caseRx);
+        return await runStandardCommand(cmd, caseId, caseTx, caseRx, sequenceNumber, iteration, totalIterations);
       }
 
       // URC 后台守护（注册后立即返回成功，不阻塞）
@@ -486,14 +486,13 @@ export function useTestExecution() {
 
   /** 执行标准命令（含 repeatCount + successThreshold + 响应等待） */
   const runStandardCommand = useCallback(
-    async (cmd: StandardCommand, caseId: string, caseTx: PortLabel, caseRx: PortLabel): Promise<ExecResult> => {
+    async (cmd: StandardCommand, caseId: string, caseTx: PortLabel, caseRx: PortLabel, sequenceNumber?: string, iteration: number = 1, totalIterations: number = 1): Promise<ExecResult> => {
       if (abortRef.current) return 'interrupted';
 
       // 记录执行开始时间
       const startTime = performance.now();
       let lastResponse = '';
       let sentData = '';
-      let allResponses: string[] = []; // 累积所有响应
 
       // 双串口路由：命令 txPort/rxPort 未设置则继承用例有效收发口
       const txPort: PortLabel = cmd.txPort ?? caseTx;
@@ -790,9 +789,6 @@ export function useTestExecution() {
 
             // 保存响应数据
             lastResponse = response;
-            if (response) {
-              allResponses.push(response);
-            }
 
             if (sendError) {
               updateCommand(caseId, cmd.id, { status: 'failed' });
@@ -860,31 +856,15 @@ export function useTestExecution() {
         const rootCase = cases[0];
         const testCaseName = rootCase?.name || 'Unknown';
 
-        // 查找当前用例和命令索引
-        const findCaseAndIndex = (testCase: TestCase, targetCaseId: string, targetCmdId: string, parentIndex = 0): { caseNode: TestCase | null; cmdIndex: number; iteration: number } => {
-          if (testCase.id === targetCaseId) {
-            const cmdIndex = testCase.children.findIndex((c) => isCommand(c) && c.id === targetCmdId);
-            return { caseNode: testCase, cmdIndex, iteration: 1 }; // TODO: 需要从执行上下文获取实际迭代次数
-          }
-          for (const child of testCase.children) {
-            if (isCase(child)) {
-              const result = findCaseAndIndex(child, targetCaseId, targetCmdId, parentIndex);
-              if (result.caseNode) return result;
-            }
-          }
-          return { caseNode: null, cmdIndex: -1, iteration: 1 };
-        };
-
-        const { cmdIndex, iteration } = findCaseAndIndex(rootCase, caseId, cmd.id);
-
         await recordTestCommand({
           testCaseName,
+          sequenceNumber: sequenceNumber || '0',
           iteration,
-          commandIndex: cmdIndex >= 0 ? cmdIndex : 0,
+          totalIterations,
           commandName: cmd.name || cmd.content || 'Unnamed Command',
           action: cmd.fileData ? 'send_file' : 'send',
           sendData: cmd.fileData ? `File: ${cmd.fileData.name}` : sentData,
-          receivedData: allResponses.length > 0 ? allResponses.join('\n---\n') : lastResponse,
+          receivedData: lastResponse,
           expectCondition: cmd.validation === 'none' ? 'none' : `${cmd.validationMode}:${cmd.validationPattern || 'OK'}`,
           result: finalSuccess ? 'PASS' : 'FAIL',
           errorMsg: finalSuccess ? undefined : lastFailureReasonRef.current,
@@ -915,6 +895,7 @@ export function useTestExecution() {
       parentTx: PortLabel,
       parentRx: PortLabel,
       _parentId: string | null = null,
+      sequencePrefix: string = '', // 层级前缀，如 "2.1"
     ): Promise<ExecResult> => {
       if (abortRef.current) return 'interrupted';
       if (!testCase.selected) {
@@ -971,11 +952,17 @@ export function useTestExecution() {
             }
 
             const child = testCase.children[childIndex];
+
+            // 计算当前子项的序列号
+            const currentSequence = sequencePrefix
+              ? `${sequencePrefix}.${childIndex + 1}`
+              : String(childIndex + 1);
+
             let childResult: ExecResult;
 
             if (isCase(child)) {
               // 递归执行子用例（传本用例有效收发口作为其父级默认口）
-              childResult = await runCase(child, caseTx, caseRx, testCase.id);
+              childResult = await runCase(child, caseTx, caseRx, testCase.id, currentSequence);
             } else if (isCommand(child)) {
               // 跳过未勾选的命令
               if (!child.selected) {
@@ -991,7 +978,7 @@ export function useTestExecution() {
               }
 
               // 执行命令（传本用例有效收发口作为命令默认口）
-              childResult = await runCommand(child, testCase.id, caseTx, caseRx);
+              childResult = await runCommand(child, testCase.id, caseTx, caseRx, currentSequence, round + 1, testCase.runCount);
             } else {
               childIndex++;
               continue;

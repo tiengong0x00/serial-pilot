@@ -7,18 +7,17 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestRecord {
     pub test_case: String,
+    pub sequence_number: String,
     pub iteration: u32,
-    pub sequence_number: String, // 层级序号，如 "1", "2.1", "3.2.1"
-    pub command_index: u32,
     pub command_name: String,
     pub action: String,
     pub send_data: String,
     pub received_data: String,
     pub expect_condition: String,
-    pub result: String, // "PASS" or "FAIL"
+    pub result: String,
     pub error_msg: String,
     pub timestamp: String,
-    pub duration: u64, // milliseconds
+    pub duration: u64,
 }
 
 pub struct ReportWriter {

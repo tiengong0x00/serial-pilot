@@ -1621,22 +1621,21 @@ async fn convert_csv_to_excel(
 
     // 设置列宽
     detail_sheet.set_column_width(0, 20).map_err(|e| e.to_string())?; // TestCase
-    detail_sheet.set_column_width(1, 10).map_err(|e| e.to_string())?; // Iteration
-    detail_sheet.set_column_width(2, 15).map_err(|e| e.to_string())?; // SequenceNumber
-    detail_sheet.set_column_width(3, 13).map_err(|e| e.to_string())?; // CommandIndex
-    detail_sheet.set_column_width(4, 25).map_err(|e| e.to_string())?; // CommandName
-    detail_sheet.set_column_width(5, 12).map_err(|e| e.to_string())?; // Action
-    detail_sheet.set_column_width(6, 30).map_err(|e| e.to_string())?; // SendData
-    detail_sheet.set_column_width(7, 30).map_err(|e| e.to_string())?; // ReceivedData
-    detail_sheet.set_column_width(8, 25).map_err(|e| e.to_string())?; // ExpectCondition
-    detail_sheet.set_column_width(9, 10).map_err(|e| e.to_string())?; // Result
-    detail_sheet.set_column_width(10, 30).map_err(|e| e.to_string())?; // ErrorMsg
-    detail_sheet.set_column_width(11, 22).map_err(|e| e.to_string())?; // Timestamp
-    detail_sheet.set_column_width(12, 13).map_err(|e| e.to_string())?; // Duration
+    detail_sheet.set_column_width(1, 15).map_err(|e| e.to_string())?; // SequenceNumber
+    detail_sheet.set_column_width(2, 10).map_err(|e| e.to_string())?; // Iteration
+    detail_sheet.set_column_width(3, 25).map_err(|e| e.to_string())?; // CommandName
+    detail_sheet.set_column_width(4, 12).map_err(|e| e.to_string())?; // Action
+    detail_sheet.set_column_width(5, 30).map_err(|e| e.to_string())?; // SendData
+    detail_sheet.set_column_width(6, 30).map_err(|e| e.to_string())?; // ReceivedData
+    detail_sheet.set_column_width(7, 25).map_err(|e| e.to_string())?; // ExpectCondition
+    detail_sheet.set_column_width(8, 10).map_err(|e| e.to_string())?; // Result
+    detail_sheet.set_column_width(9, 30).map_err(|e| e.to_string())?; // ErrorMsg
+    detail_sheet.set_column_width(10, 22).map_err(|e| e.to_string())?; // Timestamp
+    detail_sheet.set_column_width(11, 13).map_err(|e| e.to_string())?; // Duration
 
     // 写入表头
     let headers = vec![
-        "TestCase", "Iteration", "SequenceNumber", "CommandIndex", "CommandName", "Action",
+        "TestCase", "SequenceNumber", "Iteration", "CommandName", "Action",
         "SendData", "ReceivedData", "ExpectCondition", "Result", "ErrorMsg",
         "Timestamp", "Duration(ms)"
     ];
@@ -1649,22 +1648,21 @@ async fn convert_csv_to_excel(
         let row = (row + 1) as u32;
 
         detail_sheet.write_string_with_format(row, 0, &record.test_case, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_number_with_format(row, 1, record.iteration as f64, &number_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 2, &record.sequence_number, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_number_with_format(row, 3, record.command_index as f64, &number_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 4, &record.command_name, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 5, &record.action, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 6, &record.send_data, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 7, &record.received_data, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 8, &record.expect_condition, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 1, &record.sequence_number, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_number_with_format(row, 2, record.iteration as f64, &number_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 3, &record.command_name, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 4, &record.action, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 5, &record.send_data, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 6, &record.received_data, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 7, &record.expect_condition, &cell_format).map_err(|e| e.to_string())?;
 
         // Result 列根据 PASS/FAIL 应用不同颜色
         let result_format = if record.result == "PASS" { &cell_pass_format } else { &cell_fail_format };
-        detail_sheet.write_string_with_format(row, 9, &record.result, result_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 8, &record.result, result_format).map_err(|e| e.to_string())?;
 
-        detail_sheet.write_string_with_format(row, 10, &record.error_msg, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_string_with_format(row, 11, &record.timestamp, &cell_format).map_err(|e| e.to_string())?;
-        detail_sheet.write_number_with_format(row, 12, record.duration as f64, &number_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 9, &record.error_msg, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_string_with_format(row, 10, &record.timestamp, &cell_format).map_err(|e| e.to_string())?;
+        detail_sheet.write_number_with_format(row, 11, record.duration as f64, &number_format).map_err(|e| e.to_string())?;
     }
 
     // 保存
