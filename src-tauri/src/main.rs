@@ -836,9 +836,6 @@ async fn install_update_nsis(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
-    // 记录启动开始时间
-    let app_start_time = std::time::Instant::now();
-
     use clap::Parser;
 
     // 解析命令行参数
@@ -865,11 +862,11 @@ fn main() {
     if cli.command.is_some() {
         run_cli_mode(cli);
     } else {
-        run_gui_mode(app_start_time);
+        run_gui_mode();
     }
 }
 
-fn run_gui_mode(app_start_time: std::time::Instant) {
+fn run_gui_mode() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -878,9 +875,7 @@ fn run_gui_mode(app_start_time: std::time::Instant) {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
         .manage(Mutex::new(ReportState { writer: None }))
-        .setup(move |app| {
-            let setup_start = std::time::Instant::now();
-
+        .setup(|app| {
             // 初始化全局配置（必须在路径函数被调用之前）
             config::init_global();
 
@@ -909,17 +904,6 @@ fn run_gui_mode(app_start_time: std::time::Instant) {
             if let Err(e) = dist.persist_marker() {
                 eprintln!("[DistType] Failed to persist marker: {}", e);
             }
-
-            let setup_duration = setup_start.elapsed();
-            println!("[Startup] Setup phase completed in {:.2}ms", setup_duration.as_secs_f64() * 1000.0);
-
-            // 窗口准备就绪时记录总启动时间
-            let app_handle = app.handle().clone();
-            let start_time_clone = app_start_time;
-            app.listen("app-ready", move |_| {
-                let total_duration = start_time_clone.elapsed();
-                println!("[Startup] Total time from exe launch to UI ready: {:.2}ms", total_duration.as_secs_f64() * 1000.0);
-            });
 
             Ok(())
         })
