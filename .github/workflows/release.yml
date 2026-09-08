@@ -27,6 +27,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Clean build directory
+        run: |
+          if (Test-Path "src-tauri/target/release/bundle") {
+            Remove-Item -Path "src-tauri/target/release/bundle" -Recurse -Force
+            Write-Host "✓ Cleaned previous build artifacts"
+          }
+
       - name: Build Tauri app (Release only)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
