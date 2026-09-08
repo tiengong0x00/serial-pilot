@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster as Sonner } from "sonner";
+import { emit } from "@tauri-apps/api/event";
 import Index from "./pages/Index";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useCommandLibrary } from "./stores/commandLibraryStore";
@@ -49,6 +50,20 @@ const App = () => {
       initCLIMode();
     }
   }, [startExecution]);
+
+  // UI 完全加载后触发 app-ready 事件用于启动时间统计
+  useEffect(() => {
+    // 使用 requestIdleCallback 确保所有渲染完成
+    const idleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+    const handle = idleCallback(() => {
+      void emit('app-ready');
+    });
+    return () => {
+      if (window.cancelIdleCallback) {
+        window.cancelIdleCallback(handle);
+      }
+    };
+  }, []);
 
   return (
     <>
