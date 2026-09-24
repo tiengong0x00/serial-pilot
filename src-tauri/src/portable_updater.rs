@@ -76,7 +76,7 @@ fn verify_signature(file_data: &[u8], signature_base64: &str) -> Result<(), Stri
 
 /// 检查绿色版更新
 #[tauri::command]
-pub async fn check_update_portable(_app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+pub async fn check_update_portable(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let endpoint = crate::dist_type::DistType::Portable.endpoint();
 
     // 1. 拉取更新清单（超时延长到 60 秒）
@@ -95,7 +95,9 @@ pub async fn check_update_portable(_app: tauri::AppHandle) -> Result<UpdateInfo,
         .map_err(|e| format!("Failed to parse update manifest: {}", e))?;
 
     // 2. 对比版本号
-    let current_version = env!("CARGO_PKG_VERSION");
+    // 当前版本读取 app 包信息（来源 tauri.conf.json → package.json），
+    // 避免与 Cargo.toml 版本不一致导致"更新后仍提示有新版"
+    let current_version = app.package_info().version.to_string();
     let remote_version = manifest.version.trim_start_matches('v');
 
     if remote_version == current_version {
