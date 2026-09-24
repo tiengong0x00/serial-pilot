@@ -1,13 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Panel, Group, Separator } from "react-resizable-panels";
+import type { Layout } from "react-resizable-panels";
 import { useProtocolStore } from "../../../stores/protocolStore";
 import type { InputMode } from "../../../stores/protocolStore";
-import { parseYamlBytes, flattenNodes } from "../../../lib/protocolParser";
-import type { ParsedNode } from "../../../lib/protocolParser";
+import { parseDsl, flattenNodes } from "../../../lib/dsl";
+import type { ParsedNode } from "../../../lib/dsl";
 import { BUILTIN_PROTOCOLS, parseNative } from "../../../lib/nativeProtocols";
 import { ProtocolSelect } from "./ProtocolSelect";
 import { HexDump } from "./HexDump";
 import { DecodeTree } from "./DecodeTree";
+import { DslEditor } from "./DslEditor";
+
+// 解码树 / hexdump 上下分栏比例的持久化
+const SPLIT_KEY = "protocol-parser-split";
+const loadSplit = (): Layout | undefined => {
+  try {
+    const raw = localStorage.getItem(SPLIT_KEY);
+    return raw ? (JSON.parse(raw) as Layout) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+const saveSplit = (layout: Layout) => {
+  try { localStorage.setItem(SPLIT_KEY, JSON.stringify(layout)); } catch { /* ignore */ }
+};
 
 const hexToBytes = (hex: string): number[] => {
   const cleaned = hex.replace(/0x/gi, "").replace(/[^0-9a-fA-F]/g, "");
@@ -25,8 +42,8 @@ const textToBytes = (text: string): number[] => {
 };
 
 /**
- * 协议解析工具：仿 Nybble / Wireshark / Kaitai。
- * 内置预设（二进制位字段、NMEA/GPS）走原生解析器，用户协议走 Kaitai YAML 子集。
+ * 协议解析工具：仿 Nybble / Wireshark。
+ * 内置预设（二进制位字段、NMEA/GPS）走原生解析器，用户协议走协议解析 DSL。
  * 上：解码树；下：hexdump 原始数据。两区共用一个边框、单条分割线，双向联动高亮。
  */
 const ProtocolParser = () => {
@@ -58,7 +75,7 @@ const ProtocolParser = () => {
   const result = useMemo(() => {
     if (!active) return null;
     if (active.native) return parseNative(active.native, bytes, rawInput);
-    return parseYamlBytes(active.yaml, bytes);
+    return parseDsl(active.yaml, bytes);
   }, [active, bytes, rawInput]);
 
   const activeRange = useMemo<[number, number] | null>(() => {
@@ -93,13 +110,11 @@ const ProtocolParser = () => {
       </div>
 
       {editing && active && !active.builtin ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
           <label className="text-sm font-medium">{t("toolbox.protoYamlLabel")}</label>
-          <textarea
+          <DslEditor
             value={active.yaml}
-            onChange={(e) => updateProtocol(active.id, { yaml: e.target.value })}
-            spellCheck={false}
-            className="w-full h-64 px-3 py-2 text-xs rounded-md border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+            onChange={(text) => updateProtocol(active.id, { yaml: text })}
           />
           <div className="flex justify-end">
             <button onClick={() => setEditing(false)} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm">
@@ -111,9 +126,19 @@ const ProtocolParser = () => {
         <>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium mr-auto">
+              <label className="text-sm font-medium">
                 {inputMode === "text" ? t("toolbox.protoTextInput") : t("toolbox.protoHexInput")}
               </label>
+              {active && (
+                <span className="text-[11px] font-mono text-muted-foreground mr-auto">
+                  {bytes.length} {t("toolbox.bytes")}
+                  {result && <> · {t("toolbox.protoConsumed")} {result.bytesConsumed}</>}
+                  {result && result.errors.length > 0 && (
+                    <span className="text-destructive"> · {result.errors[0]}</span>
+                  )}
+                </span>
+              )}
+              {!active && <span className="mr-auto" />}
               {modeBtn("hex", t("toolbox.protoModeHex"))}
               {modeBtn("text", t("toolbox.protoModeText"))}
             </div>
@@ -131,31 +156,33 @@ const ProtocolParser = () => {
           )}
 
           {active && (
-            <div className="flex-1 min-h-0 flex flex-col border border-input rounded-md overflow-hidden">
-              {/* 解码树（上） */}
-              <div className="flex-1 min-h-0 overflow-auto">
-                <DecodeTree nodes={result?.root ?? []} activeId={activeNodeId} onSelect={handleNodeSelect} />
-              </div>
+            <div className="flex-1 min-h-0 border border-input rounded-md overflow-hidden">
+              <Group
+                orientation="vertical"
+                className="h-full w-full"
+                defaultLayout={loadSplit()}
+                onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) saveSplit(layout); }}
+              >
+                {/* 解码树（上） */}
+                <Panel id="tree" defaultSize="55" minSize="20">
+                  <div className="h-full min-h-0 overflow-auto">
+                    <DecodeTree nodes={result?.root ?? []} activeId={activeNodeId} onSelect={handleNodeSelect} />
+                  </div>
+                </Panel>
 
-              {/* 单条分割线（Wireshark 风格） */}
-              <div className="h-px bg-border shrink-0" />
+                {/* 可拖拽分割线（Wireshark 风格） */}
+                <Separator className="h-1 bg-border/50 hover:bg-primary/50 transition-colors cursor-row-resize" />
 
-              {/* hexdump（下） */}
-              <div className="flex-1 min-h-0 overflow-auto bg-muted/10">
-                <HexDump bytes={bytes} activeRange={activeRange} onByteClick={handleByteClick} />
-              </div>
+                {/* hexdump（下） */}
+                <Panel id="hex" defaultSize="45" minSize="20">
+                  <div className="h-full min-h-0 overflow-auto bg-muted/10">
+                    <HexDump bytes={bytes} activeRange={activeRange} onByteClick={handleByteClick} />
+                  </div>
+                </Panel>
+              </Group>
             </div>
           )}
 
-          {active && (
-            <div className="flex items-center gap-3 text-xs font-mono text-muted-foreground shrink-0">
-              <span>{bytes.length} {t("toolbox.bytes")}</span>
-              {result && <span>· {t("toolbox.protoConsumed")} {result.bytesConsumed}</span>}
-              {result && result.errors.length > 0 && (
-                <span className="text-destructive font-sans">· {result.errors[0]}</span>
-              )}
-            </div>
-          )}
         </>
       )}
     </div>

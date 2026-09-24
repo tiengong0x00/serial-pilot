@@ -26,31 +26,28 @@ interface ProtocolStore {
   setActive: (id: string | null) => void;
 }
 
-/** 新建协议时的示例模板：Kaitai Struct 风格 YAML 子集 */
+/** Starter template for a new protocol: parsing DSL (see docs/protocol-dsl-spec-v1.0.md). */
 export const EXAMPLE_YAML = [
-  '# Kaitai Struct 风格 YAML 子集，参考 https://doc.kaitai.io/user_guide.html',
-  '# 支持: u1/u2/u4/u8 s1.. (可带 le/be) f4/f8 b1..b32 str/strz 自定义子类型',
-  '#       size / size-eos / enum / repeat(expr) / if / doc',
-  'meta:',
-  '  id: example',
-  '  endian: be',
-  'seq:',
-  '  - id: magic',
-  '    type: u1',
-  '    doc: 帧头',
-  '  - id: length',
-  '    type: u2',
-  '    doc: body 长度',
-  '  - id: flag',
-  '    type: u1',
-  '    enum: state',
-  '  - id: body',
-  '    size: length',
-  '    type: str',
-  'enums:',
-  '  state:',
-  '    0: idle',
-  '    1: active',
+  '# Protocol parsing DSL sample. Storage type decides how many bytes to read;',
+  '# modifiers decide how to interpret them.',
+  '# Types: u8/u16/../f64 bytes[N] varint(N) bitfield(N) match enum',
+  '# Modifiers: bcd/ascii/hex/endian/enum   Attributes: = fixed / if / parse / fallback',
+  '# DSL spec: https://github.com/tiengong0x00/serial-pilot/blob/main/docs/protocol-dsl-spec-v1.0.md',
+  '',
+  'endian be',
+  'root Frame',
+  '',
+  'enum State {',
+  '  0: idle',
+  '  1: active',
+  '}',
+  '',
+  'struct Frame {',
+  '  magic:  u16 = 0xAA55',
+  '  flag:   u8 enum State',
+  '  length: u16',
+  '  body:   bytes[length] ascii',
+  '}',
 ].join('\n');
 
 /**

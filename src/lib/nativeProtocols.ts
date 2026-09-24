@@ -1,7 +1,7 @@
-// 内置原生协议解析器 —— 用于无法用 Kaitai YAML 子集表达的格式。
-// 输出与 protocolParser 相同的 ParseResult（含 byteOwner），从而复用树↔hexdump 联动。
+// 内置原生协议解析器 —— 用于无法用 DSL 表达的格式（位字段展开、NMEA 文本）。
+// 输出与 DSL 引擎相同的 ParseResult（含 byteOwner），从而复用树↔hexdump 联动。
 
-import type { ParseResult, ParsedNode } from "./protocolParser";
+import type { ParseResult, ParsedNode } from "./dsl";
 import type { Protocol } from "../stores/protocolStore";
 
 const toHex = (n: number) => n.toString(16).toUpperCase().padStart(2, "0");

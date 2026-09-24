@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseNative, BUILTIN_PROTOCOLS } from "./nativeProtocols";
-import { flattenNodes } from "./protocolParser";
+import { flattenNodes } from "./dsl";
 
 const textToBytes = (t: string) => Array.from(t).map((c) => c.charCodeAt(0) & 0xff);
 
