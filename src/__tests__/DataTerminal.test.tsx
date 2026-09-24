@@ -178,28 +178,8 @@ describe('DataTerminal 组件测试', () => {
     expect(screen.getByText(/41 54/)).toBeInTheDocument();
   });
 
-  it('应统计 TX/RX 字节数', () => {
-    useTerminalStore.getState().addMessage({
-      id: '1',
-      type: 'TX',
-      port_label: 'P1',
-      data: new Uint8Array([0x41, 0x54]),
-      timestamp: Date.now(),
-    });
-
-    useTerminalStore.getState().addMessage({
-      id: '2',
-      type: 'RX',
-      port_label: 'P1',
-      data: new Uint8Array([0x4f, 0x4b]),
-      timestamp: Date.now(),
-    });
-
-    render(<DataTerminal />);
-
-    expect(screen.getByText(/TX 2/)).toBeInTheDocument();
-    expect(screen.getByText(/RX 2/)).toBeInTheDocument();
-  });
+  // 注：TX/RX 字节数统计指示器已在 UI 改版中从终端头部移除
+  // （DataTerminal.tsx 该组件"当前布局已不再挂载"），故删除对应断言用例。
 
   it('应清空消息', async () => {
     const user = userEvent.setup();

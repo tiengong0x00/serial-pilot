@@ -20,6 +20,8 @@ vi.mock('react-i18next', () => ({
       return translations[key] || key;
     },
   }),
+  // src/i18n.ts 会 i18n.use(initReactI18next).init(...)，mock 需提供该导出，否则整套加载失败
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 describe('StatusFooter 组件测试', () => {
@@ -52,10 +54,12 @@ describe('StatusFooter 组件测试', () => {
     render(<StatusFooter />);
     expect(screen.getByText('P1:')).toBeInTheDocument();
     expect(screen.getByText('COM3')).toBeInTheDocument();
-    expect(screen.getByText('115200')).toBeInTheDocument(); // 波特率显示
+    // P1/P2 波特率默认均为 115200，会出现多个，取存在即可
+    expect(screen.getAllByText('115200').length).toBeGreaterThan(0); // 波特率显示
   });
 
-  it('应显示系统日志计数', () => {
+  it('有系统日志时应显示日志入口图标', () => {
+    // 界面改版后：状态栏不再显示计数/预览文本，仅在有系统日志时显示一个日志图标按钮
     useTerminalStore.getState().addMessage({
       id: 'sys1',
       type: 'SYS',
@@ -65,10 +69,11 @@ describe('StatusFooter 组件测试', () => {
       text: '系统日志',
     });
     render(<StatusFooter />);
-    expect(screen.getByText(/1 条消息/)).toBeInTheDocument();
+    expect(screen.getByTitle('点击查看完整日志')).toBeInTheDocument();
   });
 
-  it('应显示最后一条系统消息', () => {
+  it('点击日志图标应在对话框中显示最后一条系统消息', async () => {
+    const user = userEvent.setup();
     useTerminalStore.getState().addMessage({
       id: 'sys1',
       type: 'SYS',
@@ -78,10 +83,12 @@ describe('StatusFooter 组件测试', () => {
       text: '连接成功',
     });
     render(<StatusFooter />);
+    // 消息文本只在对话框内呈现，需先点击图标打开
+    await user.click(screen.getByTitle('点击查看完整日志'));
     expect(screen.getByText('连接成功')).toBeInTheDocument();
   });
 
-  it('点击系统消息应打开日志对话框', async () => {
+  it('点击日志图标应打开日志对话框', async () => {
     const user = userEvent.setup();
     useTerminalStore.getState().addMessage({
       id: 'sys1',
@@ -93,8 +100,7 @@ describe('StatusFooter 组件测试', () => {
     });
     render(<StatusFooter />);
 
-    const messageButton = screen.getByText('测试消息');
-    await user.click(messageButton);
+    await user.click(screen.getByTitle('点击查看完整日志'));
 
     // 对话框标题应出现（使用 getByRole 更精确）
     expect(screen.getByRole('heading', { name: '系统日志' })).toBeInTheDocument();
@@ -131,8 +137,8 @@ describe('StatusFooter 组件测试', () => {
 
     render(<StatusFooter />);
 
-    // 点击打开对话框（状态栏显示最后一条 SYS，使用 getAllByText 取第一个）
-    await user.click(screen.getAllByText('系统消息2')[0]);
+    // 点击日志图标打开对话框（改版后状态栏不再直接显示消息文本）
+    await user.click(screen.getByTitle('点击查看完整日志'));
 
     // 对话框应该打开
     expect(screen.getByRole('heading', { name: '系统日志' })).toBeInTheDocument();

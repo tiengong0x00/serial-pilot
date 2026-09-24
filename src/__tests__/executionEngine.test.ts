@@ -13,6 +13,7 @@ import { useExecutionStore } from '@/stores/executionStore';
 import { useTestCaseStore } from '@/stores/testCaseStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useSerialStore } from '@/stores/serialStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   replaceVariables,
   validateResponse,
@@ -32,6 +33,16 @@ function mkCommand(content: string): StandardCommand {
   cmd.content = content;
   cmd.validation = 'none'; // 默认无需等待响应，测试可覆盖
   return cmd;
+}
+
+/**
+ * 仅保留 write_serial_data 的 invoke 调用。
+ * 说明：每条命令执行现在会附带 start_report / write_report_record / close_report /
+ * get_attachments_dir 等报表相关 invoke，因此不能再用 invoke 的总调用次数来断言
+ * “发送了几条命令”。这里过滤出真正的串口写入调用。
+ */
+function writeCalls() {
+  return vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'write_serial_data');
 }
 
 // ============ 工具函数测试（纯逻辑，无依赖） ============
@@ -347,7 +358,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 验证所有命令都执行了
-      expect(invoke).toHaveBeenCalledTimes(3);
+      expect(writeCalls().length).toBe(3);
       const updatedRoot = useTestCaseStore.getState().cases[0];
       expect(updatedRoot.children[0]).toMatchObject({ status: 'success' });
       expect(updatedRoot.children[1]).toMatchObject({ status: 'success' });
@@ -377,7 +388,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 验证递归执行
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(writeCalls().length).toBe(2);
       const updatedRoot = useTestCaseStore.getState().cases[0];
       expect(updatedRoot.children[0]).toMatchObject({ status: 'success' }); // cmd1
       expect((updatedRoot.children[1] as any).status).toBe('success'); // subCase
@@ -403,8 +414,8 @@ describe('useTestExecution Hook (递归模型)', () => {
         expect(useExecutionStore.getState().isRunning).toBe(false);
       });
 
-      // 子用例被跳过，命令不执行
-      expect(invoke).not.toHaveBeenCalled();
+      // 子用例被跳过，命令不执行（无 write_serial_data 调用）
+      expect(writeCalls().length).toBe(0);
       const updatedRoot = useTestCaseStore.getState().cases[0];
       expect((updatedRoot.children[0] as any).status).toBe('skipped');
     });
@@ -433,7 +444,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 只执行了 cmd1 和 cmd3
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(writeCalls().length).toBe(2);
       const updatedRoot = useTestCaseStore.getState().cases[0];
       expect(updatedRoot.children[0]).toMatchObject({ status: 'success' });
       expect(updatedRoot.children[1]).toMatchObject({ status: 'skipped' });
@@ -548,7 +559,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       expect(updatedRoot.children[2]).toMatchObject({ status: 'pending' }); // cmd3 跳过
       expect(updatedRoot.children[3]).toMatchObject({ status: 'success' }); // cmd4
 
-      const sentData = vi.mocked(invoke).mock.calls.map((call) => {
+      const sentData = writeCalls().map((call) => {
         const args = call[1] as any;
         return new TextDecoder().decode(new Uint8Array(args.data));
       });
@@ -639,7 +650,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 首条发送后触发 abort：后续命令不执行
-      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(writeCalls().length).toBe(1);
       expect(useTestCaseStore.getState().cases[0].status).toBe('failed');
     });
 
@@ -660,7 +671,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 首条发送后本轮结束：第二条未执行
-      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(writeCalls().length).toBe(1);
     });
 
     it('action=restart-round 应从本轮开头重新执行', async () => {
@@ -681,7 +692,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 第一次 AT 触发重启 → 重新从头：AT, AT+GMR（3 次发送）
-      expect(invoke).toHaveBeenCalledTimes(3);
+      expect(writeCalls().length).toBe(3);
       expect(useTestCaseStore.getState().cases[0].status).toBe('success');
     });
 
@@ -702,7 +713,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 两条命令均正常执行
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(writeCalls().length).toBe(2);
       expect(useTestCaseStore.getState().cases[0].status).toBe('success');
     });
 
@@ -759,8 +770,9 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // cmdA → 触发跳转 → cmdC（跳过 cmdB）
-      expect(invoke).toHaveBeenCalledTimes(2);
-      const sentData = vi.mocked(invoke).mock.calls.map((call) => {
+      const writes = writeCalls();
+      expect(writes.length).toBe(2);
+      const sentData = writes.map((call) => {
         const args = call[1] as any;
         return new TextDecoder().decode(new Uint8Array(args.data));
       });
@@ -824,8 +836,9 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // cmdA → call cmdB (提前) → cmdB (正常顺序) → cmdC (正常顺序) = 4次
-      expect(invoke).toHaveBeenCalledTimes(4);
-      const sentData = vi.mocked(invoke).mock.calls.map((call) => {
+      const writes = writeCalls();
+      expect(writes.length).toBe(4);
+      const sentData = writes.map((call) => {
         const args = call[1] as any;
         return new TextDecoder().decode(new Uint8Array(args.data));
       });
@@ -853,7 +866,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 命令执行了 2 次
-      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(writeCalls().length).toBe(2);
     });
 
     it('子用例的 runCount 应独立生效', async () => {
@@ -877,7 +890,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 根用例执行 1 次，子用例内部循环 3 次
-      expect(invoke).toHaveBeenCalledTimes(3);
+      expect(writeCalls().length).toBe(3);
     });
   });
 
@@ -912,8 +925,8 @@ describe('useTestExecution Hook (递归模型)', () => {
         expect(useExecutionStore.getState().isRunning).toBe(false);
       });
 
-      // 执行被中断，不是所有命令都执行完
-      expect(vi.mocked(invoke).mock.calls.length).toBeLessThan(10);
+      // 执行被中断，不是所有命令都执行完（write_serial_data 调用少于命令总数 10）
+      expect(writeCalls().length).toBeLessThan(10);
     });
   });
 
@@ -944,7 +957,7 @@ describe('useTestExecution Hook (递归模型)', () => {
         })
       );
 
-      const callArgs = vi.mocked(invoke).mock.calls[0][1] as any;
+      const callArgs = writeCalls()[0][1] as any;
       const sentData = new TextDecoder().decode(new Uint8Array(callArgs.data));
       expect(sentData).toContain('123456789012345');
       expect(sentData).not.toContain('${imei}');
@@ -983,7 +996,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       );
 
       // 验证发送的数据是原始字节（不包含行尾符）
-      const callArgs = vi.mocked(invoke).mock.calls[0][1] as any;
+      const callArgs = writeCalls()[0][1] as any;
       const sentBytes = new Uint8Array(callArgs.data);
       expect(sentBytes.length).toBe(100);
       expect(new TextDecoder().decode(sentBytes)).toBe('A'.repeat(100));
@@ -994,9 +1007,12 @@ describe('useTestExecution Hook (递归模型)', () => {
     });
 
     it('应按 filePacketSize 分包发送大文件', async () => {
+      // filePacketSize 默认值已改为 0（不分包），此处显式设为 256 以验证分包逻辑
+      useSettingsStore.setState({ filePacketSize: 256 });
+
       const root = createRootCase('大文件分包测试');
 
-      // 构造 3KB 文件（默认 filePacketSize=256，会分成 12 包）
+      // 构造 3KB 文件（filePacketSize=256，会分成 12 包）
       const fileContent = 'B'.repeat(3072);
       const cmd = mkCommand('');
       cmd.fileData = {
@@ -1016,14 +1032,15 @@ describe('useTestExecution Hook (递归模型)', () => {
       });
 
       // 验证 write_serial_data 被调用了 12 次（12 个包）
-      const calls = vi.mocked(invoke).mock.calls.filter(
-        ([cmd]) => cmd === 'write_serial_data'
-      );
+      const calls = writeCalls();
       expect(calls.length).toBe(12);
 
       // 验证每包大小：3072 / 256 = 12 包，每包 256 字节
       const sizes = calls.map((call) => (call[1] as any).data.length);
       expect(sizes).toEqual(Array(12).fill(256));
+
+      // 还原默认值，避免影响其他测试
+      useSettingsStore.setState({ filePacketSize: 0 });
     });
   });
 });
