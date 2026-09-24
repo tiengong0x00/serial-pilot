@@ -53,6 +53,25 @@ const sentMessageIds = new Set<string>(); // 记录已发送的消息 ID，避�
 let lastLogEntry: any = null;
 
 /**
+ * 收尾冲刷：把所有尚未发送的终端消息立即发出（不再等待 isFinal）。
+ * 用于 listen 窗口/测试执行结束时，防止最后一帧仍处于「未闭合」状态而漏发。
+ */
+async function flushPendingTerminalData() {
+  const { messages } = useTerminalStore.getState();
+  for (const msg of messages) {
+    if (sentMessageIds.has(msg.id)) continue;
+    sentMessageIds.add(msg.id);
+    await emit('cli-terminal-data', {
+      timestamp: msg.timestamp,
+      port: msg.port_label,
+      direction: msg.type,
+      data: Array.from(msg.data),
+      format: 'utf8',
+    });
+  }
+}
+
+/**
  * 初始化 CLI 模式
  */
 export function initCLIMode() {
@@ -178,7 +197,8 @@ export function initCLIMode() {
         console.log('[CLI] Wait completed');
       }
 
-      // 4. 通知完成
+      // 4. 收尾冲刷未闭合的帧，再通知完成
+      await flushPendingTerminalData();
       console.log('[CLI] Emitting cli-command-complete event...');
       await emit('cli-command-complete', { success: true });
       console.log('[CLI] Event emitted successfully');
@@ -198,7 +218,8 @@ export function initCLIMode() {
 
       const testCaseStore = useTestCaseStore.getState();
       const serialStore = useSerialStore.getState();
-      const executionStore = useExecutionStore.getState();
+      // 注意：不在此处抓 executionStore 快照——执行是异步的，
+      // 快照会过期。执行完在第 5 步重新 getState() 读取最新状态。
 
       // 1. 加载测试用例文件（CLI 专用函数，支持路径）
       const content = await invoke<string>('load_test_case_file_cli', {
@@ -251,14 +272,36 @@ export function initCLIMode() {
       }
 
       // 5. 获取执行结果
+      // 关键修复：executionStore 是执行前抓的旧快照，执行完必须重新 getState()
+      // 读取最新状态，否则 logs 永远是空数组、success 恒为 false。
+      const finalState = useExecutionStore.getState();
+
+      // 判据与 UI 汇总同源：优先用 complete 事件的 successCount/failureCount，
+      // 兜底用引擎结束时写入的确定性日志（成功=Execution completed / 失败=Execution failed）。
+      const completeEvent = [...finalState.criticalEvents]
+        .reverse()
+        .find((e) => e.type === 'complete');
+
+      let success: boolean;
+      if (completeEvent?.summary) {
+        success = completeEvent.summary.failureCount === 0;
+      } else {
+        // 兜底：找最后一条完成态日志
+        const finalLog = [...finalState.logs]
+          .reverse()
+          .find((log) => log.message === 'Execution completed' || log.message === 'Execution failed');
+        success = finalLog?.level === 'success';
+      }
+
       const results = {
-        success: executionStore.isRunning === false && executionStore.logs.some(log => log.level === 'success'),
+        success: finalState.isRunning === false && success,
         totalCommands: 0,
-        successCommands: 0,
-        failedCommands: 0,
+        successCommands: completeEvent?.summary?.successCount ?? 0,
+        failedCommands: completeEvent?.summary?.failureCount ?? 0,
       };
 
-      // 6. 通知完成
+      // 6. 收尾冲刷未闭合的帧，再通知完成
+      await flushPendingTerminalData();
       await emit('cli-test-complete', results);
 
       return { success: results.success };
@@ -280,25 +323,35 @@ export function initCLIMode() {
   console.log('[CLI] ========================================');
 
   // 设置 store 订阅（用于推送数据到 Rust）
+  //
+  // 关键：RX 数据在后端逐字节增量到达，前端 appendFrame 会「就地把新字节拼进
+  // 同一条消息、复用同一个 id」。旧实现「每个 id 只发一次」只会拿到第一个字节，
+  // 后续增量因 id 已见过被丢弃 —— 这正是「只收到一个字节」的根因。
+  //
+  // 修复：改为「按帧闭合」推送。
+  // - TX 消息：无 frameId，立即发（一次成型）。
+  // - RX 消息：等 isFinal（一帧收完，静默间隙触发）后发一次完整数据，
+  //   对齐 Rust 端「一行一条」的打印语义，既不丢字节也不重复。
   console.log('[CLI] Setting up terminal store subscriber...');
   terminalUnsubscribe = useTerminalStore.subscribe((state) => {
-    // 只推送新增的消息（基于消息 ID 去重）
-    if (state.messages.length > 0) {
-      const latestMessage = state.messages[state.messages.length - 1];
+    // 从尾部扫描，推送所有「就绪且尚未发送」的消息（正常一次只有一条新就绪）
+    for (let i = state.messages.length - 1; i >= 0; i--) {
+      const msg = state.messages[i];
+      if (sentMessageIds.has(msg.id)) break; // 更早的消息都已发送过
 
-      // 只在第一次遇到这个消息 ID 时发送，避免分帧数据导致重复
-      if (!sentMessageIds.has(latestMessage.id)) {
-        sentMessageIds.add(latestMessage.id);
-        console.log('[CLI] Emitting terminal data event for message:', latestMessage.id);
+      // RX 帧未闭合则暂不发送（等增量收全）；TX 无 frameId，视为已就绪
+      const isRxPending = msg.type === 'RX' && msg.isFinal !== true;
+      if (isRxPending) continue;
 
-        emit('cli-terminal-data', {
-          timestamp: latestMessage.timestamp,
-          port: latestMessage.port_label,
-          direction: latestMessage.type,
-          data: Array.from(latestMessage.data),
-          format: 'utf8',
-        });
-      }
+      sentMessageIds.add(msg.id);
+      console.log('[CLI] Emitting terminal data event for message:', msg.id);
+      emit('cli-terminal-data', {
+        timestamp: msg.timestamp,
+        port: msg.port_label,
+        direction: msg.type,
+        data: Array.from(msg.data),
+        format: 'utf8',
+      });
     }
   });
 

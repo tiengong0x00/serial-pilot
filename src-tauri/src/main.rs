@@ -905,6 +905,14 @@ fn run_gui_mode() {
                 eprintln!("[DistType] Failed to persist marker: {}", e);
             }
 
+            // 主窗口默认配置为不可见（visible:false），避免 CLI 模式下闪现窗口。
+            // GUI 模式确认后主动显示；show 失败不致命，仅记录。
+            if let Some(main_window) = app.get_webview_window("main") {
+                if let Err(e) = main_window.show() {
+                    eprintln!("[Window] Failed to show main window: {}", e);
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
