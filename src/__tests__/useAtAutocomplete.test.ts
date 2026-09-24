@@ -133,17 +133,32 @@ describe('useAtAutocomplete (扁平化命令库)', () => {
     expect(typeof result.current.ghostHint).toBe('string');
   });
 
-  it('支持向下导航', async () => {
+  it('默认无选中，向下导航从首条开始', async () => {
     const { result } = renderHook(() => useAtAutocomplete('AT+CGREG'));
     await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(1), { timeout: 300 });
+    // 默认态：无候选选中（-1），Enter 发原文而非补全
+    expect(result.current.selectedIndex).toBe(-1);
+    act(() => result.current.moveDown()); // 首按 ↓ 进入首条
     expect(result.current.selectedIndex).toBe(0);
     act(() => result.current.moveDown());
     expect(result.current.selectedIndex).toBe(1);
   });
 
-  it('getSelected 返回当前选中候选', async () => {
+  it('向上导航从末条开始', async () => {
+    const { result } = renderHook(() => useAtAutocomplete('AT+CGREG'));
+    await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(1), { timeout: 300 });
+    const last = result.current.candidates.length - 1;
+    act(() => result.current.moveUp()); // 首按 ↑ 进入末条
+    expect(result.current.selectedIndex).toBe(last);
+  });
+
+  it('getSelected 默认返回 null，选中后返回对应候选', async () => {
     const { result } = renderHook(() => useAtAutocomplete('AT+CGREG'));
     await waitFor(() => expect(result.current.candidates.length).toBeGreaterThan(0), { timeout: 300 });
+    // 默认无选中
+    expect(result.current.getSelected()).toBeNull();
+    // 主动选中首条后返回该候选
+    act(() => result.current.moveDown());
     const selected = result.current.getSelected();
     expect(selected).not.toBeNull();
     expect(selected?.s).toBe(result.current.candidates[0].s);

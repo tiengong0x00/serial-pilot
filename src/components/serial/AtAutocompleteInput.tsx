@@ -113,10 +113,14 @@ export function AtAutocompleteInput({
             autocomplete.dismiss();
             return;
           case "Enter":
-            // 候选面板打开时，Enter 优先补全而非提交
-            e.preventDefault();
-            applyCandidate();
-            return;
+            // 面板打开时：仅当用户已主动选中某条候选，Enter 才补全；
+            // 未选中（默认态）则放行默认行为，不拦截。
+            if (autocomplete.selectedIndex >= 0) {
+              e.preventDefault();
+              applyCandidate();
+              return;
+            }
+            break;
           default:
             break;
         }

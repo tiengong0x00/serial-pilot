@@ -137,8 +137,10 @@ export function getRemainingHint(userInput: string, template: string): string | 
     }
   }
 
-  // 所有词元消费完毕
-  return pos >= userInput.length ? "" : "";
+  // 所有词元消费完毕：输入正好用完 → 完全匹配（""）；
+  // 输入还有剩余（模板已结束但用户多打了字符）→ 不是合法前缀（null）。
+  // 例：输入 "AT+CGM" 比模板 "AT" 多出 "+CGM"，应排除 "AT" 这个候选。
+  return pos >= userInput.length ? "" : null;
 }
 
 /** 拼接从 startIdx 起所有词元的原文，用于灰显后续期望 */

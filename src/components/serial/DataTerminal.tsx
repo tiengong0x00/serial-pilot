@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useTerminalStore, setAutoSaveNotifier } from "@/stores/terminalStore";
 import { useSerialStore } from "@/stores/serialStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useCommandHistoryStore } from "@/stores/commandHistoryStore";
 import { useSerialCommands } from "@/hooks/useSerialCommands";
 import { useNotify } from "@/hooks/useNotify";
 import { useShortcutAction } from "@/hooks/useShortcuts";
@@ -381,6 +382,14 @@ const DataTerminal = () => {
   const [input, setInput] = useState("");
   const [hexMode, setHexMode] = useState(false); // 十六进制输入模式
 
+  // 历史命令记录：手动发送后记录，输入框内 ↑/↓ 调取
+  const commandHistory = useCommandHistoryStore((s) => s.history);
+  const pushCommandHistory = useCommandHistoryStore((s) => s.push);
+  // 导航索引：-1 表示未在浏览历史（停留在用户当前草稿）；0 起为历史第 N 条
+  const historyIndexRef = useRef(-1);
+  // 进入历史浏览前暂存的用户草稿，退回底部时恢复
+  const historyDraftRef = useRef("");
+
   // 文本转十六进制
   const textToHex = useCallback((text: string): string => {
     if (!text) return '';
@@ -686,7 +695,7 @@ const DataTerminal = () => {
     }
   }, [contextMenu, messages.length, input, handleExport, clearMessages, success, notifyError]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (opts?: { record?: boolean }) => {
     if (!input) {
       setErrorMsg(t("terminal.emptyInput"));
       return;
@@ -754,20 +763,28 @@ const DataTerminal = () => {
         // 成功：无需任何操作（TX 已显示）
       }
       // 发送成功后保留输入内容（不清空），用户可直接覆盖或修改
+      // 手动发送时记录历史（自动循环不记录，避免刷屏）；退出历史浏览态
+      if (opts?.record) {
+        pushCommandHistory(input);
+        historyIndexRef.current = -1;
+      }
     } catch (e) {
       const err = e as { message?: string };
       // 失败：TX 保持显示（符合常见软件行为），仅设置错误提示
       setErrorMsg(err.message ?? String(e));
     }
-  }, [input, isConnected, lineFeed, hexMode, resolveTargets, writeSerialData, addMessage, t]);
+  }, [input, isConnected, lineFeed, hexMode, resolveTargets, writeSerialData, addMessage, pushCommandHistory, t]);
 
   // 切换显示格式
   const handleToggleFormat = useCallback(() => {
     setFormat((prev) => (prev === "text" ? "hex" : "text"));
   }, []);
 
+  // 手动发送：记录历史（区别于自动循环发送）
+  const handleManualSend = useCallback(() => handleSend({ record: true }), [handleSend]);
+
   // 快捷键订阅
-  useShortcutAction("send", handleSend);
+  useShortcutAction("send", handleManualSend);
   useShortcutAction("clearLog", clearMessages);
   useShortcutAction("toggleFormat", handleToggleFormat);
 
@@ -920,14 +937,72 @@ const DataTerminal = () => {
             autocomplete.dismiss();
             return;
           case "Enter":
-            // 候选面板打开时，Enter 优先补全而非发送
-            e.preventDefault();
-            applyCandidate();
-            return;
+            // 面板打开时：仅当用户已主动按 ↑/↓ 选中某条候选，Enter 才补全；
+            // 未选中（默认态）则照常发送输入原文，不被补全劫持。
+            // 例：库里有 AT+CGMR，输入 AT+CGM 回车应发 AT+CGM 而非补全成 AT+CGMR。
+            if (autocomplete.selectedIndex >= 0) {
+              e.preventDefault();
+              applyCandidate();
+              return;
+            }
+            break;
           default:
             break;
         }
       }
+      // 历史命令导航（候选面板未打开时）：
+      // ↑ 仅当光标在第一行时调上一条，↓ 仅当光标在最后一行时调下一条，
+      // 否则放行默认光标移动，不破坏多行编辑。
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        const el = inputRef.current;
+        if (el && commandHistory.length > 0) {
+          const caretStart = el.selectionStart ?? 0;
+          const caretEnd = el.selectionEnd ?? 0;
+          const onFirstLine = !input.slice(0, caretStart).includes("\n");
+          const onLastLine = !input.slice(caretEnd).includes("\n");
+
+          if (e.key === "ArrowUp" && onFirstLine) {
+            const idx = historyIndexRef.current;
+            const nextIdx = idx + 1;
+            if (nextIdx < commandHistory.length) {
+              if (idx === -1) historyDraftRef.current = input; // 首次进入，暂存草稿
+              historyIndexRef.current = nextIdx;
+              const cmd = commandHistory[nextIdx];
+              setInput(cmd);
+              autocomplete.dismiss(cmd); // 关闭补全框；传入目标值避免下一帧又弹出
+              requestAnimationFrame(() => el.setSelectionRange(cmd.length, cmd.length));
+            }
+            e.preventDefault();
+            return;
+          }
+
+          if (e.key === "ArrowDown" && onLastLine) {
+            const idx = historyIndexRef.current;
+            if (idx > 0) {
+              const nextIdx = idx - 1;
+              historyIndexRef.current = nextIdx;
+              const cmd = commandHistory[nextIdx];
+              setInput(cmd);
+              autocomplete.dismiss(cmd); // 关闭补全框；传入目标值避免下一帧又弹出
+              requestAnimationFrame(() => el.setSelectionRange(cmd.length, cmd.length));
+              e.preventDefault();
+              return;
+            }
+            if (idx === 0) {
+              // 退回底部：恢复用户草稿
+              historyIndexRef.current = -1;
+              const draft = historyDraftRef.current;
+              setInput(draft);
+              autocomplete.dismiss(draft); // 关闭补全框；传入目标值避免下一帧又弹出
+              requestAnimationFrame(() => el.setSelectionRange(draft.length, draft.length));
+              e.preventDefault();
+              return;
+            }
+            // idx === -1：未在浏览历史，放行默认行为
+          }
+        }
+      }
+
       // Ctrl+S 保存当前命令到命令库
       if (e.key.toLowerCase() === "s" && e.ctrlKey) {
         e.preventDefault();
@@ -943,10 +1018,10 @@ const DataTerminal = () => {
       // 关闭时：Enter 换行，仅能点发送按钮
       if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && enterToSend && !pendingFile) {
         e.preventDefault();
-        void handleSend();
+        void handleManualSend();
       }
     },
-    [autocomplete, applyCandidate, handleTabComplete, jumpNextPlaceholder, pendingFile, handleSend, enterToSend, input]
+    [autocomplete, applyCandidate, handleTabComplete, jumpNextPlaceholder, pendingFile, handleManualSend, enterToSend, input, commandHistory]
   );
 
   // 发送文件：下沉后端流式发送，前端只订阅进度事件刷新单行进度条。
@@ -1436,7 +1511,11 @@ const DataTerminal = () => {
                   : t("terminal.placeholder")
               }
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                // 用户手动改动输入即退出历史浏览态
+                historyIndexRef.current = -1;
+                setInput(e.target.value);
+              }}
               onKeyDown={handleInputKeyDown}
               onBlur={() => autocomplete.dismiss()}
               onContextMenu={handleInputContextMenu}
@@ -1471,7 +1550,7 @@ const DataTerminal = () => {
               if (isSending) {
                 if (sendTargetRef.current) void cancelFileSend(sendTargetRef.current);
               } else {
-                void (pendingFile ? handleSendFile() : handleSend());
+                void (pendingFile ? handleSendFile() : handleManualSend());
               }
             }}
             disabled={!isConnected || (!isSending && !input && !pendingFile)}

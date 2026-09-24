@@ -148,17 +148,25 @@ export const useCommandLibrary = create<CommandLibraryState>((set, get) => ({
     }
 
     // 第二层：模糊搜索（关键词发现）。仅当第一层无「正在输入的命令」时启用。
+    // 分「强/弱」两档，抑制过宽 keywords 词袋的噪声：
+    //  - 强匹配：query 命中人类可读字段（命令名 cmd / 描述 desc / 模板语法 s 或说明 d）。
+    //  - 弱匹配：query 仅命中 keywords 词袋（很多命令共享同一批泛化词，易误召回）。
+    // 有强匹配时只返回强匹配；无强匹配才用弱匹配兜底（保留关键词搜索能力）。
     // 只做正向包含（字段含 query），不做反向，避免短关键词误伤。
-    const fuzzy: TemplateCandidate[] = [];
+    const strong: TemplateCandidate[] = [];
+    const weak: TemplateCandidate[] = [];
     for (const cmd of commands) {
       const cmdHit = cmd.cmd.toLowerCase().includes(q);
       const descHit = cmd.desc.toLowerCase().includes(q);
       const kwHit = cmd.keywords.some((k) => k.toLowerCase().includes(q));
-      if (!cmdHit && !descHit && !kwHit) continue;
       for (const t of cmd.templates) {
-        fuzzy.push({ cmd: cmd.cmd, cmdDesc: cmd.desc, s: t.s, d: t.d });
+        const cand: TemplateCandidate = { cmd: cmd.cmd, cmdDesc: cmd.desc, s: t.s, d: t.d };
+        const tplHit = t.s.toLowerCase().includes(q) || t.d.toLowerCase().includes(q);
+        if (cmdHit || descHit || tplHit) strong.push(cand);
+        else if (kwHit) weak.push(cand);
       }
     }
+    const fuzzy = strong.length > 0 ? strong : weak;
     return fuzzy.slice(0, limit);
   },
 

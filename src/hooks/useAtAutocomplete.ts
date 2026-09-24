@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useCommandLibrary, type TemplateCandidate } from "@/stores/commandLibraryStore";
 import { longestCommonPrefix, getRemainingHint, stripOptionalBrackets } from "@/lib/commandTemplate";
 
@@ -23,32 +23,23 @@ export interface TabResult {
  * 与灰显「剩余期望」计算。
  */
 export function useAtAutocomplete(input: string, triggerMode: TriggerMode = "at-prefix") {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // -1 表示无任何候选被选中（默认态）：此时 Enter 发送输入原文，不补全。
+  // 用户主动按 ↑/↓ 后才进入 >=0 的选中态。
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [dismissed, setDismissed] = useState(() => input.trim().length > 0);
   const dismissedFor = useRef<string>(input);
-  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   const matchTemplates = useCommandLibrary((s) => s.matchTemplates);
   const prefixTemplates = useCommandLibrary((s) => s.prefixTemplates);
   const loaded = useCommandLibrary((s) => s.loaded);
 
-  // 防抖：输入停顿 150ms 后触发搜索
-  useEffect(() => {
-    const trimmed = input.trim();
-    if (trimmed.length < 2) {
-      setDebouncedQuery("");
-      return;
-    }
-    const timer = setTimeout(() => setDebouncedQuery(trimmed), 150);
-    return () => clearTimeout(timer);
-  }, [input]);
-
-  // 候选列表（模板级）
+  // 实时匹配：每次输入即时计算候选，不做防抖（命令库在内存中，遍历开销很低）
+  const query = input.trim();
   const candidates = useMemo<TemplateCandidate[]>(() => {
-    if (debouncedQuery.length < 2) return [];
-    return matchTemplates(debouncedQuery);
+    if (query.length < 2) return [];
+    return matchTemplates(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, triggerMode, matchTemplates, loaded]);
+  }, [query, triggerMode, matchTemplates, loaded]);
 
   // 输入变化后，若与关闭时的值不同则重新启用
   if (dismissed && input !== dismissedFor.current) {
@@ -64,25 +55,34 @@ export function useAtAutocomplete(input: string, triggerMode: TriggerMode = "at-
     return true;
   }, [dismissed, candidates, input]);
 
-  // 候选变化时重置选中项到顶部
+  // 候选变化时重置到无选中态（-1）：新候选默认不选中，Enter 仍发原文
   const candidatesKey = candidates.map((c) => c.s).join("|");
   const prevKey = useRef(candidatesKey);
   if (prevKey.current !== candidatesKey) {
     prevKey.current = candidatesKey;
-    if (selectedIndex !== 0) setSelectedIndex(0);
+    if (selectedIndex !== -1) setSelectedIndex(-1);
   }
 
+  // ↓：无选中(-1)时进入首条(0)，否则循环下移
   const moveDown = useCallback(() => {
-    setSelectedIndex((i) => (candidates.length === 0 ? 0 : (i + 1) % candidates.length));
+    setSelectedIndex((i) => (candidates.length === 0 ? -1 : (i + 1 + candidates.length) % candidates.length));
   }, [candidates.length]);
 
+  // ↑：无选中(-1)时进入末条，否则循环上移
   const moveUp = useCallback(() => {
-    setSelectedIndex((i) => (candidates.length === 0 ? 0 : (i - 1 + candidates.length) % candidates.length));
+    setSelectedIndex((i) => {
+      if (candidates.length === 0) return -1;
+      if (i <= 0) return candidates.length - 1;
+      return i - 1;
+    });
   }, [candidates.length]);
 
-  const dismiss = useCallback(() => {
+  // 关闭候选面板。forValue：针对哪个输入值关闭（默认当前 input）。
+  // 历史命令导航需传入即将切入的新值，否则下一帧 input 变化会触发
+  // "重新启用"逻辑，导致刚关闭的面板又弹出。
+  const dismiss = useCallback((forValue?: string) => {
     setDismissed(true);
-    dismissedFor.current = input;
+    dismissedFor.current = forValue ?? input;
   }, [input]);
 
   /** 获取当前选中的模板候选 */
