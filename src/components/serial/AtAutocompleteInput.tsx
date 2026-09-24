@@ -39,8 +39,8 @@ export function AtAutocompleteInput({
   const [isDragging, setIsDragging] = useState(false);
 
   // 高亮选中候选的模板语法 s；若含占位符，选中第一个占位符区域便于覆盖输入
-  const applyCandidate = useCallback(() => {
-    const selected = autocomplete.getSelected();
+  const applyCandidate = useCallback((index?: number) => {
+    const selected = index != null ? autocomplete.candidates[index] : autocomplete.getSelected();
     if (selected) {
       onChange(selected.s);
       autocomplete.dismiss();
@@ -197,7 +197,6 @@ export function AtAutocompleteInput({
         candidates={autocomplete.candidates}
         selectedIndex={autocomplete.selectedIndex}
         onSelect={applyCandidate}
-        onHover={autocomplete.setSelectedIndex}
         placement={placement}
       />
     </div>

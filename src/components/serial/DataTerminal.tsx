@@ -863,8 +863,8 @@ const DataTerminal = () => {
   }, [input, autoGrowInput]);
 
   // 应用选中的候选模板到输入框；含占位符则选中第一个便于覆盖输入
-  const applyCandidate = useCallback(() => {
-    const selected = autocomplete.getSelected();
+  const applyCandidate = useCallback((index?: number) => {
+    const selected = index != null ? autocomplete.candidates[index] : autocomplete.getSelected();
     if (selected) {
       setInput(selected.s);
       autocomplete.dismiss();
@@ -1537,7 +1537,6 @@ const DataTerminal = () => {
             candidates={autocomplete.candidates}
             selectedIndex={autocomplete.selectedIndex}
             onSelect={applyCandidate}
-            onHover={autocomplete.setSelectedIndex}
           />
 
           <button

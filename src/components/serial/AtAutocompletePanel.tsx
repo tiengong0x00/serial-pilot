@@ -5,6 +5,7 @@
  * 候选列表、选中索引由 useAtAutocomplete hook 管理，面板只负责渲染与交互。
  */
 
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TemplateCandidate } from "@/stores/commandLibraryStore";
 import { tokenize } from "@/lib/commandTemplate";
@@ -14,10 +15,8 @@ interface AtAutocompletePanelProps {
   candidates: TemplateCandidate[];
   /** 当前选中索引 */
   selectedIndex: number;
-  /** 点击或回车选中候选时触发 */
-  onSelect: () => void;
-  /** 鼠标悬停改变选中项 */
-  onHover: (index: number) => void;
+  /** 点击候选时触发，传入被点击项索引 */
+  onSelect: (index: number) => void;
   /** 面板是否可见 */
   visible: boolean;
   /** 可选：自定义底部提示文本 */
@@ -43,12 +42,27 @@ export function AtAutocompletePanel({
   candidates,
   selectedIndex,
   onSelect,
-  onHover,
   visible,
   hintText,
   placement = "top",
 }: AtAutocompletePanelProps) {
   const { t } = useTranslation();
+  // 悬停高亮索引：仅影响视觉，不写入键盘 selectedIndex，避免 Enter 被鼠标悬停"武装"
+  const [hoverIndex, setHoverIndex] = useState(-1);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // 键盘选中项变化时滚动到可见区域（超出 max-h-48 视窗自动跟随）
+  useEffect(() => {
+    if (selectedIndex >= 0) {
+      itemRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedIndex]);
+
+  // 候选集变化时清除悬停高亮
+  useEffect(() => {
+    setHoverIndex(-1);
+  }, [candidates]);
+
   if (!visible) return null;
 
   const posClass = placement === "bottom" ? "top-full mt-1" : "bottom-full mb-1";
@@ -59,16 +73,15 @@ export function AtAutocompletePanel({
         {candidates.map((cand, idx) => (
           <button
             key={`${cand.cmd}::${cand.s}::${idx}`}
+            ref={(el) => { itemRefs.current[idx] = el; }}
             type="button"
             className={`w-full text-left px-3 py-2 text-sm border-b border-border/50 last:border-b-0 transition-colors ${
-              idx === selectedIndex ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary/50"
+              idx === selectedIndex || idx === hoverIndex ? "bg-primary/10 text-primary font-medium" : ""
             }`}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              onHover(idx);
-              onSelect();
-            }}
-            onMouseEnter={() => onHover(idx)}
+            onClick={() => onSelect(idx)}
+            onMouseEnter={() => setHoverIndex(idx)}
+            onMouseLeave={() => setHoverIndex(-1)}
           >
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-mono font-semibold truncate">{renderSyntax(cand.s)}</span>
