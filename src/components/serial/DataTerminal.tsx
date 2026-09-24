@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock, FileDiff } from "lucide-react";
+import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock, FileDiff, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -163,6 +163,26 @@ function formatBytes(n: number): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** 搜索命中高亮：将 content 中匹配 query 的片段包裹为 <mark>，大小写不敏感 */
+function renderSearchHighlight(content: string, query: string, baseClass: string) {
+  if (!query) return <span className={baseClass}>{content}</span>;
+  const lower = content.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let k = 0;
+  while (i < content.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) { parts.push(content.slice(i)); break; }
+    if (idx > i) parts.push(content.slice(i, idx));
+    parts.push(
+      <mark key={k++} className="bg-yellow-400/70 text-black rounded-sm">{content.slice(idx, idx + query.length)}</mark>
+    );
+    i = idx + query.length;
+  }
+  return <span className={baseClass}>{parts}</span>;
+}
+
 /** 单条消息渲染 */
 function MessageRow({
   msg,
@@ -170,12 +190,16 @@ function MessageRow({
   showPort,
   highlightRules,
   showTimestamp,
+  searchQuery = "",
+  isActiveMatch = false,
 }: {
   msg: TerminalMessage;
   format: DisplayFormat;
   showPort: boolean;
   highlightRules: HighlightRule[];
   showTimestamp: boolean;
+  searchQuery?: string;
+  isActiveMatch?: boolean;
 }) {
   const contentClass = msg.type === "TX" ? "terminal-sent" : "terminal-text";
   const content = renderContent(msg, format);
@@ -183,7 +207,7 @@ function MessageRow({
   const timestampClass = msg.type === "TX" ? "terminal-sent" : msg.type === "SYS" ? "text-warning" : "terminal-text";
 
   return (
-    <div className="whitespace-pre-wrap break-all">
+    <div className={isActiveMatch ? "whitespace-pre-wrap break-all bg-primary/15 rounded-sm" : "whitespace-pre-wrap break-all"}>
       {showTimestamp && (
         <>
           <span className={timestampClass}>[{formatTimestamp(msg.timestamp)}]</span>{" "}
@@ -209,7 +233,9 @@ function MessageRow({
           </span>{" "}
         </>
       )}
-      {highlightRules.length > 0 ? (
+      {searchQuery ? (
+        renderSearchHighlight(content, searchQuery, contentClass)
+      ) : highlightRules.length > 0 ? (
         <HighlightedText text={content} rules={highlightRules} className={contentClass} />
       ) : (
         <span className={contentClass}>{content}</span>
@@ -233,6 +259,9 @@ function VirtualTerminalView({
   style,
   onContextMenu,
   showTimestamp,
+  searchQuery = "",
+  activeMatchId,
+  scrollToken,
 }: {
   messages: TerminalMessage[];
   format: DisplayFormat;
@@ -241,6 +270,9 @@ function VirtualTerminalView({
   style?: React.CSSProperties;
   onContextMenu?: (e: React.MouseEvent) => void;
   showTimestamp: boolean;
+  searchQuery?: string;
+  activeMatchId?: string;
+  scrollToken?: number;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -262,6 +294,19 @@ function VirtualTerminalView({
     overscan: 20, // 预渲染可视区外的行数，减少快速滚动时的空白
     getItemKey: (index) => messages[index].id,
   });
+
+  // 搜索：滚动到当前命中行（scrollToken 变化触发，避免重复滚动）
+  useEffect(() => {
+    if (!activeMatchId) return;
+    const idx = messages.findIndex((m) => m.id === activeMatchId);
+    if (idx < 0) return;
+    if (isTestEnv) {
+      // 测试环境无虚拟滚动，跳过
+      return;
+    }
+    virtualizer.scrollToIndex(idx, { align: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToken, activeMatchId]);
 
   // 最后一条消息的字节数：RX 融合模式下增量追加会让最后一条 data 变长而条数不变，
   // 单靠 messages.length 无法触发自动滚动。以此作为额外依赖，覆盖"边收边长"场景。
@@ -314,7 +359,7 @@ function VirtualTerminalView({
         // 测试环境：完整渲染所有消息
         <div ref={scrollRef} className="px-3">
           {messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} />
+            <MessageRow key={msg.id} msg={msg} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} searchQuery={searchQuery} isActiveMatch={!!searchQuery && msg.id === activeMatchId} />
           ))}
         </div>
       ) : (
@@ -334,7 +379,7 @@ function VirtualTerminalView({
               }}
               className="px-3"
             >
-              <MessageRow msg={messages[virtualItem.index]} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} />
+              <MessageRow msg={messages[virtualItem.index]} format={format} showPort={showPort} highlightRules={highlightRules} showTimestamp={showTimestamp} searchQuery={searchQuery} isActiveMatch={!!searchQuery && messages[virtualItem.index].id === activeMatchId} />
             </div>
           ))}
         </div>
@@ -381,6 +426,13 @@ const DataTerminal = () => {
   const [lineFeed, setLineFeed] = useState<LineFeed>("crlf");
   const [input, setInput] = useState("");
   const [hexMode, setHexMode] = useState(false); // 十六进制输入模式
+
+  // 终端搜索（Ctrl+F 仅作用于终端显示区，搜索终端内容）
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchPos, setMatchPos] = useState(0); // 当前命中序号（0 起）
+  const [scrollToken, setScrollToken] = useState(0); // 触发滚动到命中
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // 历史命令记录：手动发送后记录，输入框内 ↑/↓ 调取
   const commandHistory = useCommandHistoryStore((s) => s.history);
@@ -496,6 +548,50 @@ const DataTerminal = () => {
   // 分栏模式：按端口过滤消息
   const p1Messages = useMemo(() => messages.filter((m) => m.port_label === "P1"), [messages]);
   const p2Messages = useMemo(() => messages.filter((m) => m.port_label === "P2"), [messages]);
+
+  // 搜索命中：匹配 query 的消息 id 列表（大小写不敏感，按显示内容匹配）
+  const matchIds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [] as string[];
+    return messages
+      .filter((m) => renderContent(m, format).toLowerCase().includes(q))
+      .map((m) => m.id);
+  }, [messages, searchQuery, format]);
+
+  // 命中数量变化时，把当前序号夹在有效范围内
+  useEffect(() => {
+    if (matchIds.length === 0) { setMatchPos(0); return; }
+    setMatchPos((prev) => (prev >= matchIds.length ? 0 : prev));
+  }, [matchIds.length]);
+
+  const activeMatchId = matchIds.length > 0 ? matchIds[Math.min(matchPos, matchIds.length - 1)] : undefined;
+
+  const gotoMatch = useCallback((delta: number) => {
+    setMatchPos((prev) => {
+      if (matchIds.length === 0) return 0;
+      return (prev + delta + matchIds.length) % matchIds.length;
+    });
+    setScrollToken((t) => t + 1);
+  }, [matchIds.length]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setMatchPos(0);
+  }, []);
+
+  // Ctrl/Cmd+F：仅在主界面拦截浏览器查找，改为终端内搜索
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // 根据 sendTarget 和连接状态计算实际发送端口
   const resolveTargets = useCallback((): PortLabel[] => {
@@ -1292,6 +1388,37 @@ const DataTerminal = () => {
         </button>
       </div>
 
+      {/* 终端搜索栏（Ctrl+F 唤起，仅搜索终端内容） */}
+      {searchOpen && (
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border/50 bg-muted/30">
+          <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setMatchPos(0); setScrollToken((t) => t + 1); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); gotoMatch(e.shiftKey ? -1 : 1); }
+              else if (e.key === "Escape") { e.preventDefault(); closeSearch(); }
+            }}
+            placeholder={t("terminal.searchPlaceholder")}
+            className="flex-1 h-7 px-2 text-xs bg-background border border-border rounded-md outline-none focus:border-primary"
+          />
+          <span className="text-xs text-muted-foreground tabular-nums shrink-0 min-w-[3.5rem] text-center">
+            {searchQuery ? `${matchIds.length ? matchPos + 1 : 0}/${matchIds.length}` : "0/0"}
+          </span>
+          <button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-secondary disabled:opacity-40" onClick={() => gotoMatch(-1)} disabled={matchIds.length === 0} title={t("terminal.searchPrev")}>
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-secondary disabled:opacity-40" onClick={() => gotoMatch(1)} disabled={matchIds.length === 0} title={t("terminal.searchNext")}>
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-secondary" onClick={closeSearch} title={t("terminal.searchClose")}>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 消息显示区（虚拟滚动，支持大数据量） */}
       {effectiveMode === "merged" ? (
         // 合并模式：所有消息按时间排列，用端口标签区分
@@ -1303,6 +1430,9 @@ const DataTerminal = () => {
           style={terminalStyle}
           onContextMenu={handleOutputContextMenu}
           showTimestamp={showTimestamp}
+          searchQuery={searchOpen ? searchQuery : ""}
+          activeMatchId={activeMatchId}
+          scrollToken={scrollToken}
         />
       ) : (
         // 分栏模式：P1 左、P2 右，独立滚动
@@ -1319,6 +1449,9 @@ const DataTerminal = () => {
               style={terminalStyle}
               onContextMenu={handleOutputContextMenu}
               showTimestamp={showTimestamp}
+              searchQuery={searchOpen ? searchQuery : ""}
+              activeMatchId={activeMatchId}
+              scrollToken={scrollToken}
             />
           </div>
           <div className="flex-1 flex flex-col min-w-0">
@@ -1333,6 +1466,9 @@ const DataTerminal = () => {
               style={terminalStyle}
               onContextMenu={handleOutputContextMenu}
               showTimestamp={showTimestamp}
+              searchQuery={searchOpen ? searchQuery : ""}
+              activeMatchId={activeMatchId}
+              scrollToken={scrollToken}
             />
           </div>
         </div>

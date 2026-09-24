@@ -1,7 +1,7 @@
 {
   "name": "serial-pilot",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -47,6 +47,7 @@
     "esbuild": "^0.28.2",
     "i18next": "^25.4.2",
     "immer": "^10.1.1",
+    "js-yaml": "^4.3.2",
     "lucide-react": "^0.462.0",
     "nanoid": "^6.0.1",
     "react": "^18.3.1",
@@ -65,6 +66,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.3",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",

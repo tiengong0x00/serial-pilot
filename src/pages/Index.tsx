@@ -60,7 +60,7 @@ const Index = () => {
 
   return (
     <div
-      className={`h-[100svh] md:h-screen w-full overflow-hidden bg-background animate-fade-in flex flex-col relative ${
+      className={`app-noselect h-[100svh] md:h-screen w-full overflow-hidden bg-background animate-fade-in flex flex-col relative ${
         backgroundImage ? "bg-image-active" : ""
       }`}
       style={

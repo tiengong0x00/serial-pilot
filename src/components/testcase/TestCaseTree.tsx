@@ -270,8 +270,8 @@ function DraggableCommandRow({
         multiSelected && 'bg-blue-100 dark:bg-blue-900/30',
         !cmd.selected && 'opacity-50 border border-dashed border-muted-foreground/30',
       )}
-      // 悬浮显示命令描述（原生 tooltip，零额外开销）；无描述时回退显示完整内容
-      title={cmd.description || currentValue || undefined}
+      // 悬浮提示优先级：命令名称 → 描述 → 完整内容（原生 tooltip，零额外开销）
+      title={cmd.name || cmd.description || currentValue || undefined}
       onClick={(e) => onSelect(e)}
       onDoubleClick={onEditCommand}
       onContextMenu={(e) => {

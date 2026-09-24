@@ -163,6 +163,20 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* 全局禁止选中：控件文字不可复制，仅输入框与显示区可选中 */
+  .app-noselect {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .app-noselect input,
+  .app-noselect textarea,
+  .app-noselect [contenteditable="true"],
+  .app-noselect .terminal-output,
+  .app-noselect .terminal-output * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
   /* Enhanced dark mode */
   .dark {
     color-scheme: dark;

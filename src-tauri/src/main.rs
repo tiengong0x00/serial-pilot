@@ -957,6 +957,16 @@ fn run_gui_mode() {
             get_attachments_dir,
             cleanup_old_excel_reports
         ])
+        .on_window_event(|window, event| {
+            // 主窗口关闭时，联动关闭工具箱窗口，避免残留悬空窗口
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() == "main" {
+                    if let Some(toolbox) = window.app_handle().get_webview_window("toolbox") {
+                        let _ = toolbox.close();
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
     {
         eprintln!("Tauri application failed to run: {e}");

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ProtocolParser from "./ProtocolParser";
 import { Copy, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -11,9 +12,8 @@ const EmbeddedTools = () => {
     { id: "ascii-table", label: t("toolbox.toolAsciiTable") },
     { id: "serial-rate", label: t("toolbox.toolSerialRate") },
     { id: "modbus-rtu", label: t("toolbox.toolModbusRtu") },
-    { id: "nmea-gps", label: t("toolbox.toolNmeaGps") },
-    { id: "bit-field", label: t("toolbox.toolBitField") },
     { id: "power-calc", label: t("toolbox.toolPowerCalc") },
+    { id: "protocol-parser", label: t("toolbox.toolProtocolParser") },
   ];
 
   return (
@@ -45,9 +45,8 @@ const EmbeddedTools = () => {
         {activeTool === "ascii-table" && <AsciiTable />}
         {activeTool === "serial-rate" && <SerialRateCalculator />}
         {activeTool === "modbus-rtu" && <ModbusRtu />}
-        {activeTool === "nmea-gps" && <NmeaGpsParser />}
-        {activeTool === "bit-field" && <BitFieldDecoder />}
         {activeTool === "power-calc" && <PowerCalculator />}
+        {activeTool === "protocol-parser" && <ProtocolParser />}
       </div>
     </div>
   );
@@ -577,238 +576,6 @@ const ParseRow = ({ label, value, error }: { label: string; value: string; error
     <span className={`font-mono break-all ${error ? "text-destructive" : ""}`}>{value}</span>
   </div>
 );
-
-// ==================== 工具5: NMEA/GPS 解析 ====================
-
-// NMEA 度分格式(ddmm.mmmm)转十进制度
-const nmeaToDecimal = (val: string, dir: string): number | null => {
-  if (!val) return null;
-  const num = parseFloat(val);
-  if (isNaN(num)) return null;
-  const deg = Math.floor(num / 100);
-  const min = num - deg * 100;
-  let decimal = deg + min / 60;
-  if (dir === "S" || dir === "W") decimal = -decimal;
-  return decimal;
-};
-
-const nmeaTime = (val: string): string => {
-  if (!val || val.length < 6) return "";
-  return `${val.slice(0, 2)}:${val.slice(2, 4)}:${val.slice(4, 6)} UTC`;
-};
-
-const parseNmeaSentence = (line: string, t: (key: string) => string): { type: string; fields: [string, string][] } | null => {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("$")) return null;
-  // 去掉校验和部分
-  const body = trimmed.split("*")[0].slice(1);
-  const parts = body.split(",");
-  const type = parts[0];
-  const suffix = type.slice(-3); // GGA/RMC/...
-
-  const fields: [string, string][] = [];
-
-  if (suffix === "GGA") {
-    fields.push([t("toolbox.nmeaUtcTime"), nmeaTime(parts[1])]);
-    const lat = nmeaToDecimal(parts[2], parts[3]);
-    const lon = nmeaToDecimal(parts[4], parts[5]);
-    fields.push([t("toolbox.nmeaLatitude"), lat !== null ? `${lat.toFixed(6)}°` : "—"]);
-    fields.push([t("toolbox.nmeaLongitude"), lon !== null ? `${lon.toFixed(6)}°` : "—"]);
-    const fixMap: Record<string, string> = {
-      "0": t("toolbox.nmeaFixInvalid"),
-      "1": t("toolbox.nmeaFixGps"),
-      "2": t("toolbox.nmeaFixDgps")
-    };
-    fields.push([t("toolbox.nmeaFixQuality"), fixMap[parts[6]] ?? parts[6] ?? "—"]);
-    fields.push([t("toolbox.nmeaSatellites"), parts[7] || "—"]);
-    fields.push(["HDOP", parts[8] || "—"]);
-    fields.push([t("toolbox.nmeaAltitude"), parts[9] ? `${parts[9]} ${parts[10] || "m"}` : "—"]);
-  } else if (suffix === "RMC") {
-    fields.push([t("toolbox.nmeaUtcTime"), nmeaTime(parts[1])]);
-    fields.push([t("toolbox.nmeaStatus"), parts[2] === "A" ? t("toolbox.nmeaStatusValid") : t("toolbox.nmeaStatusInvalid")]);
-    const lat = nmeaToDecimal(parts[3], parts[4]);
-    const lon = nmeaToDecimal(parts[5], parts[6]);
-    fields.push([t("toolbox.nmeaLatitude"), lat !== null ? `${lat.toFixed(6)}°` : "—"]);
-    fields.push([t("toolbox.nmeaLongitude"), lon !== null ? `${lon.toFixed(6)}°` : "—"]);
-    fields.push([t("toolbox.nmeaSpeed"), parts[7] ? `${parts[7]} 节` : "—"]);
-    fields.push([t("toolbox.nmeaCourse"), parts[8] ? `${parts[8]}°` : "—"]);
-    fields.push([t("toolbox.nmeaDate"), parts[9] && parts[9].length === 6
-      ? `20${parts[9].slice(4, 6)}-${parts[9].slice(2, 4)}-${parts[9].slice(0, 2)}`
-      : "—"]);
-  } else if (suffix === "GSV") {
-    fields.push([t("toolbox.nmeaMsgTotal"), parts[1] || "—"]);
-    fields.push([t("toolbox.nmeaMsgCurrent"), parts[2] || "—"]);
-    fields.push([t("toolbox.nmeaSatsVisible"), parts[3] || "—"]);
-  } else if (suffix === "GSA") {
-    const modeMap: Record<string, string> = {
-      "1": t("toolbox.nmeaModeNoFix"),
-      "2": t("toolbox.nmeaMode2d"),
-      "3": t("toolbox.nmeaMode3d")
-    };
-    fields.push([t("toolbox.nmeaFixMode"), modeMap[parts[2]] ?? parts[2] ?? "—"]);
-    fields.push(["PDOP", parts[15] || "—"]);
-    fields.push(["HDOP", parts[16] || "—"]);
-    fields.push(["VDOP", (parts[17] || "").split("*")[0] || "—"]);
-  } else if (suffix === "VTG") {
-    fields.push([t("toolbox.nmeaTrueCourse"), parts[1] ? `${parts[1]}°` : "—"]);
-    fields.push([t("toolbox.nmeaGroundSpeed"), parts[5] ? `${parts[5]} 节` : "—"]);
-    fields.push([t("toolbox.nmeaGroundSpeed"), parts[7] ? `${parts[7]} km/h` : "—"]);
-  } else {
-    return { type, fields: [[t("toolbox.nmeaRawFields"), parts.slice(1).join(", ")]] };
-  }
-
-  return { type, fields };
-};
-
-const NmeaGpsParser = () => {
-  const { t } = useTranslation();
-  const [input, setInput] = useState("");
-
-  const results = useMemo(() => {
-    return input
-      .split(/[\r\n]+/)
-      .map((line) => parseNmeaSentence(line, t))
-      .filter((r): r is { type: string; fields: [string, string][] } => r !== null);
-  }, [input, t]);
-
-  return (
-    <ToolCard title={t("toolbox.nmeaGpsTitle")}>
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">{t("toolbox.nmeaInput")}</label>
-          <textarea
-            className="w-full h-28 mt-1.5 px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
-          />
-          <p className="text-xs text-muted-foreground mt-1">{t("toolbox.nmeaHint")}</p>
-        </div>
-
-        {results.length > 0 && (
-          <div className="space-y-3">
-            {results.map((r, idx) => (
-              <div key={idx} className="border border-input rounded-md overflow-hidden">
-                <div className="px-3 py-1.5 bg-muted/50 text-sm font-mono font-semibold">
-                  {r.type}
-                </div>
-                <div className="p-3 space-y-1.5">
-                  {r.fields.map(([label, value], i) => (
-                    <ParseRow key={i} label={label} value={value} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </ToolCard>
-  );
-};
-
-// ==================== 工具6: 二进制位字段解析 ====================
-
-const BitFieldDecoder = () => {
-  const { t } = useTranslation();
-  const [input, setInput] = useState("");
-  const [bitWidth, setBitWidth] = useState<8 | 16 | 32>(8);
-
-  const parsed = useMemo(() => {
-    const cleaned = input.trim().replace(/^0x/i, "");
-    const num = parseInt(cleaned, 16);
-    if (isNaN(num)) return null;
-
-    const bits: { index: number; value: 0 | 1 }[] = [];
-    for (let i = 0; i < bitWidth; i++) {
-      bits.push({ index: i, value: (num >> i) & 1 ? 1 : 0 });
-    }
-    bits.reverse(); // 高位在前
-
-    return {
-      hex: `0x${num.toString(16).toUpperCase().padStart(bitWidth / 4, "0")}`,
-      dec: num,
-      bin: num.toString(2).padStart(bitWidth, "0"),
-      bits,
-    };
-  }, [input, bitWidth]);
-
-  return (
-    <ToolCard title={t("toolbox.bitFieldTitle")}>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <label className="text-sm font-medium">{t("toolbox.bitFieldInput")}</label>
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="0x8A"
-              className="w-full h-9 mt-1.5 px-3 text-sm rounded-md border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">{t("toolbox.bitWidth")}</label>
-            <select
-              value={bitWidth}
-              onChange={(e) => setBitWidth(Number(e.target.value) as 8 | 16 | 32)}
-              className="w-20 h-9 mt-1.5 px-2 text-sm rounded-md border border-input bg-background"
-            >
-              <option value={8}>8</option>
-              <option value={16}>16</option>
-              <option value={32}>32</option>
-            </select>
-          </div>
-        </div>
-
-        {parsed && (
-          <>
-            <div className="grid grid-cols-3 gap-3">
-              <StatBox label="Hex" value={parsed.hex} />
-              <StatBox label="Dec" value={String(parsed.dec)} />
-              <StatBox label="Bin" value={parsed.bin} />
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-2">{t("toolbox.bitFieldMap")}</div>
-              <div className="border border-input rounded-md overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>
-                      <th className="px-2 py-1 text-left w-16">{t("toolbox.bitIndex")}</th>
-                      <th className="px-2 py-1 text-center w-12">{t("toolbox.bitValue")}</th>
-                      <th className="px-2 py-1 text-left">{t("toolbox.bitDesc")}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="font-mono">
-                    {parsed.bits.map((b) => (
-                      <tr
-                        key={b.index}
-                        className={`border-t border-input ${
-                          b.value === 1 ? "bg-primary/10" : ""
-                        }`}
-                      >
-                        <td className="px-2 py-1.5">Bit{b.index}</td>
-                        <td className="px-2 py-1.5 text-center font-semibold">
-                          {b.value}
-                        </td>
-                        <td className="px-2 py-1.5 text-muted-foreground">
-                          {b.value === 1 ? t("toolbox.bitSet") : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("toolbox.bitFieldHint")}
-              </p>
-            </div>
-          </>
-        )}
-      </div>
-    </ToolCard>
-  );
-};
 
 // ==================== 工具7: 功耗估算 ====================
 
