@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback } from 'react';
 import { useSerialStore } from '../stores/serialStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useTerminalStore } from '../stores/terminalStore';
+import { openPort, recordConnection, forgetConnection } from '../lib/serialReconnect';
 import type { PortInfo, SerialConfig, ConnectionStatus, PortLabel, AttachmentRef } from '../types/serial';
 
 /**
@@ -28,35 +28,18 @@ export function useSerialCommands() {
     portName: string,
     config: SerialConfig
   ): Promise<void> => {
-    await invoke('connect_serial_port', {
-      portLabel,
-      portName,
-      config,
-      // 传入单包大小用于后端计算固定写超时
-      filePacketSize: useSettingsStore.getState().filePacketSize,
-    });
-    // 连接成功后启动监听器，传入组包帧超时（从设置读取最新值）
-    await invoke('start_serial_listener', {
-      portLabel,
-      frameTimeoutMs: useSettingsStore.getState().serialFrameTimeout,
-    });
-
-    // ✅ 封存该端口旧帧，避免新连接的 frame_id 重置后与旧帧冲突（BUG2 修复）
-    useTerminalStore.getState().sealPortFrames(portLabel);
-
-    // ✅ 连接成功后直接设置前端状态，消除竞态
-    setPortName(portLabel, portName);
-    const currentStatus = useSerialStore.getState().connectionStatus;
-    setConnectionStatus({
-      p1_connected: portLabel === 'P1' ? true : currentStatus.p1_connected,
-      p2_connected: portLabel === 'P2' ? true : currentStatus.p2_connected,
-    });
-  }, [setConnectionStatus, setPortName]);
+    // 连接 + 启动监听 + 置前端状态（与自动恢复共用 openPort，逻辑单一来源）
+    await openPort(portLabel, portName, config);
+    // 记录本次连接参数，供短时断连时静默自动恢复
+    recordConnection(portLabel, portName, config);
+  }, []);
 
   /**
    * 断开串口
    */
   const disconnectSerialPort = useCallback(async (portLabel: PortLabel): Promise<void> => {
+    // 主动断开：先清除自动恢复记录，阻止致命错误路径触发重连
+    forgetConnection(portLabel);
     await invoke('disconnect_serial_port', { portLabel });
     // 清除端口名
     setPortName(portLabel, null);

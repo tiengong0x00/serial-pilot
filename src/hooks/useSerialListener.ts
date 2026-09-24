@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../stores/terminalStore';
 import { useSerialStore } from '../stores/serialStore';
+import { attemptSilentReconnect } from '../lib/serialReconnect';
 import { toast } from 'sonner';
 import type {
   SerialDataPayload,
@@ -79,14 +80,22 @@ export function useSerialListener() {
         const { port_label, kind, severity, message } = event.payload;
 
         if (severity === 'fatal') {
-          // 致命错误：清理资源 + 更新状态
+          // 致命错误：先在 1.5s 窗口内静默尝试恢复（应对 USB 设备复位时 COM 短时消失又出现）
           console.error(`[${port_label}] Connection interrupted (${kind}): ${message}`);
 
-          // 清理后端资源（force_cleanup 可能已清理，这里保证完整清理）
+          const recovered = await attemptSilentReconnect(port_label);
+          if (recovered) {
+            // 静默恢复成功：openPort 已重置前端状态，用户几乎无感，不弹 toast
+            console.info(`[${port_label}] Connection silently recovered`);
+            return;
+          }
+
+          // 未能在窗口内恢复：走原有的永久断开路径
+          // 清理后端资源（attemptSilentReconnect 内已尝试 disconnect，这里保证完整清理）
           try {
             await invoke('disconnect_serial_port', { portLabel: port_label });
           } catch (err) {
-            // 后端可能已通过 force_cleanup 移除，忽略 NotConnected 错误
+            // 后端可能已被清理，忽略 NotConnected 错误
             console.debug(`[${port_label}] Cleanup resources (may have been cleaned by backend):`, err);
           }
 
