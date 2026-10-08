@@ -3618,7 +3618,7 @@ dependencies = [
 
 [[package]]
 name = "serial-pilot"
-version = "0.3.7"
+version = "0.4.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3632,6 +3632,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serialport",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

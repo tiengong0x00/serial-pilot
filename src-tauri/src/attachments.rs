@@ -1,4 +1,5 @@
 use crate::error::SerialError;
+use sha2::{Sha256, Digest};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -45,6 +46,20 @@ fn generate_id() -> String {
         .as_nanos();
     let cnt = ATTACHMENT_COUNTER.fetch_add(1, Ordering::SeqCst);
     format!("{:x}_{:x}", ts, cnt)
+}
+
+/// 计算数据的 SHA-256 哈希值
+fn compute_hash(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+/// 计算文件的 SHA-256 哈希值
+fn compute_file_hash(path: &PathBuf) -> Result<String, SerialError> {
+    let data = fs::read(path)
+        .map_err(|e| SerialError::Internal(format!("Failed to read file for hash: {}", e)))?;
+    Ok(compute_hash(&data))
 }
 
 /// 解决文件名冲突：如果文件已存在，尝试添加 (1) ~ (99) 后缀
@@ -105,6 +120,7 @@ pub fn save_attachment(data: &[u8], name: &str) -> Result<AttachmentRef, SerialE
 }
 
 /// 保存用例附件到 testcases/<用例名>/ 下，返回引用（id 为相对路径 "用例名/文件名"）
+/// 优化：同名文件先对比哈希，内容相同则直接复用，避免重复保存
 pub fn save_testcase_attachment(
     data: &[u8],
     original_name: &str,
@@ -137,11 +153,34 @@ pub fn save_testcase_attachment(
         })?;
     }
 
-    // 处理文件名冲突
-    let final_name = resolve_filename_conflict(&dir, original_name)?;
-    let path = dir.join(&final_name);
+    let path = dir.join(original_name);
 
-    fs::write(&path, data).map_err(|e| {
+    // 同名文件已存在：对比哈希，相同则直接复用
+    if path.exists() {
+        let new_hash = compute_hash(data);
+        let existing_hash = compute_file_hash(&path)?;
+
+        if new_hash == existing_hash {
+            // 内容相同，直接返回已存在文件的引用（去重成功）
+            let size = fs::metadata(&path)
+                .map_err(|e| SerialError::Internal(format!("Failed to get file size: {}", e)))?
+                .len();
+            let id = format!("{}/{}", testcase_name, original_name);
+            return Ok(AttachmentRef {
+                id,
+                name: original_name.to_string(),
+                size,
+            });
+        }
+
+        // 内容不同，需要添加后缀以区分
+    }
+
+    // 文件不存在或内容不同：处理文件名冲突并保存
+    let final_name = resolve_filename_conflict(&dir, original_name)?;
+    let final_path = dir.join(&final_name);
+
+    fs::write(&final_path, data).map_err(|e| {
         SerialError::Internal(format!("Failed to save attachment {}: {}", final_name, e))
     })?;
 

@@ -460,8 +460,17 @@ export function useTestExecution() {
 
         // 先注册监听器，注册完成后再触发 onReady（发送命令）
         listen<SerialDataPayload>('serial_data', (event) => {
+          // 已结束：不再累积数据（防止事件队列中的延迟事件污染已完成的响应）
+          if (settled) return;
+
           const { port_label, data } = event.payload;
           if (port_label !== targetPort) return;
+
+          // 用户停止：立即结束等待
+          if (abortRef.current) {
+            finish();
+            return;
+          }
 
           buffer += decoder.decode(new Uint8Array(data), { stream: true });
 
