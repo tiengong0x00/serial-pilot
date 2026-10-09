@@ -4,12 +4,13 @@ import { Play, Square, RefreshCw, Maximize2, Minimize2, Plus, Folder, Pause } fr
 import { AtCommandIcon, UrcIcon, ScriptIcon } from '@/components/icons/CommandTypeIcons';
 import { useTestCaseStore } from '@/stores/testCaseStore';
 import { useExecutionStore } from '@/stores/executionStore';
+import { useClipboardStore } from '@/stores/clipboardStore';
 import { useTestExecution } from '@/hooks/useTestExecution';
 import { useUrcListener } from '@/hooks/useUrcListener';
 import { useTestCaseFiles } from '@/hooks/useTestCaseFiles';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { findCase, findCommand, walkCases, isCommand, isUrcGuard, flattenTree } from '@/lib/testCaseUtils';
-import type { StandardCommand } from '@/types/testCase';
+import { findCase, findCommand, walkCases, isCommand, isUrcGuard, flattenTree, findParentCase } from '@/lib/testCaseUtils';
+import type { StandardCommand, TestCase, TestCommand } from '@/types/testCase';
 import { TestCaseTree } from './TestCaseTree';
 import { ContextMenu } from './ContextMenu';
 import { CommandEditorDialog } from './CommandEditorDialog';
@@ -55,6 +56,7 @@ export function TestCaseManager() {
   } = useTestCaseStore();
 
   const { isRunning, isPaused } = useExecutionStore();
+  const { copy: copyToClipboard } = useClipboardStore();
   const { startExecution, stopExecution, pauseExecution, resumeExecution, runSingleCase, runSingleCommand, quickSendCommand } = useTestExecution();
   useUrcListener(); // 启动 URC 后台监听器
 
@@ -188,22 +190,29 @@ export function TestCaseManager() {
     const root = getRootCase();
     if (!root) return;
 
+    console.log('[handleAddCommand] selectedCommandId:', selectedCommandId, 'selectedCaseId:', selectedCaseId);
+
     let newId: string | null = null;
 
     if (selectedCommandId) {
       // 选中命令：需找到命令所属父用例，在命令下方插入
-      const parent = findCase([root], selectedCaseId || root.id);
-      if (parent) {
-        newId = addCommandRelative(parent.id, selectedCommandId, 'command');
+      const result = findCommand([root], selectedCommandId);
+      console.log('[handleAddCommand] 找到命令的父容器:', result?.owner.id);
+      if (result) {
+        newId = addCommandRelative(result.owner.id, selectedCommandId, 'command');
       }
     } else if (selectedCaseId) {
       // 选中用例：在用例内部末尾插入，并展开
+      console.log('[handleAddCommand] 在用例内部新增:', selectedCaseId);
       newId = addCommandRelative(selectedCaseId, null, 'command');
       updateCase(selectedCaseId, { isExpanded: true });
     } else {
       // 无选中：根末尾新增
+      console.log('[handleAddCommand] 在根末尾新增');
       newId = addCommandRelative(root.id, null, 'command');
     }
+
+    console.log('[handleAddCommand] 新命令 ID:', newId);
 
     // 自动选中新建的命令
     if (newId) selectCommand(newId);
@@ -227,9 +236,9 @@ export function TestCaseManager() {
     let newId: string | null = null;
 
     if (selectedCommandId) {
-      const parent = findCase([root], selectedCaseId || root.id);
-      if (parent) {
-        newId = addCommandRelative(parent.id, selectedCommandId, 'urc-guard');
+      const result = findCommand([root], selectedCommandId);
+      if (result) {
+        newId = addCommandRelative(result.owner.id, selectedCommandId, 'urc-guard');
       }
     } else if (selectedCaseId) {
       newId = addCommandRelative(selectedCaseId, null, 'urc-guard');
@@ -249,9 +258,9 @@ export function TestCaseManager() {
     let newId: string | null = null;
 
     if (selectedCommandId) {
-      const parent = findCase([root], selectedCaseId || root.id);
-      if (parent) {
-        newId = addCommandRelative(parent.id, selectedCommandId, 'script');
+      const result = findCommand([root], selectedCommandId);
+      if (result) {
+        newId = addCommandRelative(result.owner.id, selectedCommandId, 'script');
       }
     } else if (selectedCaseId) {
       newId = addCommandRelative(selectedCaseId, null, 'script');
@@ -445,6 +454,163 @@ export function TestCaseManager() {
   const handleEditCommand = useCallback((caseId: string, cmdId: string) => {
     setEditingCommand({ caseId, commandId: cmdId });
   }, []);
+
+  // 复制用例到剪贴板
+  const handleCopyCase = useCallback((caseId: string) => {
+    const case_ = findCase(cases, caseId);
+    if (case_) {
+      copyToClipboard('case', case_);
+    }
+  }, [cases, copyToClipboard]);
+
+  // 复制命令到剪贴板
+  const handleCopyCommand = useCallback((caseId: string, cmdId: string) => {
+    const found = findCommand(cases, cmdId);
+    if (found) {
+      copyToClipboard('command', found.command, caseId);
+    }
+  }, [cases, copyToClipboard]);
+
+  // 粘贴到目标位置（插入到目标节点后方）
+  const handlePaste = useCallback((targetCaseId: string, targetCommandId?: string) => {
+    const clipboard = useClipboardStore.getState().clipboard;
+    if (!clipboard) return;
+
+    batchUpdate((state) => {
+      const targetCase = findCase(state.cases, targetCaseId);
+      if (!targetCase) return;
+
+      if (targetCommandId) {
+        // 目标是命令：插入到该命令后方
+        const targetIndex = targetCase.children.findIndex(
+          (child) => 'type' in child && child.id === targetCommandId
+        );
+        if (targetIndex === -1) return;
+
+        if (clipboard.type === 'case') {
+          // 粘贴用例：插入到命令后方
+          const newCase = structuredClone(clipboard.data as TestCase);
+          // 递归更新所有 ID
+          const updateIds = (c: TestCase) => {
+            c.id = crypto.randomUUID();
+            c.children.forEach((child) => {
+              if ('type' in child) {
+                child.id = crypto.randomUUID();
+              } else {
+                updateIds(child);
+              }
+            });
+          };
+          updateIds(newCase);
+
+          targetCase.children.splice(targetIndex + 1, 0, newCase);
+        } else if (clipboard.type === 'command') {
+          // 粘贴命令：插入到目标命令后方
+          const newCommand = structuredClone(clipboard.data as TestCommand);
+          newCommand.id = crypto.randomUUID();
+
+          targetCase.children.splice(targetIndex + 1, 0, newCommand);
+        }
+      } else {
+        // 目标是用例：找到该用例在父用例中的位置，插入到后方
+        const parentCase = findParentCase(state.cases, targetCaseId);
+
+        if (parentCase) {
+          // 有父用例：插入到同级后方
+          const targetIndex = parentCase.children.findIndex(
+            (child) => !('type' in child) && child.id === targetCaseId
+          );
+          if (targetIndex === -1) return;
+
+          if (clipboard.type === 'case') {
+            const newCase = structuredClone(clipboard.data as TestCase);
+            const updateIds = (c: TestCase) => {
+              c.id = crypto.randomUUID();
+              c.children.forEach((child) => {
+                if ('type' in child) {
+                  child.id = crypto.randomUUID();
+                } else {
+                  updateIds(child);
+                }
+              });
+            };
+            updateIds(newCase);
+
+            parentCase.children.splice(targetIndex + 1, 0, newCase);
+          } else if (clipboard.type === 'command') {
+            const newCommand = structuredClone(clipboard.data as TestCommand);
+            newCommand.id = crypto.randomUUID();
+
+            parentCase.children.splice(targetIndex + 1, 0, newCommand);
+          }
+        } else {
+          // 无父用例（顶层用例）：插入到根数组后方
+          const targetIndex = state.cases.findIndex((c) => c.id === targetCaseId);
+          if (targetIndex === -1) return;
+
+          if (clipboard.type === 'case') {
+            const newCase = structuredClone(clipboard.data as TestCase);
+            const updateIds = (c: TestCase) => {
+              c.id = crypto.randomUUID();
+              c.children.forEach((child) => {
+                if ('type' in child) {
+                  child.id = crypto.randomUUID();
+                } else {
+                  updateIds(child);
+                }
+              });
+            };
+            updateIds(newCase);
+
+            state.cases.splice(targetIndex + 1, 0, newCase);
+          }
+          // 注意：不能在根层级插入命令，忽略
+        }
+      }
+    });
+  }, [batchUpdate]);
+
+  // 全局键盘快捷键：Ctrl+C 复制、Ctrl+V 粘贴
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 忽略在输入框、文本域中的快捷键
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Ctrl+C / Cmd+C: 复制选中的用例或命令
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        // 优先检查命令选中（命令与用例互斥，选中命令时 selectedCaseId 为 null）
+        if (selectedCommandId) {
+          const result = findCommand(cases, selectedCommandId);
+          if (result) {
+            handleCopyCommand(result.owner.id, selectedCommandId);
+          }
+        } else if (selectedCaseId) {
+          handleCopyCase(selectedCaseId);
+        }
+      }
+
+      // Ctrl+V / Cmd+V: 粘贴到选中的用例或命令后方
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        // 优先检查命令选中（命令与用例互斥，选中命令时 selectedCaseId 为 null）
+        if (selectedCommandId) {
+          const result = findCommand(cases, selectedCommandId);
+          if (result) {
+            handlePaste(result.owner.id, selectedCommandId);
+          }
+        } else if (selectedCaseId) {
+          handlePaste(selectedCaseId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCaseId, selectedCommandId, cases, handleCopyCase, handleCopyCommand, handlePaste]);
 
   // 实际执行文件加载（替换模式：清空当前用例，加载选中文件）
   const performFileSelect = useCallback(
@@ -1024,6 +1190,9 @@ export function TestCaseManager() {
           onBatchRemove={handleBatchRemove}
           onEditCase={handleEditCase}
           onEditCommand={handleEditCommand}
+          onCopyCase={handleCopyCase}
+          onCopyCommand={handleCopyCommand}
+          onPaste={handlePaste}
         />
       )}
 

@@ -203,6 +203,20 @@ export function findCase(cases: TestCase[], id: string): TestCase | null {
   return found;
 }
 
+/** 查找用例的父用例（返回 null 表示该用例是顶层用例） */
+export function findParentCase(cases: TestCase[], childId: string): TestCase | null {
+  let parent: TestCase | null = null;
+  walkCases(cases, (c) => {
+    // 检查 children 中是否有该 ID 的子用例
+    const hasChild = c.children.some((child) => !('type' in child) && child.id === childId);
+    if (hasChild) {
+      parent = c;
+      return false; // 找到，停止遍历
+    }
+  });
+  return parent;
+}
+
 /** 按 ID 查找命令及其所属用例（递归搜索 children） */
 export function findCommand(
   cases: TestCase[],

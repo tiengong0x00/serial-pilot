@@ -42,7 +42,7 @@ function QuickConfigDropdown({
   const [menuType, setMenuType] = useState<'port' | 'baud' | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { getSerialPorts } = useSerialCommands();
-  const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+  const [availablePorts, setAvailablePorts] = useState<Array<{ port_name: string; friendly_name?: string }>>([]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -60,7 +60,7 @@ function QuickConfigDropdown({
   // 刷新串口列表
   const refreshPorts = useCallback(async () => {
     const ports = await getSerialPorts();
-    setAvailablePorts(ports.map(p => p.port_name));
+    setAvailablePorts(ports);
   }, [getSerialPorts]);
 
   const handlePortClick = async () => {
@@ -127,22 +127,22 @@ function QuickConfigDropdown({
 
       {/* 下拉菜单 */}
       {open && menuType && (
-        <div className="absolute bottom-full left-0 mb-1 min-w-[120px] bg-popover border rounded-md shadow-lg z-50 py-1">
+        <div className="absolute bottom-full left-0 mb-1 min-w-[120px] max-w-[400px] bg-popover border rounded-md shadow-lg z-50 py-1">
           {menuType === 'port' && (
             <>
               {availablePorts.length > 0 ? (
                 availablePorts.map(port => (
                   <button
-                    key={port}
+                    key={port.port_name}
                     type="button"
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors whitespace-nowrap"
                     onClick={() => {
-                      onSelectPort(port);
+                      onSelectPort(port.port_name);
                       setOpen(false);
                       setMenuType(null);
                     }}
                   >
-                    {port}
+                    {port.friendly_name ?? port.port_name}
                   </button>
                 ))
               ) : (

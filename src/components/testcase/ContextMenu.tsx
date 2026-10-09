@@ -1,9 +1,25 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { Folder, Trash2, Edit, CheckCircle2, Circle } from 'lucide-react';
+import { Folder, Trash2, Edit, CheckCircle2, Circle, Copy, Plus, ChevronRight, Clipboard } from 'lucide-react';
 import { AtCommandIcon, UrcIcon, ScriptIcon } from '@/components/icons/CommandTypeIcons';
 import type { CommandType } from '@/types/testCase';
+import { useClipboardStore } from '@/stores/clipboardStore';
+
+// 菜单项类型定义
+interface MenuItem {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick?: () => void;
+  className?: string;
+  submenu?: SubMenuItem[]; // 子菜单
+}
+
+interface SubMenuItem {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+}
 
 interface ContextMenuProps {
   x: number;
@@ -24,6 +40,9 @@ interface ContextMenuProps {
   onBatchRemove: (ids: Set<string>) => void;
   onEditCase: (id: string) => void;
   onEditCommand: (caseId: string, cmdId: string) => void;
+  onCopyCase: (caseId: string) => void;
+  onCopyCommand: (caseId: string, commandId: string) => void;
+  onPaste: (targetCaseId: string, targetCommandId?: string) => void;
 }
 
 export function ContextMenu({
@@ -43,11 +62,17 @@ export function ContextMenu({
   onBatchRemove,
   onEditCase,
   onEditCommand,
+  onCopyCase,
+  onCopyCommand,
+  onPaste,
 }: ContextMenuProps) {
   const { t } = useTranslation();
+  const clipboard = useClipboardStore((state) => state.clipboard);
   const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState({ left: x, top: y });
+  const [submenuIndex, setSubmenuIndex] = useState<number | null>(null); // 当前悬浮的子菜单索引
   const menuRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -92,7 +117,7 @@ export function ContextMenu({
   // 如果有多选(>1项),显示批量操作菜单
   const hasBatchSelection = multiSelection.size > 1;
 
-  const menuItems = hasBatchSelection
+  const menuItems: MenuItem[] = hasBatchSelection
     ? [
         // 批量操作菜单
         {
@@ -125,6 +150,20 @@ export function ContextMenu({
           onClick: () => onEditCommand(caseId, commandId),
         },
         {
+          icon: Copy,
+          label: t('testCase.copyCommand'),
+          onClick: () => onCopyCommand(caseId, commandId),
+        },
+        ...(clipboard
+          ? [
+              {
+                icon: Clipboard,
+                label: t('testCase.paste'),
+                onClick: () => onPaste(caseId, commandId),
+              },
+            ]
+          : []),
+        {
           icon: isSelected ? Circle : CheckCircle2,
           label: isSelected ? t('testCase.disableExecution') : t('testCase.enableExecution'),
           onClick: () => onToggleSelected(caseId, commandId),
@@ -137,31 +176,52 @@ export function ContextMenu({
         },
       ]
     : [
-        // 用例节点菜单
+        // 用例节点菜单（优化后：5项，带子菜单）
         {
           icon: Edit,
           label: t('testCase.edit'),
           onClick: () => onEditCase(caseId),
         },
         {
-          icon: Folder,
-          label: t('testCase.addCase'),
-          onClick: () => onAddCase(caseId),
+          icon: Copy,
+          label: t('testCase.copyCase'),
+          onClick: () => onCopyCase(caseId),
         },
+        ...(clipboard
+          ? [
+              {
+                icon: Clipboard,
+                label: t('testCase.paste'),
+                onClick: () => onPaste(caseId, undefined),
+              },
+            ]
+          : []),
         {
-          icon: AtCommandIcon,
-          label: t('testCase.addCommand'),
-          onClick: () => onAddCommand(caseId, 'command'),
-        },
-        {
-          icon: UrcIcon,
-          label: t('testCase.addUrc'),
-          onClick: () => onAddCommand(caseId, 'urc-guard'),
-        },
-        {
-          icon: ScriptIcon,
-          label: t('testCase.addScript'),
-          onClick: () => onAddCommand(caseId, 'script'),
+          icon: Plus,
+          label: t('testCase.add'),
+          // 子菜单：添加子用例、命令、URC、脚本
+          submenu: [
+            {
+              icon: Folder,
+              label: t('testCase.addCase'),
+              onClick: () => onAddCase(caseId),
+            },
+            {
+              icon: AtCommandIcon,
+              label: t('testCase.addCommand'),
+              onClick: () => onAddCommand(caseId, 'command'),
+            },
+            {
+              icon: UrcIcon,
+              label: t('testCase.addUrc'),
+              onClick: () => onAddCommand(caseId, 'urc-guard'),
+            },
+            {
+              icon: ScriptIcon,
+              label: t('testCase.addScript'),
+              onClick: () => onAddCommand(caseId, 'script'),
+            },
+          ],
         },
         {
           icon: isSelected ? Circle : CheckCircle2,
@@ -186,19 +246,56 @@ export function ContextMenu({
       onClick={(e) => e.stopPropagation()}
     >
       {menuItems.map((item, idx) => (
-        <button
+        <div
           key={idx}
-          className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition-colors ${
-            item.className || ''
-          }`}
-          onClick={() => {
-            item.onClick();
-            onClose();
-          }}
+          className="relative"
+          onMouseEnter={() => item.submenu && setSubmenuIndex(idx)}
+          onMouseLeave={() => item.submenu && setSubmenuIndex(null)}
         >
-          <item.icon className="h-4 w-4" />
-          {item.label}
-        </button>
+          <button
+            className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition-colors ${
+              item.className || ''
+            }`}
+            onClick={(e) => {
+              if (item.submenu) {
+                // 有子菜单：阻止关闭，切换子菜单显示
+                e.stopPropagation();
+                setSubmenuIndex(submenuIndex === idx ? null : idx);
+              } else if (item.onClick) {
+                // 无子菜单：执行操作并关闭
+                item.onClick();
+                onClose();
+              }
+            }}
+          >
+            <item.icon className="h-4 w-4" />
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.submenu && <ChevronRight className="h-4 w-4" />}
+          </button>
+
+          {/* 子菜单 */}
+          {item.submenu && submenuIndex === idx && (
+            <div
+              ref={submenuRef}
+              className="absolute left-full top-0 ml-1 min-w-[160px] bg-white border rounded-md shadow-lg py-1 z-50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.submenu.map((subItem, subIdx) => (
+                <button
+                  key={subIdx}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition-colors"
+                  onClick={() => {
+                    subItem.onClick();
+                    onClose();
+                  }}
+                >
+                  <subItem.icon className="h-4 w-4" />
+                  {subItem.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       ))}
     </div>,
     document.body,
