@@ -579,6 +579,12 @@ export function TestCaseManager() {
         return;
       }
 
+      // 忽略终端显示区域的快捷键（终端有自己的快捷键处理）
+      // 检查目标元素或其父元素是否包含终端输出区域的特征类名
+      if (target.classList.contains('terminal-output') || target.closest('.terminal-output')) {
+        return;
+      }
+
       // Ctrl+C / Cmd+C: 复制选中的用例或命令
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
         e.preventDefault();
