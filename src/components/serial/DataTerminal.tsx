@@ -334,6 +334,7 @@ function VirtualTerminalView({
   const handleSelectAll = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
+      e.stopPropagation(); // 阻止事件冒泡到 window，避免触发全局快捷键
       const el = parentRef.current;
       const selection = window.getSelection();
       if (!el || !selection) return;
