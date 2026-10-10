@@ -166,8 +166,13 @@ export function ContextMenu({
         {
           icon: Plus,
           label: t('testCase.add'),
-          // 子菜单：在当前命令后添加命令、URC、脚本
+          // 子菜单：在当前命令后添加用例、命令、URC、脚本
           submenu: [
+            {
+              icon: Folder,
+              label: t('testCase.addCase'),
+              onClick: () => onAddCase(caseId),
+            },
             {
               icon: AtCommandIcon,
               label: t('testCase.addCommand'),

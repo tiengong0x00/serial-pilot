@@ -993,7 +993,7 @@ const resources = {
         copyCommand: "复制",
         paste: "粘贴",
         add: "添加",
-        addCase: "添加子用例",
+        addCase: "添加用例",
         addCommand: "添加命令",
         addUrc: "添加 URC",
         addScript: "添加脚本",
