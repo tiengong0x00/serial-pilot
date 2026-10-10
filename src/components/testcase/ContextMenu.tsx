@@ -164,6 +164,28 @@ export function ContextMenu({
             ]
           : []),
         {
+          icon: Plus,
+          label: t('testCase.add'),
+          // 子菜单：在当前命令后添加命令、URC、脚本
+          submenu: [
+            {
+              icon: AtCommandIcon,
+              label: t('testCase.addCommand'),
+              onClick: () => onAddCommand(caseId, 'command'),
+            },
+            {
+              icon: UrcIcon,
+              label: t('testCase.addUrc'),
+              onClick: () => onAddCommand(caseId, 'urc-guard'),
+            },
+            {
+              icon: ScriptIcon,
+              label: t('testCase.addScript'),
+              onClick: () => onAddCommand(caseId, 'script'),
+            },
+          ],
+        },
+        {
           icon: isSelected ? Circle : CheckCircle2,
           label: isSelected ? t('testCase.disableExecution') : t('testCase.enableExecution'),
           onClick: () => onToggleSelected(caseId, commandId),

@@ -295,6 +295,32 @@ export function TestCaseManager() {
     [],
   );
 
+  // 右键菜单添加命令：根据上下文智能插入
+  // - 右键在命令上：在该命令后插入
+  // - 右键在用例上：在用例内部末尾插入
+  const handleContextMenuAddCommand = useCallback(
+    (caseId: string, type: CommandType) => {
+      // 从 contextMenu 获取当前右键的命令 ID
+      const commandId = contextMenu?.commandId;
+
+      let newId: string | null = null;
+
+      if (commandId) {
+        // 右键在命令上：在该命令后插入
+        newId = addCommandRelative(caseId, commandId, type);
+      } else {
+        // 右键在用例上：在用例内部末尾插入
+        newId = addCommandRelative(caseId, null, type);
+        updateCase(caseId, { isExpanded: true });
+      }
+
+      // 自动选中新建的命令
+      if (newId) selectCommand(newId);
+      setContextMenu(null);
+    },
+    [contextMenu, addCommandRelative, updateCase, selectCommand],
+  );
+
   // 右键切换 selected 状态
   const handleToggleSelected = useCallback(
     (caseId: string, commandId?: string) => {
@@ -1188,7 +1214,7 @@ export function TestCaseManager() {
           multiSelection={multiSelection}
           onClose={() => setContextMenu(null)}
           onAddCase={addCase}
-          onAddCommand={addCommand}
+          onAddCommand={handleContextMenuAddCommand}
           onRemoveCase={removeCase}
           onRemoveCommand={removeCommand}
           onToggleSelected={handleToggleSelected}
