@@ -182,29 +182,22 @@ export function TestCaseManager() {
     const root = getRootCase();
     if (!root) return;
 
-    console.log('[handleAddCommand] selectedCommandId:', selectedCommandId, 'selectedCaseId:', selectedCaseId);
-
     let newId: string | null = null;
 
     if (selectedCommandId) {
       // 选中命令：需找到命令所属父用例，在命令下方插入
       const result = findCommand([root], selectedCommandId);
-      console.log('[handleAddCommand] 找到命令的父容器:', result?.owner.id);
       if (result) {
         newId = addCommandRelative(result.owner.id, selectedCommandId, 'command');
       }
     } else if (selectedCaseId) {
       // 选中用例：在用例内部末尾插入，并展开
-      console.log('[handleAddCommand] 在用例内部新增:', selectedCaseId);
       newId = addCommandRelative(selectedCaseId, null, 'command');
       updateCase(selectedCaseId, { isExpanded: true });
     } else {
       // 无选中：根末尾新增
-      console.log('[handleAddCommand] 在根末尾新增');
       newId = addCommandRelative(root.id, null, 'command');
     }
-
-    console.log('[handleAddCommand] 新命令 ID:', newId);
 
     // 自动选中新建的命令
     if (newId) selectCommand(newId);
@@ -215,36 +208,28 @@ export function TestCaseManager() {
     const root = getRootCase();
     if (!root) return;
 
-    console.log('[handleAddCase] selectedCommandId:', selectedCommandId, 'selectedCaseId:', selectedCaseId);
-
     let newId: string | null = null;
 
     if (selectedCommandId) {
       // 选中命令：找到命令所属父用例，在该父用例内部末尾插入新用例
       const result = findCommand([root], selectedCommandId);
-      console.log('[handleAddCase] 命令所属父容器:', result?.owner.id);
       if (result) {
         newId = addCaseRelative(result.owner.id, null);
       }
     } else if (selectedCaseId) {
       // 选中用例：找到该用例的父容器，在该用例下方插入同级兄弟
       const parentCase = findParentCase([root], selectedCaseId);
-      console.log('[handleAddCase] 选中用例的父容器:', parentCase?.id, '锚点用例:', selectedCaseId);
       if (parentCase) {
         // 有父容器：在选中用例下方插入同级兄弟
         newId = addCaseRelative(parentCase.id, selectedCaseId);
       } else {
         // 选中的是根用例：在根用例内部末尾插入子用例
-        console.log('[handleAddCase] 选中的是根用例，在根内部末尾插入');
         newId = addCaseRelative(selectedCaseId, null);
       }
     } else {
       // 无选中：在根内部末尾插入
-      console.log('[handleAddCase] 无选中，在根内部末尾插入');
       newId = addCaseRelative(root.id, null);
     }
-
-    console.log('[handleAddCase] 新用例 ID:', newId);
 
     // 自动选中新建的用例
     if (newId) selectCase(newId);
@@ -462,7 +447,6 @@ export function TestCaseManager() {
   // 支持多选的用例选择处理
   const handleSelectCase = useCallback(
     (id: string, e?: React.MouseEvent) => {
-      console.log('[handleSelectCase] id:', id, 'ctrl:', e?.ctrlKey || e?.metaKey);
       if (e && (e.ctrlKey || e.metaKey)) {
         // Ctrl+点击: 切换多选状态
         setMultiSelection((prev) => {
@@ -474,7 +458,6 @@ export function TestCaseManager() {
         // 普通点击: 清空多选,使用单选
         setMultiSelection(new Set());
         selectCase(id);
-        console.log('[handleSelectCase] 调用 selectCase, 应设置 selectedCaseId =', id);
       }
     },
     [selectCase],
@@ -483,7 +466,6 @@ export function TestCaseManager() {
   // 支持多选的命令选择处理
   const handleSelectCommand = useCallback(
     (id: string, e?: React.MouseEvent) => {
-      console.log('[handleSelectCommand] id:', id, 'ctrl:', e?.ctrlKey || e?.metaKey);
       if (e && (e.ctrlKey || e.metaKey)) {
         // Ctrl+点击: 切换多选状态
         setMultiSelection((prev) => {
@@ -495,7 +477,6 @@ export function TestCaseManager() {
         // 普通点击: 清空多选,使用单选
         setMultiSelection(new Set());
         selectCommand(id);
-        console.log('[handleSelectCommand] 调用 selectCommand, 应设置 selectedCommandId =', id);
       }
     },
     [selectCommand],
