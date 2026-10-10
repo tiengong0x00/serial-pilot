@@ -428,6 +428,7 @@ export function TestCaseManager() {
   // 支持多选的用例选择处理
   const handleSelectCase = useCallback(
     (id: string, e?: React.MouseEvent) => {
+      console.log('[handleSelectCase] id:', id, 'ctrl:', e?.ctrlKey || e?.metaKey);
       if (e && (e.ctrlKey || e.metaKey)) {
         // Ctrl+点击: 切换多选状态
         setMultiSelection((prev) => {
@@ -439,6 +440,7 @@ export function TestCaseManager() {
         // 普通点击: 清空多选,使用单选
         setMultiSelection(new Set());
         selectCase(id);
+        console.log('[handleSelectCase] 调用 selectCase, 应设置 selectedCaseId =', id);
       }
     },
     [selectCase],
@@ -447,6 +449,7 @@ export function TestCaseManager() {
   // 支持多选的命令选择处理
   const handleSelectCommand = useCallback(
     (id: string, e?: React.MouseEvent) => {
+      console.log('[handleSelectCommand] id:', id, 'ctrl:', e?.ctrlKey || e?.metaKey);
       if (e && (e.ctrlKey || e.metaKey)) {
         // Ctrl+点击: 切换多选状态
         setMultiSelection((prev) => {
@@ -458,6 +461,7 @@ export function TestCaseManager() {
         // 普通点击: 清空多选,使用单选
         setMultiSelection(new Set());
         selectCommand(id);
+        console.log('[handleSelectCommand] 调用 selectCommand, 应设置 selectedCommandId =', id);
       }
     },
     [selectCommand],
