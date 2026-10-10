@@ -10,7 +10,7 @@ import { useUrcListener } from '@/hooks/useUrcListener';
 import { useTestCaseFiles } from '@/hooks/useTestCaseFiles';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { findCase, findCommand, walkCases, isCommand, isUrcGuard, flattenTree, findParentCase } from '@/lib/testCaseUtils';
-import type { StandardCommand, TestCase, TestCommand } from '@/types/testCase';
+import type { StandardCommand, TestCase, TestCommand, CommandType } from '@/types/testCase';
 import { TestCaseTree } from './TestCaseTree';
 import { ContextMenu } from './ContextMenu';
 import { CommandEditorDialog } from './CommandEditorDialog';
@@ -34,11 +34,10 @@ export function TestCaseManager() {
     selectedCommandId,
     isDirty,
     isBatchProcessing,
-    addCase,
+    addCaseRelative,
     removeCase,
     updateCase,
     toggleExpanded,
-    addCommand,
     addCommandRelative,
     removeCommand,
     updateCommand,
@@ -175,13 +174,6 @@ export function TestCaseManager() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [getRootCase, multiSelection]);
 
-  // 计算添加目标：优先选中的用例，其次根用例
-  const resolveTargetCaseId = useCallback((): string | null => {
-    const root = getRootCase();
-    if (!root) return null;
-    return selectedCaseId ?? root.id;
-  }, [getRootCase, selectedCaseId]);
-
   // Bug 3 修复：智能插入逻辑
   // - 选中命令：在该命令同级下方插入新命令
   // - 选中用例：在用例内部末尾插入（方案 B）
@@ -220,14 +212,44 @@ export function TestCaseManager() {
   }, [getRootCase, selectedCommandId, selectedCaseId, addCommandRelative, updateCase, selectCommand]);
 
   const handleAddCase = useCallback(() => {
-    const target = resolveTargetCaseId();
-    if (target) {
-      addCase(target);
-      // 展开目标用例以显示新建的子用例
-      updateCase(target, { isExpanded: true });
+    const root = getRootCase();
+    if (!root) return;
+
+    console.log('[handleAddCase] selectedCommandId:', selectedCommandId, 'selectedCaseId:', selectedCaseId);
+
+    let newId: string | null = null;
+
+    if (selectedCommandId) {
+      // 选中命令：找到命令所属父用例，在该父用例内部末尾插入新用例
+      const result = findCommand([root], selectedCommandId);
+      console.log('[handleAddCase] 命令所属父容器:', result?.owner.id);
+      if (result) {
+        newId = addCaseRelative(result.owner.id, null);
+      }
+    } else if (selectedCaseId) {
+      // 选中用例：找到该用例的父容器，在该用例下方插入同级兄弟
+      const parentCase = findParentCase([root], selectedCaseId);
+      console.log('[handleAddCase] 选中用例的父容器:', parentCase?.id, '锚点用例:', selectedCaseId);
+      if (parentCase) {
+        // 有父容器：在选中用例下方插入同级兄弟
+        newId = addCaseRelative(parentCase.id, selectedCaseId);
+      } else {
+        // 选中的是根用例：在根用例内部末尾插入子用例
+        console.log('[handleAddCase] 选中的是根用例，在根内部末尾插入');
+        newId = addCaseRelative(selectedCaseId, null);
+      }
+    } else {
+      // 无选中：在根内部末尾插入
+      console.log('[handleAddCase] 无选中，在根内部末尾插入');
+      newId = addCaseRelative(root.id, null);
     }
+
+    console.log('[handleAddCase] 新用例 ID:', newId);
+
+    // 自动选中新建的用例
+    if (newId) selectCase(newId);
     setAddMenuOpen(false);
-  }, [resolveTargetCaseId, addCase, updateCase]);
+  }, [getRootCase, selectedCommandId, selectedCaseId, addCaseRelative, selectCase]);
 
   const handleAddUrcGuard = useCallback(() => {
     const root = getRootCase();
@@ -319,6 +341,18 @@ export function TestCaseManager() {
       setContextMenu(null);
     },
     [contextMenu, addCommandRelative, updateCase, selectCommand],
+  );
+
+  // 右键菜单添加用例：在右键的用例内部末尾插入子用例
+  const handleContextMenuAddCase = useCallback(
+    (parentId: string | null) => {
+      if (!parentId) return; // 不应该传 null，但做个防御
+      const newId = addCaseRelative(parentId, null);
+      // 自动选中新建的用例
+      if (newId) selectCase(newId);
+      setContextMenu(null);
+    },
+    [addCaseRelative, selectCase],
   );
 
   // 右键切换 selected 状态
@@ -1217,7 +1251,7 @@ export function TestCaseManager() {
           })()}
           multiSelection={multiSelection}
           onClose={() => setContextMenu(null)}
-          onAddCase={addCase}
+          onAddCase={handleContextMenuAddCase}
           onAddCommand={handleContextMenuAddCommand}
           onRemoveCase={removeCase}
           onRemoveCommand={removeCommand}

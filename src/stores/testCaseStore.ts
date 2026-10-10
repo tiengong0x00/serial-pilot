@@ -32,6 +32,13 @@ interface TestCaseState {
 
   // 用例操作
   addCase: (parentId: string | null) => void;
+  /**
+   * 相对位置新建用例：
+   * - anchorCaseId 非空：在该用例的父容器中，插入到该用例的正下方（同级兄弟）
+   * - anchorCaseId 为空：在 parentId 内部末尾追加
+   * 返回新用例 ID（供选中/滚动）。
+   */
+  addCaseRelative: (parentId: string, anchorCaseId: string | null) => string | null;
   removeCase: (id: string) => void;
   updateCase: (id: string, patch: Partial<TestCase>) => void;
   toggleExpanded: (id: string) => void;
@@ -248,6 +255,35 @@ export const useTestCaseStore = create<TestCaseState>()(
         }
         state.isDirty = true;
       }),
+
+    addCaseRelative: (parentId, anchorCaseId) => {
+      let newId: string | null = null;
+      set((state) => {
+        const parent = findCase(state.cases, parentId);
+        if (!parent) return;
+
+        const newCase = createCase();
+        newId = newCase.id;
+
+        if (!anchorCaseId) {
+          // 无锚点：追加到末尾
+          parent.children.push(newCase);
+        } else {
+          // 有锚点：插入到锚点用例的正下方（同级兄弟）
+          const anchorIdx = parent.children.findIndex((ch) => isCase(ch) && ch.id === anchorCaseId);
+          if (anchorIdx === -1) {
+            // 锚点未找到，退化为追加
+            parent.children.push(newCase);
+          } else {
+            // 插入到锚点后一位
+            parent.children.splice(anchorIdx + 1, 0, newCase);
+          }
+        }
+        parent.isExpanded = true;
+        state.isDirty = true;
+      });
+      return newId;
+    },
 
     removeCase: (id) =>
       set((state) => {
