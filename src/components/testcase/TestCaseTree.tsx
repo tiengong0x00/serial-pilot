@@ -358,14 +358,21 @@ function DraggableCommandRow({
           onDoubleClick={(e) => e.stopPropagation()}
         >
           {(() => {
-            // 判断显示图标还是文字
+            // 判断显示内容
             const showIcon = testCaseButtonContent === 'icon' ||
                             (testCaseButtonContent === 'auto' && testCaseButtonWidth < 50);
             const showText = testCaseButtonContent === 'text' ||
                             (testCaseButtonContent === 'auto' && testCaseButtonWidth >= 50);
+            const showCommand = testCaseButtonContent === 'command';
 
             if (showIcon) {
               return <Play style={{ width: iconSize, height: iconSize }} />;
+            }
+
+            if (showCommand) {
+              // 显示命令名称（优先 name，否则显示 content 字段前 10 个字符）
+              const displayName = cmd.name || cmd.content.slice(0, 10);
+              return <span className="truncate">{displayName}</span>;
             }
 
             if (showText) {
@@ -524,7 +531,7 @@ function DraggableCaseNode(props: {
             onDoubleClick={(e) => e.stopPropagation()}
           >
             {(() => {
-              // 判断显示图标还是文字
+              // 用例按钮：判断显示图标还是文字（不支持 command 模式）
               const showIcon = testCaseButtonContent === 'icon' ||
                               (testCaseButtonContent === 'auto' && testCaseButtonWidth < 50);
 
@@ -532,7 +539,7 @@ function DraggableCaseNode(props: {
                 return <Play style={{ width: iconSize + 2, height: iconSize + 2 }} />;
               }
 
-              // 用例按钮显示"运行"
+              // 用例按钮显示"运行"（text、command、auto>=50 都显示文字）
               return <span>{t('testCase.run')}</span>;
             })()}
           </button>

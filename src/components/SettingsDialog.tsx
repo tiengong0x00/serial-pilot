@@ -549,7 +549,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   <input
                     type="range"
                     min={24}
-                    max={80}
+                    max={120}
                     step={2}
                     value={testCaseButtonWidth}
                     onChange={(e) => setTestCaseButtonWidth(Number(e.target.value))}
@@ -600,7 +600,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                         name="testCaseButtonContent"
                         value="auto"
                         checked={testCaseButtonContent === 'auto'}
-                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'command' | 'auto')}
                         className="h-4 w-4 cursor-pointer"
                       />
                       <span className="text-sm">{t("settings.testCaseButtonContentAuto")}</span>
@@ -611,7 +611,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                         name="testCaseButtonContent"
                         value="icon"
                         checked={testCaseButtonContent === 'icon'}
-                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'command' | 'auto')}
                         className="h-4 w-4 cursor-pointer"
                       />
                       <span className="text-sm">{t("settings.testCaseButtonContentIcon")}</span>
@@ -622,10 +622,21 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                         name="testCaseButtonContent"
                         value="text"
                         checked={testCaseButtonContent === 'text'}
-                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'auto')}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'command' | 'auto')}
                         className="h-4 w-4 cursor-pointer"
                       />
                       <span className="text-sm">{t("settings.testCaseButtonContentText")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="testCaseButtonContent"
+                        value="command"
+                        checked={testCaseButtonContent === 'command'}
+                        onChange={(e) => setTestCaseButtonContent(e.target.value as 'icon' | 'text' | 'command' | 'auto')}
+                        className="h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-sm">{t("settings.testCaseButtonContentCommand")}</span>
                     </label>
                   </div>
                 </div>

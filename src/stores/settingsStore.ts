@@ -55,9 +55,9 @@ interface SettingsStore {
   // 测试用例配置
   testCaseAutoSave: boolean; // 用例改动自动保存（默认 false）
   testCaseRowHeight: number; // 测试用例树形行高（px），范围 24-48，默认 28
-  testCaseButtonWidth: number; // 运行按钮宽度（px），范围 24-80，默认 28
+  testCaseButtonWidth: number; // 运行按钮宽度（px），范围 24-120，默认 28
   testCaseButtonDisplay: 'hover' | 'always'; // 运行按钮显示方式，hover=悬浮显示，always=固定显示
-  testCaseButtonContent: 'icon' | 'text' | 'auto'; // 运行按钮内容，icon=图标，text=文字，auto=根据宽度自动
+  testCaseButtonContent: 'icon' | 'text' | 'command' | 'auto'; // 运行按钮内容，icon=图标，text=固定文字，command=命令名称，auto=根据宽度自动
 
   // 发送配置
   enterToSend: boolean; // 手动发送框：回车键是否直接发送（默认 true）
@@ -102,7 +102,7 @@ interface SettingsStore {
   setTestCaseRowHeight: (height: number) => void;
   setTestCaseButtonWidth: (width: number) => void;
   setTestCaseButtonDisplay: (mode: 'hover' | 'always') => void;
-  setTestCaseButtonContent: (mode: 'icon' | 'text' | 'auto') => void;
+  setTestCaseButtonContent: (mode: 'icon' | 'text' | 'command' | 'auto') => void;
   setEnterToSend: (enabled: boolean) => void;
   setLastExportDir: (dir: string) => void;
 
