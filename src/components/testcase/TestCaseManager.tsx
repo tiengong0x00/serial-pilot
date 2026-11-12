@@ -66,10 +66,12 @@ export function TestCaseManager() {
   const {
     files,
     currentFile,
+    currentFilePath,
     loading: filesLoading,
     error: filesError,
     loadFile,
     saveFile,
+    saveToExternalPath,
     deleteFile,
     renameFile,
     refreshFiles,
@@ -741,7 +743,12 @@ export function TestCaseManager() {
     if (!currentFile) return;
 
     const json = exportJson(currentFile);
-    const success = await saveFile(currentFile, json);
+
+    // 如果是外部文件（有完整路径），保存到原路径；否则保存到 testcases/ 目录
+    const success = currentFilePath
+      ? await saveToExternalPath(currentFilePath, json)
+      : await saveFile(currentFile, json);
+
     if (success) {
       markClean();
 
@@ -750,12 +757,14 @@ export function TestCaseManager() {
         alert(t('testCase.saveSuccess'));
       }
 
-      // 刷新文件列表
-      await refreshFiles();
+      // 刷新文件列表（仅内部文件需要）
+      if (!currentFilePath) {
+        await refreshFiles();
+      }
     } else {
       alert(t('testCase.saveFailed', { error: filesError }));
     }
-  }, [currentFile, exportJson, saveFile, markClean, filesError, testCaseAutoSave, refreshFiles, t]);
+  }, [currentFile, currentFilePath, exportJson, saveFile, saveToExternalPath, markClean, filesError, testCaseAutoSave, refreshFiles, t]);
 
   // 自动保存：开启 + 有修改 + 有文件时，2秒防抖后静默保存
   // 依赖 handleSaveFile，故定义在其后，避免暂时性死区
@@ -867,6 +876,10 @@ export function TestCaseManager() {
         reset();
         importJson(content, filename, true);
         markClean();
+
+        // 记录完整路径，以便保存时写回原位置
+        const setCurrentFile = useTestCaseStore.getState().setCurrentFile;
+        setCurrentFile(filename, filePath as string);
 
         alert(t('testCase.openExternalSuccess', { file: filename }));
       }

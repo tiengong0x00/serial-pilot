@@ -28,6 +28,7 @@ interface TestCaseState {
   selectedCommandId: string | null;
   isDirty: boolean;
   currentFile: string | null; // 当前加载的文件名（与 cases 同步，跨界面切换保留）
+  currentFilePath: string | null; // 当前文件的完整路径（仅外部文件时有值，内部文件为 null）
   isBatchProcessing: boolean; // 批量处理中状态
 
   // 用例操作
@@ -101,7 +102,7 @@ interface TestCaseState {
   moveCommandToCase: (commandId: string, fromCaseId: string, toCaseId: string) => void;
 
   // 文件管理
-  setCurrentFile: (filename: string | null) => void;
+  setCurrentFile: (filename: string | null, fullPath?: string | null) => void;
 
   reset: () => void;
 }
@@ -239,6 +240,7 @@ export const useTestCaseStore = create<TestCaseState>()(
     selectedCommandId: null,
     isDirty: false,
     currentFile: null,
+    currentFilePath: null,
     isBatchProcessing: false,
 
     addCase: (parentId) =>
@@ -599,9 +601,10 @@ export const useTestCaseStore = create<TestCaseState>()(
         state.isDirty = true;
       }),
 
-    setCurrentFile: (filename) =>
+    setCurrentFile: (filename, fullPath) =>
       set((state) => {
         state.currentFile = filename;
+        state.currentFilePath = fullPath ?? null;
       }),
 
     reset: () =>
@@ -611,6 +614,7 @@ export const useTestCaseStore = create<TestCaseState>()(
         state.selectedCommandId = null;
         state.isDirty = false;
         state.currentFile = null;
+        state.currentFilePath = null;
       }),
   })),
   {
@@ -621,6 +625,7 @@ export const useTestCaseStore = create<TestCaseState>()(
       selectedCaseId: state.selectedCaseId,
       selectedCommandId: state.selectedCommandId,
       currentFile: state.currentFile,
+      currentFilePath: state.currentFilePath,
     }),
     // 恢复时重置所有运行状态
     onRehydrateStorage: () => (state) => {

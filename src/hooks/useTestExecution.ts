@@ -525,6 +525,17 @@ export function useTestExecution() {
 
       updateCommand(caseId, cmd.id, { status: 'running' });
 
+      // ALL 广播模式：双串口连接 + 发送区选 ALL + 命令未显式指定 txPort
+      // 此时同一份数据同时发往 P1 和 P2，跳过校验，仅按延时执行
+      const sendTarget = localStorage.getItem('serial_terminal_target');
+      const { connectionStatus: connStatus } = useSerialStore.getState();
+      const isBroadcastMode =
+        sendTarget === 'ALL' &&
+        !cmd.txPort &&
+        connStatus.p1_connected &&
+        connStatus.p2_connected;
+      const broadcastPorts: PortLabel[] = isBroadcastMode ? ['P1', 'P2'] : [txPort];
+
       let successCount = 0;
 
       for (let attempt = 0; attempt < cmd.repeatCount; attempt++) {
@@ -544,92 +555,93 @@ export function useTestExecution() {
           let sendError: unknown = null;
           try {
             if (cmd.fileData.id) {
-              // 新模式：从缓存文件流式发送
-              // 先检查附件是否存在
-              const exists = await attachmentExists(cmd.fileData.id);
-              if (!exists) {
-                throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
-              }
-
+              // 新模式：广播模式下对每个目标端口各发一次
               const { name, size, id } = cmd.fileData;
 
-              // 开始 TX 消息
-              addMessage({
-                id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                type: 'TX',
-                port_label: txPort,
-                data: new Uint8Array(),
-                timestamp: Date.now(),
-                text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
-              });
+              for (const port of broadcastPorts) {
+                // 先检查附件是否存在
+                const exists = await attachmentExists(cmd.fileData.id);
+                if (!exists) {
+                  throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
+                }
 
-              // 订阅进度事件，等待完成
-              const startTs = performance.now();
-              let lastSent = 0;
-              const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
-                let unlistenFn: (() => void) | null = null;
-                void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
-                  const p = evt.payload;
-                  if (p.port_label !== txPort) return;
-                  lastSent = p.sent_bytes;
-                  if (p.done || p.cancelled) {
+                // 开始 TX 消息
+                addMessage({
+                  id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'TX',
+                  port_label: port,
+                  data: new Uint8Array(),
+                  timestamp: Date.now(),
+                  text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
+                });
+
+                // 订阅进度事件，等待完成
+                const startTs = performance.now();
+                let lastSent = 0;
+                const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
+                  let unlistenFn: (() => void) | null = null;
+                  void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
+                    const p = evt.payload;
+                    if (p.port_label !== port) return;
+                    lastSent = p.sent_bytes;
+                    if (p.done || p.cancelled) {
+                      if (unlistenFn) unlistenFn();
+                      resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
+                    }
+                  }).then((fn) => { unlistenFn = fn; });
+
+                  // 触发后端流式发送
+                  void sendAttachment(port, id).catch((e) => {
                     if (unlistenFn) unlistenFn();
-                    resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
-                  }
-                }).then((fn) => { unlistenFn = fn; });
+                    resolve({ cancelled: true, sent: lastSent });
+                    throw e;
+                  });
+                });
 
-                // 触发后端流式发送
-                void sendAttachment(txPort, id).catch((e) => {
-                  if (unlistenFn) unlistenFn();
-                  resolve({ cancelled: true, sent: lastSent });
-                  throw e;
-                });
-              });
-
-              // 结束 TX 消息
-              const elapsedSec = (performance.now() - startTs) / 1000;
-              if (finished.cancelled) {
-                addMessage({
-                  id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                  type: 'TX',
-                  port_label: txPort,
-                  data: new Uint8Array(),
-                  timestamp: Date.now(),
-                  text: i18n.t('terminal.fileSendCancelled', {
-                    name,
-                    sent: formatBytes(finished.sent),
-                    total: formatBytes(size),
-                  }),
-                });
-                throw new Error('File send cancelled');
-              } else {
-                const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
-                addMessage({
-                  id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                  type: 'TX',
-                  port_label: txPort,
-                  data: new Uint8Array(),
-                  timestamp: Date.now(),
-                  text: i18n.t('terminal.fileSentV2', {
-                    name,
-                    sent: formatBytes(finished.sent),
-                    total: formatBytes(size),
-                    elapsed: elapsedSec.toFixed(1),
-                    rate: formatBytes(avgBps),
-                  }),
-                });
+                // 结束 TX 消息
+                const elapsedSec = (performance.now() - startTs) / 1000;
+                if (finished.cancelled) {
+                  addMessage({
+                    id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    type: 'TX',
+                    port_label: port,
+                    data: new Uint8Array(),
+                    timestamp: Date.now(),
+                    text: i18n.t('terminal.fileSendCancelled', {
+                      name,
+                      sent: formatBytes(finished.sent),
+                      total: formatBytes(size),
+                    }),
+                  });
+                  throw new Error('File send cancelled');
+                } else {
+                  const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
+                  addMessage({
+                    id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    type: 'TX',
+                    port_label: port,
+                    data: new Uint8Array(),
+                    timestamp: Date.now(),
+                    text: i18n.t('terminal.fileSentV2', {
+                      name,
+                      sent: formatBytes(finished.sent),
+                      total: formatBytes(size),
+                      elapsed: elapsedSec.toFixed(1),
+                      rate: formatBytes(avgBps),
+                    }),
+                  });
+                }
               }
 
-
             } else if (cmd.fileData.base64) {
-              // 旧模式兼容：前端解码 base64 → 按 filePacketSize 分包 → 逐包发送
+              // 旧模式兼容：前端解码 base64 → 按 filePacketSize 分包 → 逐包广播发送
               const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
 
               // 从设置中读取分包参数
               const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
               const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
 
-              // 分包发送
+              // 分包发送（广播模式下每包对所有端口各发一次）
               for (let i = 0; i < fileBytes.length; i += chunkSize) {
                 if (abortRef.current) {
                   updateCommand(caseId, cmd.id, { status: 'interrupted' });
@@ -638,18 +650,20 @@ export function useTestExecution() {
 
                 const chunk = fileBytes.slice(i, i + chunkSize);
 
-                // 乐观渲染：先显示 TX 再发送
-                const txTimestamp = Date.now();
-                addMessage({
-                  id: `tx_${txTimestamp}_${i}`,
-                  type: 'TX',
-                  port_label: txPort,
-                  data: chunk,
-                  timestamp: txTimestamp,
-                  text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
-                });
+                for (const port of broadcastPorts) {
+                  // 乐观渲染：先显示 TX 再发送
+                  const txTimestamp = Date.now();
+                  addMessage({
+                    id: `tx_${txTimestamp}_${i}_${port}`,
+                    type: 'TX',
+                    port_label: port,
+                    data: chunk,
+                    timestamp: txTimestamp,
+                    text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
+                  });
 
-                await writeSerial(txPort, chunk);
+                  await writeSerial(port, chunk);
+                }
 
                 // 包间延时（最后一包无需等待）
                 if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
@@ -685,7 +699,8 @@ export function useTestExecution() {
           }
 
           // 校验响应（复用普通命令的响应逻辑）
-          if (cmd.validation === 'none') {
+          // 广播模式强制跳过校验，直接计成功
+          if (cmd.validation === 'none' || isBroadcastMode) {
             successCount++;
           } else {
             const response = await waitForResponse(
@@ -752,39 +767,73 @@ export function useTestExecution() {
           sentData = content;
 
           // 发送并回显（供 onReady 或直接调用）
+          // 广播模式下遍历所有目标端口，每个端口各发一份并回显 TX
           let sendError: unknown = null;
           const sendCommand = async () => {
             try {
-              // 乐观渲染：立即显示 TX
-              const txTimestamp = Date.now();
-              addMessage({
-                id: `tx_${txTimestamp}`,
-                type: 'TX',
-                port_label: txPort,
-                data,
-                timestamp: txTimestamp,
-                text: new TextDecoder().decode(data),
-              });
+              for (const port of broadcastPorts) {
+                // 乐观渲染：立即显示 TX
+                const txTimestamp = Date.now();
+                addMessage({
+                  id: `tx_${txTimestamp}_${port}`,
+                  type: 'TX',
+                  port_label: port,
+                  data,
+                  timestamp: txTimestamp,
+                  text: new TextDecoder().decode(data),
+                });
 
-              // 后台发送
-              await writeSerial(txPort, data);
-              // 不再记录详细日志：addLog('info', `Sent: ${content}`, cmd.id, caseId);
+                // 后台发送
+                await writeSerial(port, data);
+              }
             } catch (error) {
               sendError = error;
-              // 发送失败仍然记录
               addLog('error', `Send failed: ${error}`, cmd.id, caseId);
             }
           };
 
-          // 校验响应
-          if (cmd.validation === 'none') {
-            // 无需响应，直接发送
-            await sendCommand();
-            if (sendError) {
-              updateCommand(caseId, cmd.id, { status: 'failed' });
-              return 'failed';
+          // 校验响应：广播模式强制跳过校验，直接发送
+          if (cmd.validation === 'none' || isBroadcastMode) {
+            // 广播模式下若需要变量提取：从 rxPort 等待一次响应再提取
+            const needExtract = isBroadcastMode && cmd.extractConfig && getContext();
+            if (needExtract) {
+              // 先发送，再监听 rxPort 响应（只取不校验）
+              await sendCommand();
+              if (sendError) {
+                updateCommand(caseId, cmd.id, { status: 'failed' });
+                return 'failed';
+              }
+              successCount++;
+              const response = await waitForResponse(
+                rxPort,
+                cmd.timeout,
+                async () => {}, // 已发送，无需再次发送
+                () => true, // 任意响应即停止等待
+              );
+              lastResponse = response;
+              const vars = extractVariables(response, cmd.extractConfig!);
+              for (const [key, value] of Object.entries(vars)) {
+                setVariable(key, value);
+                addCriticalEvent({
+                  id: generateEventId(),
+                  timestamp: Date.now(),
+                  type: 'variable-extracted',
+                  variableExtracted: {
+                    commandId: cmd.id,
+                    commandName: cmd.content,
+                    variable: key,
+                    value,
+                  },
+                });
+              }
+            } else {
+              await sendCommand();
+              if (sendError) {
+                updateCommand(caseId, cmd.id, { status: 'failed' });
+                return 'failed';
+              }
+              successCount++;
             }
-            successCount++;
           } else {
             // 先注册监听器 → 就绪后发送 → 超时窗口内累积匹配（消除竞态、支持多行累积）
             const response = await waitForResponse(
@@ -1518,14 +1567,23 @@ export function useTestExecution() {
       // 智能解析目标端口
       const { connectionStatus } = useSerialStore.getState();
       const rootCase = cases[0];
-      const effectivePort = targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1');
 
-      // 检查目标端口连接状态
-      const isConnected = effectivePort === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
-      if (!isConnected) {
-        toast.error(i18n.t('terminal.portNotConnected', { port: effectivePort }));
-        return;
+      // ALL 广播模式：双串口连接 + 发送区选 ALL + 未显式指定 targetPort
+      const sendTarget = localStorage.getItem('serial_terminal_target');
+      const isBroadcast = sendTarget === 'ALL' && !targetPort && connectionStatus.p1_connected && connectionStatus.p2_connected;
+      const broadcastPorts: PortLabel[] = isBroadcast
+        ? ['P1', 'P2']
+        : [targetPort || (rootCase ? resolveTargetPort(rootCase, connectionStatus) : 'P1')];
+
+      // 检查所有目标端口连接状态
+      for (const port of broadcastPorts) {
+        const isConnected = port === 'P1' ? connectionStatus.p1_connected : connectionStatus.p2_connected;
+        if (!isConnected) {
+          toast.error(i18n.t('terminal.portNotConnected', { port }));
+          return;
+        }
       }
+      const effectivePort = broadcastPorts[0];
 
       // 确保执行上下文存在，并刷新全局变量
       const ctx = getContext();
@@ -1540,104 +1598,108 @@ export function useTestExecution() {
         if (cmd.fileData) {
           // ============ 文件快速发送 ============
           if (cmd.fileData.id) {
-            // 新模式：从缓存文件流式发送
-            const exists = await attachmentExists(cmd.fileData.id);
-            if (!exists) {
-              throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
-            }
-
+            // 新模式：广播模式下对每个目标端口各发一次
             const { name, size, id } = cmd.fileData;
 
-            // 开始 TX 消息
-            addMessage({
-              id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              type: 'TX',
-              port_label: effectivePort,
-              data: new Uint8Array(),
-              timestamp: Date.now(),
-              text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
-            });
+            for (const port of broadcastPorts) {
+              const exists = await attachmentExists(cmd.fileData.id);
+              if (!exists) {
+                throw new Error(i18n.t('testCase.attachmentMissing', { name: cmd.fileData.name }));
+              }
 
-            // 订阅进度事件，等待完成
-            const startTs = performance.now();
-            let lastSent = 0;
-            const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
-              let unlistenFn: (() => void) | null = null;
-              void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
-                const p = evt.payload;
-                if (p.port_label !== effectivePort) return;
-                lastSent = p.sent_bytes;
-                if (p.done || p.cancelled) {
+              // 开始 TX 消息
+              addMessage({
+                id: `file-start-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'TX',
+                port_label: port,
+                data: new Uint8Array(),
+                timestamp: Date.now(),
+                text: i18n.t('terminal.fileSendStart', { name, size: formatBytes(size) }),
+              });
+
+              // 订阅进度事件，等待完成
+              const startTs = performance.now();
+              let lastSent = 0;
+              const finished = await new Promise<{ cancelled: boolean; sent: number }>((resolve) => {
+                let unlistenFn: (() => void) | null = null;
+                void listen<FileSendProgressPayload>('file_send_progress', (evt) => {
+                  const p = evt.payload;
+                  if (p.port_label !== port) return;
+                  lastSent = p.sent_bytes;
+                  if (p.done || p.cancelled) {
+                    if (unlistenFn) unlistenFn();
+                    resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
+                  }
+                }).then((fn) => { unlistenFn = fn; });
+
+                // 触发后端流式发送
+                void sendAttachment(port, id).catch((e) => {
                   if (unlistenFn) unlistenFn();
-                  resolve({ cancelled: p.cancelled, sent: p.sent_bytes });
-                }
-              }).then((fn) => { unlistenFn = fn; });
+                  resolve({ cancelled: true, sent: lastSent });
+                  throw e;
+                });
+              });
 
-              // 触发后端流式发送
-              void sendAttachment(effectivePort, id).catch((e) => {
-                if (unlistenFn) unlistenFn();
-                resolve({ cancelled: true, sent: lastSent });
-                throw e;
-              });
-            });
-
-            // 结束 TX 消息
-            const elapsedSec = (performance.now() - startTs) / 1000;
-            if (finished.cancelled) {
-              addMessage({
-                id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                type: 'TX',
-                port_label: effectivePort,
-                data: new Uint8Array(),
-                timestamp: Date.now(),
-                text: i18n.t('terminal.fileSendCancelled', {
-                  name,
-                  sent: formatBytes(finished.sent),
-                  total: formatBytes(size),
-                }),
-              });
-              throw new Error('File send cancelled');
-            } else {
-              const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
-              addMessage({
-                id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                type: 'TX',
-                port_label: effectivePort,
-                data: new Uint8Array(),
-                timestamp: Date.now(),
-                text: i18n.t('terminal.fileSentV2', {
-                  name,
-                  sent: formatBytes(finished.sent),
-                  total: formatBytes(size),
-                  elapsed: elapsedSec.toFixed(1),
-                  rate: formatBytes(avgBps),
-                }),
-              });
+              // 结束 TX 消息
+              const elapsedSec = (performance.now() - startTs) / 1000;
+              if (finished.cancelled) {
+                addMessage({
+                  id: `file-cancel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'TX',
+                  port_label: port,
+                  data: new Uint8Array(),
+                  timestamp: Date.now(),
+                  text: i18n.t('terminal.fileSendCancelled', {
+                    name,
+                    sent: formatBytes(finished.sent),
+                    total: formatBytes(size),
+                  }),
+                });
+                throw new Error('File send cancelled');
+              } else {
+                const avgBps = elapsedSec > 0 ? size / elapsedSec : 0;
+                addMessage({
+                  id: `file-summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'TX',
+                  port_label: port,
+                  data: new Uint8Array(),
+                  timestamp: Date.now(),
+                  text: i18n.t('terminal.fileSentV2', {
+                    name,
+                    sent: formatBytes(finished.sent),
+                    total: formatBytes(size),
+                    elapsed: elapsedSec.toFixed(1),
+                    rate: formatBytes(avgBps),
+                  }),
+                });
+              }
             }
 
             addLog('info', `Quick sent file: ${name} (${size} bytes)`);
           } else if (cmd.fileData.base64) {
-            // 旧模式兼容：前端解码 base64 分包发送
+            // 旧模式兼容：前端解码 base64 分包广播发送
             const fileBytes = Uint8Array.from(atob(cmd.fileData.base64), (c) => c.charCodeAt(0));
             const { filePacketSize, filePacketInterval } = useSettingsStore.getState();
             const chunkSize = filePacketSize > 0 ? filePacketSize : fileBytes.length;
 
-            // 分包发送（不校验响应）
+            // 分包发送（不校验响应，广播模式下每包对所有端口各发一次）
             for (let i = 0; i < fileBytes.length; i += chunkSize) {
               const chunk = fileBytes.slice(i, i + chunkSize);
 
-              // 乐观渲染：先显示 TX 再发送
-              const txTimestamp = Date.now();
-              addMessage({
-                id: `tx_${txTimestamp}_${i}`,
-                type: 'TX',
-                port_label: effectivePort,
-                data: chunk,
-                timestamp: txTimestamp,
-                text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
-              });
+              for (const port of broadcastPorts) {
+                // 乐观渲染：先显示 TX 再发送
+                const txTimestamp = Date.now();
+                addMessage({
+                  id: `tx_${txTimestamp}_${i}_${port}`,
+                  type: 'TX',
+                  port_label: port,
+                  data: chunk,
+                  timestamp: txTimestamp,
+                  text: `[File ${cmd.fileData.name} chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(fileBytes.length / chunkSize)}]`,
+                });
 
-              await writeSerial(effectivePort, chunk);
+                await writeSerial(port, chunk);
+              }
 
               // 包间延时（最后一包无需等待）
               if (i + chunkSize < fileBytes.length && filePacketInterval > 0) {
@@ -1666,18 +1728,20 @@ export function useTestExecution() {
           const fullContent = appendLineEnding(content, cmd.lineEnding);
           const data = textToBytes(fullContent, cmd.dataFormat);
 
-          // 乐观渲染：先显示 TX 再发送
-          const txTimestamp = Date.now();
-          addMessage({
-            id: `tx_${txTimestamp}`,
-            type: 'TX',
-            port_label: effectivePort,
-            data,
-            timestamp: txTimestamp,
-            text: new TextDecoder().decode(data),
-          });
+          // 广播：每个目标端口各发一份并回显 TX
+          for (const port of broadcastPorts) {
+            const txTimestamp = Date.now();
+            addMessage({
+              id: `tx_${txTimestamp}_${port}`,
+              type: 'TX',
+              port_label: port,
+              data,
+              timestamp: txTimestamp,
+              text: new TextDecoder().decode(data),
+            });
 
-          await writeSerial(effectivePort, data);
+            await writeSerial(port, data);
+          }
 
           addLog('info', `Quick sent: ${content}`);
         }

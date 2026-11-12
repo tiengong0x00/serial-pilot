@@ -21,6 +21,7 @@ export function useTestCaseFiles() {
 
   // currentFile 从全局 store 读取（组件重挂载时自动恢复）
   const currentFile = useTestCaseStore((s) => s.currentFile);
+  const currentFilePath = useTestCaseStore((s) => s.currentFilePath);
   const setCurrentFile = useTestCaseStore((s) => s.setCurrentFile);
 
   // 列出所有用例文件
@@ -45,7 +46,7 @@ export function useTestCaseFiles() {
     setError('');
     try {
       const json = await invoke<string>('load_test_case_file', { filename });
-      setCurrentFile(filename);
+      setCurrentFile(filename, null); // 内部文件，不设置完整路径
       return json;
     } catch (e) {
       setError(String(e));
@@ -53,7 +54,7 @@ export function useTestCaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setCurrentFile]);
 
   // 保存文件内容
   const saveFile = useCallback(async (filename: string, content: string): Promise<boolean> => {
@@ -61,7 +62,7 @@ export function useTestCaseFiles() {
     setError('');
     try {
       await invoke('save_test_case_file', { filename, content });
-      setCurrentFile(filename);
+      setCurrentFile(filename, null); // 内部文件，不设置完整路径
       await refreshFiles(); // 刷新文件列表
       return true;
     } catch (e) {
@@ -70,7 +71,7 @@ export function useTestCaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, [refreshFiles]);
+  }, [refreshFiles, setCurrentFile]);
 
   // 删除文件
   const deleteFile = useCallback(async (filename: string): Promise<boolean> => {
@@ -79,7 +80,7 @@ export function useTestCaseFiles() {
     try {
       await invoke('delete_test_case_file', { filename });
       if (currentFile === filename) {
-        setCurrentFile(null);
+        setCurrentFile(null, null);
       }
       await refreshFiles(); // 刷新文件列表
       return true;
@@ -89,7 +90,7 @@ export function useTestCaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, [currentFile, refreshFiles]);
+  }, [currentFile, refreshFiles, setCurrentFile]);
 
   // 重命名文件
   const renameFile = useCallback(async (oldName: string, newName: string): Promise<boolean> => {
@@ -98,7 +99,7 @@ export function useTestCaseFiles() {
     try {
       await invoke('rename_test_case_file', { oldName, newName });
       if (currentFile === oldName) {
-        setCurrentFile(newName);
+        setCurrentFile(newName, null);
       }
       await refreshFiles(); // 刷新文件列表
       return true;
@@ -108,7 +109,26 @@ export function useTestCaseFiles() {
     } finally {
       setLoading(false);
     }
-  }, [currentFile, refreshFiles]);
+  }, [currentFile, refreshFiles, setCurrentFile]);
+
+  // 保存到外部路径（完整路径）
+  const saveToExternalPath = useCallback(async (fullPath: string, content: string): Promise<boolean> => {
+    setLoading(true);
+    setError('');
+    try {
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      await writeTextFile(fullPath, content);
+      // 提取文件名
+      const filename = fullPath.split(/[\\/]/).pop() || 'external.json';
+      setCurrentFile(filename, fullPath); // 保存完整路径
+      return true;
+    } catch (e) {
+      setError(String(e));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [setCurrentFile]);
 
   // 首次挂载自动刷新文件列表
   useEffect(() => {
@@ -118,11 +138,13 @@ export function useTestCaseFiles() {
   return {
     files,
     currentFile,
+    currentFilePath,
     loading,
     error,
     refreshFiles,
     loadFile,
     saveFile,
+    saveToExternalPath,
     deleteFile,
     renameFile,
   };

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock, FileDiff, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Send, Trash2, Columns2, FileUp, X, Download, Square, Clock, FileDiff, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -25,7 +25,6 @@ import type { HighlightRule } from "@/types/terminal";
 
 type DisplayFormat = "text" | "hex";
 type LineFeed = "none" | "lf" | "cr" | "crlf";
-type TerminalMode = "merged" | "split"; // 合并显示 / 左右分栏
 type SendTarget = "P1" | "P2" | "ALL"; // 发送目标
 
 const LINE_FEED_MAP: Record<LineFeed, string> = {
@@ -36,11 +35,12 @@ const LINE_FEED_MAP: Record<LineFeed, string> = {
 };
 
 // localStorage 键
-const STORAGE_KEY_MODE = "serial_terminal_mode";
+const STORAGE_KEY_DUAL_TERMINAL = "serial_dual_terminal_enabled";
 const STORAGE_KEY_TARGET = "serial_terminal_target";
 
-function getStoredMode(): TerminalMode {
-  return (localStorage.getItem(STORAGE_KEY_MODE) as TerminalMode) || "merged";
+function getStoredDualTerminal(): boolean {
+  const stored = localStorage.getItem(STORAGE_KEY_DUAL_TERMINAL);
+  return stored === "true"; // 默认 false（单终端）
 }
 
 function getStoredTarget(): SendTarget {
@@ -486,7 +486,7 @@ const DataTerminal = () => {
   }, [hexMode, textToHex]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-  const [terminalMode, setTerminalMode] = useState<TerminalMode>(getStoredMode);
+  const [dualTerminalEnabled, setDualTerminalEnabled] = useState<boolean>(getStoredDualTerminal);
   const [sendTarget, setSendTarget] = useState<SendTarget>(getStoredTarget);
 
   // 文件发送相关
@@ -510,18 +510,25 @@ const DataTerminal = () => {
   const autoSendActiveRef = useRef(false); // 串行循环运行标志
 
   // 右键菜单
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: 'output' | 'input' } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: 'output' | 'input'; portLabel?: PortLabel } | null>(null);
 
   const isConnected = connectionStatus.p1_connected || connectionStatus.p2_connected;
 
-  // 分栏模式仅在 P2 连接时生效，否则强制合并显示
-  const effectiveMode: TerminalMode = connectionStatus.p2_connected ? terminalMode : "merged";
-
-  // 端口标识仅在 P1、P2 同时连接时显示
-  const showPortLabel = connectionStatus.p1_connected && connectionStatus.p2_connected;
+  // 端口标识仅在合并显示（单终端）且双串口同时连接时显示
+  const showPortLabel = !dualTerminalEnabled && connectionStatus.p1_connected && connectionStatus.p2_connected;
 
   // P1/P2 数据对比弹窗
   const [diffDialogOpen, setDiffDialogOpen] = useState(false);
+
+  // 记录双终端是否由用户手动控制过（用于避免自动激活覆盖用户选择）
+  const userControlledDualTerminal = useRef(false);
+
+  // 双串口连接时自动激活双终端（仅在用户未手动控制过时）
+  useEffect(() => {
+    if (connectionStatus.p1_connected && connectionStatus.p2_connected && !dualTerminalEnabled && !userControlledDualTerminal.current) {
+      setDualTerminalEnabled(true);
+    }
+  }, [connectionStatus.p1_connected, connectionStatus.p2_connected, dualTerminalEnabled]);
 
   // 智能切换发送目标：任一端口断开时，自动切到仍连接的端口
   useEffect(() => {
@@ -535,10 +542,10 @@ const DataTerminal = () => {
     }
   }, [connectionStatus.p1_connected, connectionStatus.p2_connected, sendTarget]);
 
-  // 保存模式和目标到 localStorage
+  // 保存双终端开关和发送目标到 localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_MODE, terminalMode);
-  }, [terminalMode]);
+    localStorage.setItem(STORAGE_KEY_DUAL_TERMINAL, String(dualTerminalEnabled));
+  }, [dualTerminalEnabled]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_TARGET, sendTarget);
@@ -612,8 +619,8 @@ const DataTerminal = () => {
   // - 每次都弹出对话框选择保存位置
   // - 首次：默认路径为工具启动目录下的 logs/
   // - 后续：默认路径为上次选择的目录
-  // - 合并模式 / 单串口：导出全部消息到一个文件
-  // - 分栏模式（P1+P2 都连接）：P1、P2 各导出一个文件到同一目录
+  // - 单终端模式 / 单串口：导出全部消息到一个文件
+  // - 双终端模式（P1+P2 都连接）：P1、P2 各导出一个文件到同一目录
   const handleExport = useCallback(async () => {
     if (messages.length === 0) return;
 
@@ -630,8 +637,8 @@ const DataTerminal = () => {
         defaultDir = `${launchDir}/logs`;
       }
 
-      // 生成默认文件名
-      const defaultFilename = generateLogFilename(effectiveMode === "split" ? "P1" : undefined);
+      // 生成默认文件名（双终端模式也不带 P1 后缀）
+      const defaultFilename = generateLogFilename(undefined);
 
       // 弹出保存对话框
       const selectedPath = await save({
@@ -644,49 +651,105 @@ const DataTerminal = () => {
 
       if (!selectedPath) return; // 用户取消
 
-      // 提取并记住目录
+      // 提取目录和用户选择的文件名
       const pathObj = selectedPath.replace(/\\/g, '/');
       const exportDir = pathObj.substring(0, pathObj.lastIndexOf('/'));
+      const selectedFilename = pathObj.substring(pathObj.lastIndexOf('/') + 1);
       setLastExportDir(exportDir);
 
       // 执行导出
-      if (effectiveMode === "split") {
-        // 分栏模式：分别导出 P1 和 P2 到同一目录
-        const p1 = messages.filter((m) => m.port_label === "P1");
-        const p2 = messages.filter((m) => m.port_label === "P2");
+      // 判断是否真的有双串口数据（P1 和 P2 都有消息）
+      const p1Messages = messages.filter((m) => m.port_label === "P1");
+      const p2Messages = messages.filter((m) => m.port_label === "P2");
+      const hasDualPortData = p1Messages.length > 0 && p2Messages.length > 0;
+
+      if (dualTerminalEnabled && hasDualPortData) {
+        // 双终端模式 + 双串口都有数据：分别导出 P1 和 P2 到同一目录
+        // 用户输入的文件名自动加 -P1 和 -P2 后缀
         let count = 0;
         let lastPath = "";
 
-        if (p1.length > 0) {
-          const filename = generateLogFilename("P1");
-          lastPath = await saveLogToPath(exportDir, filename, formatMessagesToText(p1, false));
-          count++;
-        }
-        if (p2.length > 0) {
-          const filename = generateLogFilename("P2");
-          lastPath = await saveLogToPath(exportDir, filename, formatMessagesToText(p2, false));
-          count++;
-        }
+        // 提取文件名和扩展名
+        const dotIndex = selectedFilename.lastIndexOf('.');
+        const baseName = dotIndex > 0 ? selectedFilename.substring(0, dotIndex) : selectedFilename;
+        const extension = dotIndex > 0 ? selectedFilename.substring(dotIndex) : '';
+
+        // P1 在文件名后加 -P1
+        const p1Filename = baseName + '-P1' + extension;
+        lastPath = await saveLogToPath(exportDir, p1Filename, formatMessagesToText(p1Messages, false));
+        count++;
+
+        // P2 在文件名后加 -P2
+        const p2Filename = baseName + '-P2' + extension;
+        lastPath = await saveLogToPath(exportDir, p2Filename, formatMessagesToText(p2Messages, false));
+        count++;
 
         success(t("terminal.exportSuccess", { count }), { toast: true, log: true });
         if (lastPath) success(lastPath, { toast: false, log: true });
       } else {
-        // 合并模式 / 单串口：一个文件
-        const filename = generateLogFilename();
-        const path = await saveLogToPath(exportDir, filename, formatMessagesToText(messages, showPortLabel));
+        // 单终端模式 / 单串口 / 双终端但只有单串口数据：使用用户选择的文件名导出全部
+        const path = await saveLogToPath(exportDir, selectedFilename, formatMessagesToText(messages, showPortLabel));
         success(t("terminal.exportSuccess", { count: 1 }), { toast: true, log: true });
         success(path, { toast: false, log: true });
       }
     } catch (e) {
       notifyError(`${t("terminal.exportFailed")}: ${String(e)}`, { toast: true, log: true });
     }
-  }, [messages, effectiveMode, showPortLabel, success, notifyError, t]);
+  }, [messages, dualTerminalEnabled, showPortLabel, success, notifyError, t]);
 
-  // 右键菜单处理
-  const handleOutputContextMenu = useCallback((e: React.MouseEvent) => {
+  // 导出单个端口的日志（用于分栏模式右键菜单）
+  // 仅导出指定端口的消息到一个文件，文件名带端口后缀
+  const handleExportSingle = useCallback(async (portLabel: PortLabel) => {
+    const portMessages = messages.filter((m) => m.port_label === portLabel);
+    if (portMessages.length === 0) return;
+
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { lastExportDir, setLastExportDir } = useSettingsStore.getState();
+
+      // 确定默认目录：上次选择的目录 或 启动目录/logs
+      let defaultDir: string;
+      if (lastExportDir) {
+        defaultDir = lastExportDir;
+      } else {
+        const launchDir = await getLaunchDir();
+        defaultDir = `${launchDir}/logs`;
+      }
+
+      // 生成默认文件名（带端口后缀）
+      const defaultFilename = generateLogFilename(portLabel);
+
+      // 弹出保存对话框
+      const selectedPath = await save({
+        defaultPath: `${defaultDir}/${defaultFilename}`,
+        filters: [{
+          name: 'Text',
+          extensions: ['txt', 'log']
+        }]
+      });
+
+      if (!selectedPath) return; // 用户取消
+
+      // 提取目录和用户选择的文件名
+      const pathObj = selectedPath.replace(/\\/g, '/');
+      const exportDir = pathObj.substring(0, pathObj.lastIndexOf('/'));
+      const selectedFilename = pathObj.substring(pathObj.lastIndexOf('/') + 1);
+      setLastExportDir(exportDir);
+
+      // 导出指定端口的消息（不带端口标签，因为文件名已区分）
+      const path = await saveLogToPath(exportDir, selectedFilename, formatMessagesToText(portMessages, false));
+      success(t("terminal.exportSuccess", { count: 1 }), { toast: true, log: true });
+      success(path, { toast: false, log: true });
+    } catch (e) {
+      notifyError(`${t("terminal.exportFailed")}: ${String(e)}`, { toast: true, log: true });
+    }
+  }, [messages, success, notifyError, t]);
+
+  // 右键菜单处理（portLabel 标识右键来自哪个终端栏，用于分栏模式单端口导出）
+  const handleOutputContextMenu = useCallback((e: React.MouseEvent, portLabel?: PortLabel) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, target: 'output' });
+    setContextMenu({ x: e.clientX, y: e.clientY, target: 'output', portLabel });
   }, []);
 
   const handleInputContextMenu = useCallback((e: React.MouseEvent) => {
@@ -701,6 +764,9 @@ const DataTerminal = () => {
     if (contextMenu.target === 'output') {
       // 输出区域菜单
       const hasSelection = (window.getSelection()?.toString().length ?? 0) > 0;
+      // 分栏模式下，右键来自某个端口栏，导出该端口的日志；否则导出全部
+      const isDualPort = !!contextMenu.portLabel;
+      const exportMessages = isDualPort ? messages.filter((m) => m.port_label === contextMenu.portLabel) : messages;
       return [
         {
           label: t("terminal.menuCopy"),
@@ -719,8 +785,14 @@ const DataTerminal = () => {
         },
         {
           label: t("terminal.menuExportLog"),
-          disabled: messages.length === 0,
-          onClick: handleExport,
+          disabled: exportMessages.length === 0,
+          onClick: () => {
+            if (isDualPort && contextMenu.portLabel) {
+              void handleExportSingle(contextMenu.portLabel);
+            } else {
+              void handleExport();
+            }
+          },
         },
         {
           label: t("terminal.menuClear"),
@@ -790,7 +862,7 @@ const DataTerminal = () => {
         },
       ];
     }
-  }, [contextMenu, messages.length, input, handleExport, clearMessages, success, notifyError]);
+  }, [contextMenu, messages, input, handleExport, handleExportSingle, clearMessages, success, notifyError]);
 
   const handleSend = useCallback(async (opts?: { record?: boolean }) => {
     if (!input) {
@@ -1313,30 +1385,6 @@ const DataTerminal = () => {
           </button>
         </div>
 
-        {/* 模式切换（仅 P2 连接时显示） */}
-        {connectionStatus.p2_connected && (
-          <div className="flex items-center rounded-md border border-border overflow-hidden">
-            <button
-              type="button"
-              className={`px-2.5 py-1 text-xs inline-flex items-center gap-1 ${terminalMode === "merged" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
-              onClick={() => setTerminalMode("merged")}
-              title={t("terminal.modeMerged")}
-            >
-              <Rows2 className="w-3 h-3" />
-              {t("terminal.modeMerged")}
-            </button>
-            <button
-              type="button"
-              className={`px-2.5 py-1 text-xs inline-flex items-center gap-1 ${terminalMode === "split" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
-              onClick={() => setTerminalMode("split")}
-              title={t("terminal.modeSplit")}
-            >
-              <Columns2 className="w-3 h-3" />
-              {t("terminal.modeSplit")}
-            </button>
-          </div>
-        )}
-
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
@@ -1358,6 +1406,19 @@ const DataTerminal = () => {
           title={t("terminal.toggleTimestamp")}
         >
           <Clock className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          className={`h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary transition-colors ${
+            dualTerminalEnabled ? "text-primary" : ""
+          }`}
+          onClick={() => {
+            userControlledDualTerminal.current = true; // 标记用户手动控制
+            setDualTerminalEnabled(!dualTerminalEnabled);
+          }}
+          title={t("terminal.toggleDualTerminal")}
+        >
+          <Columns2 className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
@@ -1421,8 +1482,8 @@ const DataTerminal = () => {
       )}
 
       {/* 消息显示区（虚拟滚动，支持大数据量） */}
-      {effectiveMode === "merged" ? (
-        // 合并模式：所有消息按时间排列，用端口标签区分
+      {!dualTerminalEnabled ? (
+        // 单终端模式：所有消息按时间排列，仅在双串口时显示端口标签
         <VirtualTerminalView
           messages={messages}
           format={format}
@@ -1436,7 +1497,7 @@ const DataTerminal = () => {
           scrollToken={scrollToken}
         />
       ) : (
-        // 分栏模式：P1 左、P2 右，独立滚动
+        // 双终端模式：P1 左、P2 右，独立滚动
         <div className="flex-1 min-h-0 flex">
           <div className="flex-1 flex flex-col min-w-0 border-r border-border/50">
             <div className="px-3 py-1 text-xs font-medium border-b border-border/30 bg-muted/20">
@@ -1448,7 +1509,7 @@ const DataTerminal = () => {
               showPort={false}
               autoScroll={autoScroll}
               style={terminalStyle}
-              onContextMenu={handleOutputContextMenu}
+              onContextMenu={(e) => handleOutputContextMenu(e, "P1")}
               showTimestamp={showTimestamp}
               searchQuery={searchOpen ? searchQuery : ""}
               activeMatchId={activeMatchId}
@@ -1465,7 +1526,7 @@ const DataTerminal = () => {
               showPort={false}
               autoScroll={autoScroll}
               style={terminalStyle}
-              onContextMenu={handleOutputContextMenu}
+              onContextMenu={(e) => handleOutputContextMenu(e, "P2")}
               showTimestamp={showTimestamp}
               searchQuery={searchOpen ? searchQuery : ""}
               activeMatchId={activeMatchId}
