@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Trash2, Columns2, FileUp, X, Download, Square, Clock, FileDiff, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Send, Trash2, Columns2, Rows2, FileUp, X, Download, Square, Clock, FileDiff, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -25,6 +25,7 @@ import type { HighlightRule } from "@/types/terminal";
 
 type DisplayFormat = "text" | "hex";
 type LineFeed = "none" | "lf" | "cr" | "crlf";
+type TerminalMode = "merged" | "split"; // 合并显示 / 左右分栏
 type SendTarget = "P1" | "P2" | "ALL"; // 发送目标
 
 const LINE_FEED_MAP: Record<LineFeed, string> = {
@@ -36,11 +37,16 @@ const LINE_FEED_MAP: Record<LineFeed, string> = {
 
 // localStorage 键
 const STORAGE_KEY_DUAL_TERMINAL = "serial_dual_terminal_enabled";
+const STORAGE_KEY_MODE = "serial_terminal_mode";
 const STORAGE_KEY_TARGET = "serial_terminal_target";
 
 function getStoredDualTerminal(): boolean {
   const stored = localStorage.getItem(STORAGE_KEY_DUAL_TERMINAL);
   return stored === "true"; // 默认 false（单终端）
+}
+
+function getStoredMode(): TerminalMode {
+  return (localStorage.getItem(STORAGE_KEY_MODE) as TerminalMode) || "merged";
 }
 
 function getStoredTarget(): SendTarget {
@@ -487,6 +493,7 @@ const DataTerminal = () => {
   const [autoScroll, setAutoScroll] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [dualTerminalEnabled, setDualTerminalEnabled] = useState<boolean>(getStoredDualTerminal);
+  const [terminalMode, setTerminalMode] = useState<TerminalMode>(getStoredMode);
   const [sendTarget, setSendTarget] = useState<SendTarget>(getStoredTarget);
 
   // 文件发送相关
@@ -514,8 +521,8 @@ const DataTerminal = () => {
 
   const isConnected = connectionStatus.p1_connected || connectionStatus.p2_connected;
 
-  // 端口标识仅在合并显示（单终端）且双串口同时连接时显示
-  const showPortLabel = !dualTerminalEnabled && connectionStatus.p1_connected && connectionStatus.p2_connected;
+  // 端口标识显示策略：双终端模式 + 合并显示 + 双串口连接时显示
+  const showPortLabel = dualTerminalEnabled && terminalMode === "merged" && connectionStatus.p1_connected && connectionStatus.p2_connected;
 
   // P1/P2 数据对比弹窗
   const [diffDialogOpen, setDiffDialogOpen] = useState(false);
@@ -542,10 +549,14 @@ const DataTerminal = () => {
     }
   }, [connectionStatus.p1_connected, connectionStatus.p2_connected, sendTarget]);
 
-  // 保存双终端开关和发送目标到 localStorage
+  // 保存双终端开关、终端模式和发送目标到 localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_DUAL_TERMINAL, String(dualTerminalEnabled));
   }, [dualTerminalEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_MODE, terminalMode);
+  }, [terminalMode]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_TARGET, sendTarget);
@@ -658,13 +669,13 @@ const DataTerminal = () => {
       setLastExportDir(exportDir);
 
       // 执行导出
-      // 判断是否真的有双串口数据（P1 和 P2 都有消息）
+      // 判断是否为左右分栏模式 + 真的有双串口数据（P1 和 P2 都有消息）
       const p1Messages = messages.filter((m) => m.port_label === "P1");
       const p2Messages = messages.filter((m) => m.port_label === "P2");
       const hasDualPortData = p1Messages.length > 0 && p2Messages.length > 0;
 
-      if (dualTerminalEnabled && hasDualPortData) {
-        // 双终端模式 + 双串口都有数据：分别导出 P1 和 P2 到同一目录
+      if (dualTerminalEnabled && terminalMode === "split" && hasDualPortData) {
+        // 左右分栏模式 + 双串口都有数据：分别导出 P1 和 P2 到同一目录
         // 用户输入的文件名自动加 -P1 和 -P2 后缀
         let count = 0;
         let lastPath = "";
@@ -687,7 +698,7 @@ const DataTerminal = () => {
         success(t("terminal.exportSuccess", { count }), { toast: true, log: true });
         if (lastPath) success(lastPath, { toast: false, log: true });
       } else {
-        // 单终端模式 / 单串口 / 双终端但只有单串口数据：使用用户选择的文件名导出全部
+        // 其他模式（不显示P2栏 / 合并显示）：使用用户选择的文件名导出全部
         const path = await saveLogToPath(exportDir, selectedFilename, formatMessagesToText(messages, showPortLabel));
         success(t("terminal.exportSuccess", { count: 1 }), { toast: true, log: true });
         success(path, { toast: false, log: true });
@@ -695,7 +706,7 @@ const DataTerminal = () => {
     } catch (e) {
       notifyError(`${t("terminal.exportFailed")}: ${String(e)}`, { toast: true, log: true });
     }
-  }, [messages, dualTerminalEnabled, showPortLabel, success, notifyError, t]);
+  }, [messages, dualTerminalEnabled, terminalMode, showPortLabel, success, notifyError, t]);
 
   // 导出单个端口的日志（用于分栏模式右键菜单）
   // 仅导出指定端口的消息到一个文件，文件名带端口后缀
@@ -1385,6 +1396,30 @@ const DataTerminal = () => {
           </button>
         </div>
 
+        {/* 模式切换（仅双终端开启时显示） */}
+        {dualTerminalEnabled && (
+          <div className="flex items-center rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              className={`px-2.5 py-1 text-xs inline-flex items-center gap-1 ${terminalMode === "merged" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+              onClick={() => setTerminalMode("merged")}
+              title={t("terminal.modeMerged")}
+            >
+              <Rows2 className="w-3 h-3" />
+              {t("terminal.modeMerged")}
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1 text-xs inline-flex items-center gap-1 ${terminalMode === "split" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+              onClick={() => setTerminalMode("split")}
+              title={t("terminal.modeSplit")}
+            >
+              <Columns2 className="w-3 h-3" />
+              {t("terminal.modeSplit")}
+            </button>
+          </div>
+        )}
+
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
@@ -1420,6 +1455,7 @@ const DataTerminal = () => {
         >
           <Columns2 className="w-3.5 h-3.5" />
         </button>
+
         <button
           type="button"
           className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:text-primary disabled:opacity-50 transition-colors"
@@ -1483,7 +1519,21 @@ const DataTerminal = () => {
 
       {/* 消息显示区（虚拟滚动，支持大数据量） */}
       {!dualTerminalEnabled ? (
-        // 单终端模式：所有消息按时间排列，仅在双串口时显示端口标签
+        // 模式 1：不显示 P2 栏 → 只显示 P1 消息
+        <VirtualTerminalView
+          messages={p1Messages}
+          format={format}
+          showPort={false}
+          autoScroll={autoScroll}
+          style={terminalStyle}
+          onContextMenu={handleOutputContextMenu}
+          showTimestamp={showTimestamp}
+          searchQuery={searchOpen ? searchQuery : ""}
+          activeMatchId={activeMatchId}
+          scrollToken={scrollToken}
+        />
+      ) : terminalMode === "merged" ? (
+        // 模式 2：双终端 + 合并显示 → 所有消息按时间排列，带端口标签
         <VirtualTerminalView
           messages={messages}
           format={format}
@@ -1497,7 +1547,7 @@ const DataTerminal = () => {
           scrollToken={scrollToken}
         />
       ) : (
-        // 双终端模式：P1 左、P2 右，独立滚动
+        // 模式 3：双终端 + 左右分栏 → P1 左、P2 右，独立滚动
         <div className="flex-1 min-h-0 flex">
           <div className="flex-1 flex flex-col min-w-0 border-r border-border/50">
             <div className="px-3 py-1 text-xs font-medium border-b border-border/30 bg-muted/20">
