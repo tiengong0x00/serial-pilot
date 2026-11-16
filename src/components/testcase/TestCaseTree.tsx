@@ -9,7 +9,6 @@ import {
   Play,
   Pause,
 } from 'lucide-react';
-import { AtCommandIcon, UrcIcon, ScriptIcon } from '@/components/icons/CommandTypeIcons';
 import {
   DndContext,
   closestCenter,
@@ -113,18 +112,6 @@ function StatusIcon({ status, isPaused }: { status: StatusValue; isPaused?: bool
       return <ChevronRight className="h-3.5 w-3.5 text-status-skipped" />;
     default:
       return <Clock className="h-3.5 w-3.5 text-status-idle" />;
-  }
-}
-
-// 命令类型对应的图标组件（统一图标，无徽章标识）
-function CommandTypeIcon({ type }: { type: TestCommand['type'] }) {
-  switch (type) {
-    case 'urc-guard':
-      return <UrcIcon />;
-    case 'script':
-      return <ScriptIcon />;
-    default:
-      return <AtCommandIcon />;
   }
 }
 
@@ -281,15 +268,15 @@ function DraggableCommandRow({
       }}
     >
       <button
-        className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+        className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity"
         {...attributes}
         {...listeners}
         onClick={(e) => e.stopPropagation()}
       >
         <GripVertical style={{ width: iconSize, height: iconSize }} />
       </button>
-      <CommandTypeIcon type={cmd.type} />
-      <StatusIcon status={cmd.status} isPaused={isPaused} />
+      {/* 状态图标：仅在非空闲状态时显示 */}
+      {cmd.status !== 'pending' && <StatusIcon status={cmd.status} isPaused={isPaused} />}
       {editing ? (
         <input
           ref={inputRef}
@@ -335,6 +322,17 @@ function DraggableCommandRow({
           }}
         >
           {commandLabel(cmd, t)}
+        </span>
+      )}
+      {/* 命令类型标签：URC 和脚本用小标签标注 */}
+      {cmd.type === 'urc-guard' && (
+        <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded font-medium">
+          URC
+        </span>
+      )}
+      {cmd.type === 'script' && (
+        <span className="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 rounded font-medium">
+          {t('testCase.script')}
         </span>
       )}
       {onRun && (
@@ -474,7 +472,7 @@ function DraggableCaseNode(props: {
         }}
       >
         <button
-          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity"
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
@@ -501,8 +499,9 @@ function DraggableCaseNode(props: {
         )}
 
         <Folder style={{ width: iconSize, height: iconSize }} className="text-blue-500" />
-        <StatusIcon status={case_.status} isPaused={shared.isPaused} />
-        <span className={cn('flex-1 truncate', textSizeClass, !case_.selected && 'text-muted-foreground')}>
+        {/* 用例状态图标：仅在非空闲状态时显示 */}
+        {case_.status !== 'pending' && <StatusIcon status={case_.status} isPaused={shared.isPaused} />}
+        <span className={cn('flex-1 truncate font-semibold', textSizeClass, !case_.selected && 'text-muted-foreground')}>
           {case_.name}
         </span>
         {case_.runCount !== 1 && (
