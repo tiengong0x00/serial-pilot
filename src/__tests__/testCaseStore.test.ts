@@ -408,7 +408,7 @@ describe('testCaseStore', () => {
   });
 
   describe('moveChildRelative - 精确位置拖拽', () => {
-    it('问题1：应将命令拖到用例前面（before）实现同级混排', () => {
+    it('应将命令拖到用例前面（before）实现同级混排', () => {
       // 初始：|用例A |用例B |命令
       // 目标：|命令 |用例A |用例B（命令拖到用例A前）
       const root = createCase('根');
@@ -427,7 +427,7 @@ describe('testCaseStore', () => {
       expect((state.children[2] as TestCase).name).toBe('用例B');
     });
 
-    it('问题1变体：应将命令拖到用例之间（after）', () => {
+    it('应将命令拖到用例之间（after）', () => {
       // 初始：|用例A |用例B |命令
       // 目标：|用例A |命令 |用例B（命令拖到用例A后）
       const root = createCase('根');
@@ -446,7 +446,7 @@ describe('testCaseStore', () => {
       expect((state.children[2] as TestCase).name).toBe('用例B');
     });
 
-    it('问题2：应将嵌套子用例拖到父级旁边提升层级（after）', () => {
+    it('应将嵌套子用例拖到父级旁边提升层级（after）', () => {
       // 初始：|用例A -|用例B
       // 目标：|用例A |用例B（用例B提升，拖到用例A后）
       const root = createCase('根');

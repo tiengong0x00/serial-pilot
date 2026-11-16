@@ -520,7 +520,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       expect(updatedRoot.status).toBe('success');
     });
 
-    it('onFailure=goto 应跳转到目标命令（阶段3）', async () => {
+    it('onFailure=goto 应跳转到目标命令', async () => {
       const root = createRootCase('失败跳转');
       const cmd1 = mkCommand('AT');
       const cmd2 = mkCommand('FAIL');
@@ -568,7 +568,7 @@ describe('useTestExecution Hook (递归模型)', () => {
       expect(sentData).not.toContain('AT+GMR');
     });
 
-    it('onFailure=goto 目标失效应兜底继续（阶段3）', async () => {
+    it('onFailure=goto 目标失效应兜底继续', async () => {
       const root = createRootCase('失败跳转兜底');
       const cmd1 = mkCommand('FAIL');
       const cmd2 = mkCommand('AT+GMR');
@@ -605,7 +605,7 @@ describe('useTestExecution Hook (递归模型)', () => {
     });
   });
 
-  describe('URC 守护动作接线（阶段1）', () => {
+  describe('URC 守护动作接线', () => {
     /**
      * 在指定命令发送时注入守护触发，模拟 URC 命中。
      * once=true 时只注入一次，避免 restart-round 等动作导致的无限循环。
