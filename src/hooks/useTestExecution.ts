@@ -911,8 +911,8 @@ export function useTestExecution() {
 
       // 记录到测试报告
       try {
-        const rootCase = cases[0];
-        const testCaseName = rootCase?.name || 'Unknown';
+        // 用 statsRef 中存储的当前运行根用例名；单命令运行时回退到 cases[0]
+        const testCaseName = statsRef.current.rootCaseName || cases[0]?.name || 'Unknown';
 
         await recordTestCommand({
           testCaseName,
