@@ -449,6 +449,47 @@ const DataTerminal = () => {
   // 进入历史浏览前暂存的用户草稿，退回底部时恢复
   const historyDraftRef = useRef("");
 
+  // 历史命令列表面板（Ctrl+↑ 触发）
+  const [historyListOpen, setHistoryListOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState("");
+  const [historyListIndex, setHistoryListIndex] = useState(0);
+  const historySearchRef = useRef<HTMLInputElement>(null);
+  const historyItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // 过滤后的历史列表
+  const filteredHistory = useMemo(() => {
+    const q = historyFilter.trim().toLowerCase();
+    if (!q) return commandHistory;
+    return commandHistory.filter(cmd => cmd.toLowerCase().includes(q));
+  }, [commandHistory, historyFilter]);
+
+  // 选中一条历史命令：写入输入框并关闭面板
+  const selectHistoryItem = useCallback((cmd: string) => {
+    setInput(cmd);
+    historyIndexRef.current = -1;
+    setHistoryListOpen(false);
+    setHistoryFilter("");
+    setHistoryListIndex(0);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(cmd.length, cmd.length);
+    });
+  }, []);
+
+  // 历史列表打开时自动聚焦搜索框
+  useEffect(() => {
+    if (historyListOpen) {
+      requestAnimationFrame(() => historySearchRef.current?.focus());
+    }
+  }, [historyListOpen]);
+
+  // 选中项变化时自动滚动到可见区域
+  useEffect(() => {
+    if (historyListOpen && historyListIndex >= 0) {
+      historyItemRefs.current[historyListIndex]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [historyListOpen, historyListIndex]);
+
   // 文本转十六进制
   const textToHex = useCallback((text: string): string => {
     if (!text) return '';
@@ -1087,6 +1128,17 @@ const DataTerminal = () => {
   // 输入框键盘处理：候选面板打开时拦截导航键
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Ctrl+↑：打开历史命令列表面板
+      if (e.key === "ArrowUp" && e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (commandHistory.length > 0) {
+          setHistoryListOpen(true);
+          setHistoryFilter("");
+          setHistoryListIndex(0);
+        }
+        return;
+      }
+
       // Tab：优先在占位符间跳转（选中态），否则补全
       if (e.key === "Tab" && !e.shiftKey) {
         const el = inputRef.current;
@@ -1201,7 +1253,7 @@ const DataTerminal = () => {
         void handleManualSend();
       }
     },
-    [autocomplete, applyCandidate, handleTabComplete, jumpNextPlaceholder, pendingFile, handleManualSend, enterToSend, input, commandHistory]
+    [autocomplete, applyCandidate, handleTabComplete, jumpNextPlaceholder, pendingFile, handleManualSend, enterToSend, input, commandHistory, historyListOpen, selectHistoryItem]
   );
 
   // 发送文件：下沉后端流式发送，前端只订阅进度事件刷新单行进度条。
@@ -1786,6 +1838,77 @@ const DataTerminal = () => {
             selectedIndex={autocomplete.selectedIndex}
             onSelect={applyCandidate}
           />
+
+          {/* 历史命令列表面板（Ctrl+↑ 触发） */}
+          {historyListOpen && (
+            <div className="absolute bottom-full mb-1 left-0 w-full bg-popover border border-border rounded-md shadow-lg overflow-hidden z-50">
+              {/* 搜索框 */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-secondary/20">
+                <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <input
+                  ref={historySearchRef}
+                  type="text"
+                  value={historyFilter}
+                  onChange={e => {
+                    setHistoryFilter(e.target.value);
+                    setHistoryListIndex(0);
+                  }}
+                  className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/60"
+                  placeholder={t("terminal.historySearchPlaceholder")}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setHistoryListOpen(false);
+                      setHistoryFilter("");
+                      requestAnimationFrame(() => inputRef.current?.focus());
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setHistoryListIndex(prev => Math.max(0, prev - 1));
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setHistoryListIndex(prev => Math.min(filteredHistory.length - 1, prev + 1));
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      const cmd = filteredHistory[historyListIndex];
+                      if (cmd !== undefined) selectHistoryItem(cmd);
+                    }
+                  }}
+                />
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {filteredHistory.length}
+                </span>
+              </div>
+              {/* 历史列表 */}
+              <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                {filteredHistory.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                    {t("terminal.historyEmpty")}
+                  </div>
+                ) : filteredHistory.map((cmd, idx) => (
+                  <button
+                    key={idx}
+                    ref={el => { historyItemRefs.current[idx] = el; }}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 text-sm font-mono border-b border-border/50 last:border-b-0 transition-colors truncate ${
+                      idx === historyListIndex ? "bg-primary/10 text-primary font-medium" : "hover:bg-secondary/60"
+                    }`}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => selectHistoryItem(cmd)}
+                    onMouseEnter={() => setHistoryListIndex(idx)}
+                  >
+                    {cmd}
+                  </button>
+                ))}
+              </div>
+              {/* 底部提示 */}
+              <div className="px-3 py-1.5 bg-secondary/30 text-xs text-muted-foreground border-t border-border flex gap-4">
+                <span>↑↓ {t("terminal.historyNavHint")}</span>
+                <span>Enter {t("terminal.historySelectHint")}</span>
+                <span>Esc {t("terminal.historyCloseHint")}</span>
+              </div>
+            </div>
+          )}
 
           <button
             type="button"
