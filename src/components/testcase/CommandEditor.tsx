@@ -4,6 +4,7 @@ import type { PortLabel } from '@/types/serial';
 import { useTranslation } from 'react-i18next';
 import { FileUp, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { AtAutocompleteInput } from '@/components/serial/AtAutocompleteInput';
+import { HexInput } from '@/components/testcase/HexInput';
 import { SaveCommandDialog } from '@/components/serial/SaveCommandDialog';
 import { useCommandLibrary } from '@/stores/commandLibraryStore';
 import { useTestCaseStore } from '@/stores/testCaseStore';
@@ -128,16 +129,52 @@ function StandardCommandFields({
 
   return (
     <>
+      {/* 数据格式选择器：置顶，因为它决定下面输入框的类型 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className={fieldCls}>
+          <label className={labelCls}>{t('testCase.dataFormat')}</label>
+          <select
+            className={inputCls}
+            value={command.dataFormat}
+            onChange={(e) => onChange({ dataFormat: e.target.value as 'utf8' | 'hex' })}
+          >
+            <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
+            <option value="hex">{t('testCase.dataFormatHex')}</option>
+          </select>
+        </div>
+        <div className={fieldCls}>
+          <label className={labelCls}>{t('testCase.lineEnding')}</label>
+          <select
+            className={inputCls}
+            value={command.lineEnding}
+            onChange={(e) => onChange({ lineEnding: e.target.value as StandardCommand['lineEnding'] })}
+          >
+            <option value="none">{t('testCase.lineEndingNone')}</option>
+            <option value="lf">{t('testCase.lineEndingLF')}</option>
+            <option value="cr">{t('testCase.lineEndingCR')}</option>
+            <option value="crlf">{t('testCase.lineEndingCRLF')}</option>
+          </select>
+        </div>
+      </div>
+
       <div className={fieldCls}>
         <label className={labelCls}>{t('testCase.commandContent')}</label>
-        <AtAutocompleteInput
-          value={command.content}
-          onChange={(val) => onChange({ content: val })}
-          placeholder={t('testCase.commandContentPlaceholder')}
-          triggerMode="at-prefix"
-          onFileDrop={handleFileDrop}
-          onCtrlS={(cmd) => setSaveDialogCommand(cmd)}
-        />
+        {command.dataFormat === 'hex' ? (
+          <HexInput
+            value={command.content}
+            onChange={(val) => onChange({ content: val })}
+            placeholder={t('testCase.commandContentHexPlaceholder')}
+          />
+        ) : (
+          <AtAutocompleteInput
+            value={command.content}
+            onChange={(val) => onChange({ content: val })}
+            placeholder={t('testCase.commandContentPlaceholder')}
+            triggerMode="at-prefix"
+            onFileDrop={handleFileDrop}
+            onCtrlS={(cmd) => setSaveDialogCommand(cmd)}
+          />
+        )}
         {/* 已关联文件：紧凑显示在输入框下方，无文件时不占空间 */}
         {command.fileData && (
           <div className="flex items-center gap-2 px-2 py-1 mt-1 bg-secondary/30 rounded text-xs border border-border/50">
@@ -171,33 +208,6 @@ function StandardCommandFields({
           onChange={(e) => onChange({ description: e.target.value })}
           placeholder={t('testCase.commandDescPlaceholder')}
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.dataFormat')}</label>
-          <select
-            className={inputCls}
-            value={command.dataFormat}
-            onChange={(e) => onChange({ dataFormat: e.target.value as 'utf8' | 'hex' })}
-          >
-            <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
-            <option value="hex">{t('testCase.dataFormatHex')}</option>
-          </select>
-        </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.lineEnding')}</label>
-          <select
-            className={inputCls}
-            value={command.lineEnding}
-            onChange={(e) => onChange({ lineEnding: e.target.value as StandardCommand['lineEnding'] })}
-          >
-            <option value="none">{t('testCase.lineEndingNone')}</option>
-            <option value="lf">{t('testCase.lineEndingLF')}</option>
-            <option value="cr">{t('testCase.lineEndingCR')}</option>
-            <option value="crlf">{t('testCase.lineEndingCRLF')}</option>
-          </select>
-        </div>
       </div>
 
       <div className={fieldCls}>
