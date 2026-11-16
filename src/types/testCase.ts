@@ -102,6 +102,7 @@ export interface StandardCommand extends BaseCommand {
   validation: ValidationType;
   validationPattern?: string;           // standard时不需要，custom时必需
   validationMode?: MatchMode;           // custom时的匹配方式
+  validationFormat?: DataFormat;        // 匹配内容格式（默认 utf8）
 
   // 变量提取
   extractConfig?: ExtractConfig;
@@ -136,6 +137,7 @@ export interface UrcGuardCommand extends BaseCommand {
 
   pattern: string;
   matchMode: MatchMode;
+  patternFormat?: DataFormat;           // 匹配模式格式（默认 utf8）
   scope: 'root' | 'case';               // 作用域：根级全程 / 用例级局部
   action: UrcGuardAction;               // 命中后动作
   rearm: 'once' | 'continuous';         // 触发后：停止监听 / 继续监听

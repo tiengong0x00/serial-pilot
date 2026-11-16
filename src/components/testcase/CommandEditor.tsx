@@ -291,13 +291,32 @@ function StandardCommandFields({
               </select>
             </div>
             <div className={fieldCls}>
+              <label className={labelCls}>{t('testCase.matchFormat')}</label>
+              <select
+                className={inputCls}
+                value={command.validationFormat || 'utf8'}
+                onChange={(e) => onChange({ validationFormat: e.target.value as 'utf8' | 'hex' })}
+              >
+                <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
+                <option value="hex">{t('testCase.dataFormatHex')}</option>
+              </select>
+            </div>
+            <div className={fieldCls}>
               <label className={labelCls}>{t('testCase.matchContent')}</label>
-              <input
-                className={`${inputCls} font-mono`}
-                value={command.validationPattern || ''}
-                onChange={(e) => onChange({ validationPattern: e.target.value })}
-                placeholder={t('testCase.matchContentPlaceholder')}
-              />
+              {(command.validationFormat || 'utf8') === 'hex' ? (
+                <HexInput
+                  value={command.validationPattern || ''}
+                  onChange={(val) => onChange({ validationPattern: val })}
+                  placeholder={t('testCase.matchContentHexPlaceholder')}
+                />
+              ) : (
+                <input
+                  className={`${inputCls} font-mono`}
+                  value={command.validationPattern || ''}
+                  onChange={(e) => onChange({ validationPattern: e.target.value })}
+                  placeholder={t('testCase.matchContentPlaceholder')}
+                />
+              )}
             </div>
           </>
         )}
@@ -392,12 +411,32 @@ function UrcGuardCommandFields({
     <>
       <div className={fieldCls}>
         <label className={labelCls}>{t('testCase.urcPattern')}</label>
-        <AtAutocompleteInput
-          value={command.pattern}
-          onChange={(val) => onChange({ pattern: val })}
-          placeholder={t('testCase.urcPatternPlaceholderGuard')}
-          triggerMode="always"
-        />
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <select
+              className={inputCls}
+              value={command.patternFormat || 'utf8'}
+              onChange={(e) => onChange({ patternFormat: e.target.value as 'utf8' | 'hex' })}
+            >
+              <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
+              <option value="hex">{t('testCase.dataFormatHex')}</option>
+            </select>
+          </div>
+        </div>
+        {(command.patternFormat || 'utf8') === 'hex' ? (
+          <HexInput
+            value={command.pattern}
+            onChange={(val) => onChange({ pattern: val })}
+            placeholder={t('testCase.urcPatternHexPlaceholder')}
+          />
+        ) : (
+          <AtAutocompleteInput
+            value={command.pattern}
+            onChange={(val) => onChange({ pattern: val })}
+            placeholder={t('testCase.urcPatternPlaceholderGuard')}
+            triggerMode="always"
+          />
+        )}
       </div>
 
       {/* 命令描述：置于匹配内容之后，与普通命令保持一致 */}

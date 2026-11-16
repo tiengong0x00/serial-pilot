@@ -21,6 +21,7 @@ import type {
   ExtractConfig,
   MatchMode,
   ValidationType,
+  DataFormat,
 } from '@/types/testCase';
 
 // ============ ID 生成 ============
@@ -699,6 +700,7 @@ export function validateResponse(
   validation: ValidationType,
   pattern?: string,
   mode: MatchMode = 'contains',
+  format: DataFormat = 'utf8',
 ): { valid: boolean; error?: string } {
   if (validation === 'none') return { valid: true };
 
@@ -709,23 +711,46 @@ export function validateResponse(
 
   // custom
   if (!pattern) return { valid: false, error: 'Missing validation pattern' };
-  return { valid: matchPattern(response, pattern, mode) };
+  return { valid: matchPattern(response, pattern, mode, format) };
 }
 
 /** 通用模式匹配（用于自定义校验和 URC 匹配） */
-export function matchPattern(data: string, pattern: string, mode: MatchMode): boolean {
+export function matchPattern(
+  data: string,
+  pattern: string,
+  mode: MatchMode,
+  format: DataFormat = 'utf8',
+): boolean {
+  // 如果 pattern 是 hex 格式，先转换为 UTF-8 字符串
+  let actualPattern = pattern;
+  if (format === 'hex') {
+    try {
+      const cleaned = pattern.replace(/\s/g, '');
+      // 检查是否为有效的 hex（偶数长度，只含 0-9A-Fa-f）
+      if (cleaned.length % 2 !== 0 || !/^[0-9A-Fa-f]*$/.test(cleaned)) {
+        return false;
+      }
+      const bytes = textToBytes(pattern, 'hex');
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      actualPattern = decoder.decode(bytes);
+    } catch {
+      // hex 解码失败，直接返回 false
+      return false;
+    }
+  }
+
   switch (mode) {
     case 'contains':
-      return data.includes(pattern);
+      return data.includes(actualPattern);
     case 'exact':
-      return data.trim() === pattern.trim();
+      return data.trim() === actualPattern.trim();
     case 'startsWith':
-      return data.trimStart().startsWith(pattern);
+      return data.trimStart().startsWith(actualPattern);
     case 'endsWith':
-      return data.trimEnd().endsWith(pattern);
+      return data.trimEnd().endsWith(actualPattern);
     case 'regex':
       try {
-        return new RegExp(pattern).test(data);
+        return new RegExp(actualPattern).test(data);
       } catch {
         return false;
       }

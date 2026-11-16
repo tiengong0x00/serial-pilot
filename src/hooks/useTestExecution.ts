@@ -708,7 +708,7 @@ export function useTestExecution() {
               cmd.timeout,
               async () => {}, // 文件已发送，无需再次发送
               (buf) =>
-                validateResponse(buf, cmd.validation, cmd.validationPattern, cmd.validationMode)
+                validateResponse(buf, cmd.validation, cmd.validationPattern, cmd.validationMode, cmd.validationFormat)
                   .valid,
             );
 
@@ -717,6 +717,7 @@ export function useTestExecution() {
               cmd.validation,
               cmd.validationPattern,
               cmd.validationMode,
+              cmd.validationFormat,
             );
 
             if (result.valid) {
@@ -841,7 +842,7 @@ export function useTestExecution() {
               cmd.timeout,
               sendCommand,
               (buf) =>
-                validateResponse(buf, cmd.validation, cmd.validationPattern, cmd.validationMode)
+                validateResponse(buf, cmd.validation, cmd.validationPattern, cmd.validationMode, cmd.validationFormat)
                   .valid,
             );
 
@@ -859,6 +860,7 @@ export function useTestExecution() {
               cmd.validation,
               cmd.validationPattern,
               cmd.validationMode,
+              cmd.validationFormat,
             );
 
             if (result.valid) {

@@ -45,7 +45,7 @@ export function useUrcListener() {
           // 守护监听口：listenPort 未设置则继承用例默认口
           const guardPort = guard.listenPort ?? context.targetPort;
           if (port_label !== guardPort) continue;
-          if (matchPattern(text, guard.pattern, guard.matchMode)) {
+          if (matchPattern(text, guard.pattern, guard.matchMode, guard.patternFormat)) {
             const priority = URC_GUARD_ACTION_PRIORITY[guard.action];
             triggered.push({ guard, priority });
 
