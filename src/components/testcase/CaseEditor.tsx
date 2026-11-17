@@ -3,6 +3,7 @@ import type { TestCase, RootTestCase } from '@/types/testCase';
 import type { PortLabel } from '@/types/serial';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { SegmentedControl } from '@/components/testcase/FormatToggle';
 
 interface CaseEditorProps {
   case_: TestCase;
@@ -13,7 +14,7 @@ const inputCls = 'w-full px-3 py-2 border rounded-md bg-background text-sm';
 const labelCls = 'text-sm font-medium';
 const fieldCls = 'space-y-1.5';
 
-/** 单个端口选择器 */
+/** 单个端口选择器（label + 按钮组同行，与命令级 PortSelect 一致） */
 function PortSelect({
   label,
   value,
@@ -24,23 +25,24 @@ function PortSelect({
   label: string;
   value?: PortLabel;
   showInherit: boolean;
-  showAuto?: boolean; // 根用例 targetPort 显示"自动"选项
+  showAuto?: boolean;
   onChange: (v?: PortLabel) => void;
 }) {
   const { t } = useTranslation();
+  const options = [
+    ...(showInherit ? [{ value: '', label: t('testCase.portInherit') }] : []),
+    ...(showAuto ? [{ value: '', label: t('testCase.portAuto') }] : []),
+    { value: 'P1', label: 'P1' },
+    { value: 'P2', label: 'P2' },
+  ];
   return (
-    <div className={fieldCls}>
-      <label className={labelCls}>{label}</label>
-      <select
-        className={inputCls}
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-medium w-8 shrink-0">{label}</span>
+      <SegmentedControl
         value={value ?? ''}
-        onChange={(e) => onChange((e.target.value || undefined) as PortLabel | undefined)}
-      >
-        {showInherit && <option value="">{t('testCase.portInherit')}</option>}
-        {showAuto && <option value="">{t('testCase.portAuto')}</option>}
-        <option value="P1">P1</option>
-        <option value="P2">P2</option>
-      </select>
+        options={options}
+        onChange={(v) => onChange((v || undefined) as PortLabel | undefined)}
+      />
     </div>
   );
 }
@@ -75,13 +77,10 @@ function CasePortSection({
         onClick={() => setOpen((v) => !v)}
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        {t('testCase.portRouting')}
+        {t('testCase.advancedConfig')}
       </button>
       {open && (
-        <div className="mt-2 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {isRoot ? t('testCase.casePortRootHint') : t('testCase.casePortHint')}
-          </p>
+        <div className="mt-2">
           <div className="grid grid-cols-2 gap-3">
             <PortSelect label={t('testCase.txPortLabel')} value={txValue} showInherit={!isRoot} showAuto={isRoot} onChange={onChangeTx} />
             <PortSelect label={t('testCase.rxPortLabel')} value={rxValue} showInherit={!isRoot} showAuto={isRoot} onChange={onChangeRx} />
@@ -99,8 +98,6 @@ export function CaseEditor({ case_, onChange }: CaseEditorProps) {
 
   return (
     <div className="space-y-4 p-4">
-      <h3 className="text-lg font-semibold">{t('testCase.caseProperties')}</h3>
-
       <div className={fieldCls}>
         <label className={labelCls}>{t('testCase.caseName')}</label>
         <input
@@ -121,46 +118,39 @@ export function CaseEditor({ case_, onChange }: CaseEditorProps) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.failureStrategy')}</label>
-          <select
-            className={inputCls}
-            value={case_.onFailure}
-            onChange={(e) => onChange({ onFailure: e.target.value as TestCase['onFailure'] })}
-          >
-            <option value="continue">{t('testCase.failContinue')}</option>
-            <option value="end-round">{t('testCase.failEndRound')}</option>
-            <option value="retry-self">{t('testCase.failRetrySelf')}</option>
-            <option value="abort">{t('testCase.failAbort')}</option>
-          </select>
-        </div>
-
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.loopCount')}</label>
-          <input
-            type="number"
-            className={inputCls}
-            value={case_.runCount}
-            onChange={(e) => onChange({ runCount: Number(e.target.value) })}
-            min="0"
-            placeholder={t('testCase.loopCountPlaceholder')}
-          />
+      {/* 规则配置 */}
+      <div className="border-t pt-3">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{t('testCase.repeatStrategy')}</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.sendCountShort')}</span>
+              <input
+                type="number"
+                className="w-16 px-2 py-1 border rounded text-xs bg-background"
+                value={case_.runCount}
+                onChange={(e) => onChange({ runCount: Number(e.target.value) })}
+                min="0"
+                placeholder={t('testCase.loopCountPlaceholder')}
+              />
+              <span className="text-xs text-muted-foreground">{t('testCase.timesUnit')}</span>
+            </div>
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.onFailureShort')}</span>
+              <select
+                className="px-2 py-1 border rounded text-xs bg-background"
+                value={case_.onFailure}
+                onChange={(e) => onChange({ onFailure: e.target.value as TestCase['onFailure'] })}
+              >
+                <option value="continue">{t('testCase.failContinue')}</option>
+                <option value="end-round">{t('testCase.failEndRound')}</option>
+                <option value="retry-self">{t('testCase.failRetrySelf')}</option>
+                <option value="abort">{t('testCase.failAbort')}</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
-
-      {case_.onFailure === 'retry-self' && (
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.maxRetries')}</label>
-          <input
-            type="number"
-            className={inputCls}
-            value={case_.maxSelfRetries ?? 1}
-            onChange={(e) => onChange({ maxSelfRetries: Number(e.target.value) })}
-            min="1"
-          />
-        </div>
-      )}
 
       {!isRoot && (
         <div className="flex items-center gap-2 pt-2">

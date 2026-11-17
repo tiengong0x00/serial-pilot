@@ -101,8 +101,8 @@ export function createCommand(type: CommandType = 'command'): TestCommand {
     successThreshold: 1,
     stopWhenReached: true,
     timeout: 2000,
-    validation: 'standard',
-    validationPattern: '',
+    validation: true,
+    validationPattern: 'OK',
     validationMode: 'contains',
     onFailure: 'abort',
   };
@@ -323,7 +323,7 @@ export function withCommandDefaults(cmd: any): TestCommand {
     successThreshold: cmd.successThreshold ?? 1,
     stopWhenReached: cmd.stopWhenReached ?? true,
     timeout: cmd.timeout ?? 2000,
-    validation: cmd.validation ?? 'standard',
+    validation: cmd.validation ?? true,
     validationPattern: cmd.validationPattern ?? '',
     validationMode: cmd.validationMode ?? 'contains',
     onFailure: cmd.onFailure ?? 'abort',
@@ -435,13 +435,13 @@ function migrateLegacyCommand(old: any): TestCommand {
   }
 
   // 旧 execution 类型 -> command
-  // 校验方法映射：contains/equals/regex -> custom, none -> none
-  let validation: ValidationType = 'standard';
+  // 校验方法映射：contains/equals/regex -> 启用, none -> 不启用
+  let validation: ValidationType = true;
   let validationMode: MatchMode = 'contains';
   if (old.validationMethod === 'none') {
-    validation = 'none';
+    validation = false;
   } else if (old.validationMethod) {
-    validation = 'custom';
+    validation = true;
     validationMode = old.validationMethod === 'equals' ? 'exact' : old.validationMethod;
   }
 
@@ -690,11 +690,7 @@ export function extractVariables(
 }
 
 // ============ 校验与匹配 ============
-/** 标准 AT 校验：包含 OK 视为通过 */
-const STANDARD_SUCCESS = /\bOK\b/;
-const STANDARD_ERROR = /\bERROR\b|\+CME ERROR|\+CMS ERROR/;
-
-/** 校验响应（standard=OK通过, custom=自定义模式, none=永远通过） */
+/** 校验响应（validation=true启用校验, false不校验） */
 export function validateResponse(
   response: string,
   validation: ValidationType,
@@ -702,14 +698,9 @@ export function validateResponse(
   mode: MatchMode = 'contains',
   format: DataFormat = 'utf8',
 ): { valid: boolean; error?: string } {
-  if (validation === 'none') return { valid: true };
+  if (!validation) return { valid: true };
 
-  if (validation === 'standard') {
-    if (STANDARD_ERROR.test(response)) return { valid: false };
-    return { valid: STANDARD_SUCCESS.test(response) };
-  }
-
-  // custom
+  // 启用校验
   if (!pattern) return { valid: false, error: 'Missing validation pattern' };
   return { valid: matchPattern(response, pattern, mode, format) };
 }
@@ -757,11 +748,6 @@ export function matchPattern(
     default:
       return false;
   }
-}
-
-/** 检测标准错误响应（用于提前失败） */
-export function isStandardError(response: string): boolean {
-  return STANDARD_ERROR.test(response);
 }
 
 // ============ 拖拽投影计算（支持 X+Y 双维度层级检测） ============

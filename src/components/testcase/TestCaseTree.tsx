@@ -342,6 +342,11 @@ function DraggableCommandRow({
             textSizeClass,
             testCaseButtonDisplay === 'hover' && "opacity-0 group-hover:opacity-100",
             testCaseButtonDisplay === 'always' && "opacity-100",
+            // 文字或命令名称模式时添加边框
+            (testCaseButtonContent === 'text' ||
+             testCaseButtonContent === 'command' ||
+             (testCaseButtonContent === 'auto' && testCaseButtonWidth >= 50)) &&
+            "border border-green-600/30 rounded hover:bg-green-50 dark:hover:bg-green-950/20",
           )}
           style={{
             width: `${testCaseButtonWidth}px`,
@@ -501,7 +506,7 @@ function DraggableCaseNode(props: {
         <Folder style={{ width: iconSize, height: iconSize }} className="text-blue-500" />
         {/* 用例状态图标：仅在非空闲状态时显示 */}
         {case_.status !== 'pending' && <StatusIcon status={case_.status} isPaused={shared.isPaused} />}
-        <span className={cn('flex-1 truncate font-semibold', textSizeClass, !case_.selected && 'text-muted-foreground')}>
+        <span className={cn('flex-1 truncate', textSizeClass, !case_.selected && 'text-muted-foreground')}>
           {case_.name}
         </span>
         {case_.runCount !== 1 && (
@@ -516,6 +521,11 @@ function DraggableCaseNode(props: {
               textSizeClass,
               testCaseButtonDisplay === 'hover' && "opacity-0 group-hover:opacity-100",
               testCaseButtonDisplay === 'always' && "opacity-100",
+              // 文字模式时添加边框（用例不支持 command 模式，只有 icon/text/auto）
+              (testCaseButtonContent === 'text' ||
+               testCaseButtonContent === 'command' ||
+               (testCaseButtonContent === 'auto' && testCaseButtonWidth >= 50)) &&
+              "border border-green-600/30 rounded hover:bg-green-50 dark:hover:bg-green-950/20",
             )}
             style={{
               width: `${testCaseButtonWidth}px`,

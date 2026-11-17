@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>方案 A：精简图标 - 交互演示</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: white;
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.9);
+      font-size: 1.1em;
+      margin-bottom: 30px;
+    }
+
+    .controls {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      margin: 0 8px;
+      background: white;
+      color: #667eea;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-success {
+      background: #059669;
+      color: white;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-reset {
+      background: #6b7280;
+      color: white;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+      overflow: hidden;
+      margin-bottom: 30px;
+    }
+
+    .panel-header {
+      padding: 20px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .panel-header h2 {
+      font-size: 1.5em;
+      margin-bottom: 8px;
+    }
+
+    .panel-header p {
+      opacity: 0.9;
+      font-size: 0.9em;
+    }
+
+    .panel-body {
+      padding: 24px;
+    }
+
+    /* 树形列表样式 */
+    .tree-list {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 14px;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      margin-bottom: 4px;
+      border-radius: 6px;
+      transition: all 0.2s;
+      min-height: 36px;
+      gap: 8px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .tree-row:hover {
+      background: #f3f4f6;
+    }
+
+    .tree-row.selected {
+      background: #e0e7ff;
+    }
+
+    .tree-row.disabled {
+      opacity: 0.5;
+      border: 1px dashed #d1d5db;
+    }
+
+    /* 运行中闪烁背景 */
+    @keyframes runningPulse {
+      0%, 100% { background: #fef9c3; }
+      50% { background: #fef3c7; }
+    }
+
+    .tree-row.running {
+      animation: runningPulse 1.5s ease-in-out infinite;
+    }
+
+    /* 成功闪烁 */
+    @keyframes successFlash {
+      0% { background: #f0fdf4; }
+      50% { background: #dcfce7; }
+      100% { background: #f0fdf4; }
+    }
+
+    .tree-row.success {
+      background: #f0fdf4;
+      animation: successFlash 0.8s ease-in-out;
+    }
+
+    /* 失败闪烁 */
+    @keyframes failureFlash {
+      0% { background: #fee2e2; }
+      50% { background: #fecaca; }
+      100% { background: #fee2e2; }
+    }
+
+    .tree-row.failed {
+      background: #fee2e2;
+      animation: failureFlash 0.8s ease-in-out;
+    }
+
+    /* 图标样式 */
+    .icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .grip {
+      color: #d1d5db;
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .tree-row:hover .grip {
+      opacity: 1;
+    }
+
+    .expand-btn {
+      color: #6b7280;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .expand-btn.expanded {
+      transform: rotate(90deg);
+    }
+
+    .folder-icon {
+      color: #3b82f6;
+    }
+
+    .cmd-icon {
+      color: #10b981;
+    }
+
+    .status-icon {
+      font-size: 16px;
+    }
+
+    .status-running {
+      color: #eab308;
+      animation: spin 2s linear infinite;
+    }
+
+    .status-success {
+      color: #10b981;
+    }
+
+    .status-failed {
+      color: #ef4444;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* 内容区域 */
+    .tree-content {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #1f2937;
+    }
+
+    .tree-content.bold {
+      font-weight: 600;
+    }
+
+    .tree-content.muted {
+      color: #9ca3af;
+    }
+
+    /* 标签 */
+    .label {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .label-urc {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .label-script {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .label-count {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    /* 运行按钮 */
+    .run-btn {
+      padding: 6px 14px;
+      background: #ecfdf5;
+      color: #059669;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid #10b98144;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      opacity: 0;
+    }
+
+    .tree-row:hover .run-btn {
+      opacity: 1;
+    }
+
+    .run-btn:hover {
+      background: #d1fae5;
+      border-color: #10b981;
+      transform: scale(1.05);
+    }
+
+    .run-btn:active {
+      transform: scale(0.98);
+    }
+
+    .run-btn.disabled {
+      opacity: 0.3 !important;
+      cursor: not-allowed;
+    }
+
+    /* 缩进 */
+    .indent-1 { padding-left: 32px; }
+    .indent-2 { padding-left: 56px; }
+
+    /* 状态说明 */
+    .legend {
+      display: flex;
+      gap: 24px;
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9em;
+      color: #4b5563;
+    }
+
+    .legend-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 日志区域 */
+    .log-panel {
+      margin-top: 20px;
+      padding: 16px;
+      background: #1f2937;
+      border-radius: 8px;
+      color: #f9fafb;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      opacity: 0;
+      animation: fadeIn 0.3s forwards;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    .log-time {
+      color: #9ca3af;
+      margin-right: 8px;
+    }
+
+    .log-idle { color: #9ca3af; }
+    .log-running { color: #fbbf24; }
+    .log-success { color: #34d399; }
+    .log-failed { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 方案 A：精简图标</h1>
+    <p class="subtitle">点击下方按钮模拟不同的运行状态</p>
+
+    <div class="controls">
+      <button class="btn btn-primary" onclick="runCommand(0)">运行第一个命令 (AT+CSQ)</button>
+      <button class="btn btn-primary" onclick="runCommand(1)">运行第二个命令 (AT+CREG?)</button>
+      <button class="btn btn-primary" onclick="runCase()">运行用例 (查询信号强度)</button>
+      <button class="btn btn-reset" onclick="resetAll()">重置所有状态</button>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-success" onclick="setSuccess()">✓ 模拟成功</button>
+      <button class="btn btn-danger" onclick="setFailed()">✗ 模拟失败</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <h2>测试用例树形列表</h2>
+        <p>鼠标悬停查看运行按钮和拖拽手柄 | 状态图标仅在运行/成功/失败时显示</p>
+      </div>
+      <div class="panel-body">
+        <div class="tree-list" id="treeList">
+          <!-- 用例行 -->
+          <div class="tree-row" id="case-0" onclick="selectRow('case-0')">
+            <span class="icon grip">≡</span>
+            <span class="icon expand-btn expanded">▶</span>
+            <span class="icon folder-icon">📁</span>
+            <span class="icon status-icon" id="status-case-0"></span>
+            <span class="tree-content bold">查询信号强度</span>
+            <span class="run-btn" onclick="event.stopPropagation(); runCase()">▶ 运行</span>
+          </div>
+
+          <!-- 命令行 1 - AT+CSQ -->
+          <div class="tree-row indent-1" id="cmd-0" onclick="selectRow('cmd-0')">
+            <span class="icon grip">≡</span>
+            <span class="icon status-icon" id="status-cmd-0"></span>
+            <span class="tree-content">AT+CSQ</span>
+            <span class="run-btn" onclick="event.stopPropagation(); runCommand(0)">▶ 发送</span>
+          </div>
+
+          <!-- 命令行 2 - AT+CREG? -->
+          <div class="tree-row indent-1" id="cmd-1" onclick="selectRow('cmd-1')">
+            <span class="icon grip">≡</span>
+            <span class="icon status-icon" id="status-cmd-1"></span>
+            <span class="tree-content">AT+CREG?</span>
+            <span class="run-btn" onclick="event.stopPropagation(); runCommand(1)">▶ 发送</span>
+          </div>
+
+          <!-- 命令行 3 - URC守护 -->
+          <div class="tree-row indent-1" id="cmd-2" onclick="selectRow('cmd-2')">
+            <span class="icon grip">≡</span>
+            <span class="icon status-icon" id="status-cmd-2"></span>
+            <span class="tree-content">+CGREG: 1</span>
+            <span class="label label-urc">URC</span>
+            <span class="run-btn" onclick="event.stopPropagation(); runCommand(2)">▶ 发送</span>
+          </div>
+
+          <!-- 用例行 2 -->
+          <div class="tree-row" id="case-1" onclick="selectRow('case-1')">
+            <span class="icon grip">≡</span>
+            <span class="icon expand-btn">▶</span>
+            <span class="icon folder-icon">📁</span>
+            <span class="icon status-icon" id="status-case-1"></span>
+            <span class="tree-content bold">网络注册</span>
+            <span class="label label-count">×3</span>
+            <span class="run-btn" onclick="event.stopPropagation(); alert('运行用例: 网络注册')">▶ 运行</span>
+          </div>
+
+          <!-- 命令行 4 - 脚本（禁用） -->
+          <div class="tree-row indent-1 disabled" id="cmd-3" onclick="selectRow('cmd-3')">
+            <span class="icon grip">≡</span>
+            <span class="icon status-icon" id="status-cmd-3"></span>
+            <span class="tree-content muted">python validate.py</span>
+            <span class="label label-script">脚本</span>
+            <span class="run-btn disabled">▶ 发送</span>
+          </div>
+        </div>
+
+        <!-- 状态图例 -->
+        <div class="legend">
+          <div class="legend-item">
+            <span class="legend-icon status-running">🕐</span>
+            <span>运行中（旋转动画 + 黄色背景闪烁）</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon status-success">✓</span>
+            <span>成功（绿色图标 + 绿色背景闪烁）</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon status-failed">✗</span>
+            <span>失败（红色图标 + 红色背景闪烁）</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon">-</span>
+            <span>空闲（无状态图标）</span>
+          </div>
+        </div>
+
+        <!-- 日志区域 -->
+        <div class="log-panel" id="logPanel">
+          <div class="log-entry log-idle">
+            <span class="log-time">[00:00:00]</span>
+            <span>系统就绪，等待操作...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentRunning = null;
+    let selectedRow = null;
+    let logCounter = 0;
+
+    function getTime() {
+      const now = new Date();
+      return now.toTimeString().split(' ')[0];
+    }
+
+    function addLog(message, type = 'idle') {
+      const logPanel = document.getElementById('logPanel');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.innerHTML = `<span class="log-time">[${getTime()}]</span><span>${message}</span>`;
+      logPanel.appendChild(entry);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    function selectRow(id) {
+      if (selectedRow) {
+        document.getElementById(selectedRow).classList.remove('selected');
+      }
+      selectedRow = id;
+      document.getElementById(id).classList.add('selected');
+      addLog(`选中: ${document.getElementById(id).querySelector('.tree-content').textContent}`);
+    }
+
+    function runCommand(index) {
+      if (currentRunning !== null) {
+        addLog('已有命令正在运行，请等待完成', 'idle');
+        return;
+      }
+
+      const cmdId = `cmd-${index}`;
+      const statusId = `status-cmd-${index}`;
+      const row = document.getElementById(cmdId);
+      const status = document.getElementById(statusId);
+      const content = row.querySelector('.tree-content').textContent;
+
+      currentRunning = index;
+
+      // 开始运行
+      row.classList.add('running');
+      status.textContent = '🕐';
+      status.className = 'icon status-icon status-running';
+      addLog(`开始执行: ${content}`, 'running');
+
+      // 模拟运行过程（2秒后随机成功或失败）
+      setTimeout(() => {
+        const success = Math.random() > 0.3; // 70% 成功率
+
+        row.classList.remove('running');
+
+        if (success) {
+          row.classList.add('success');
+          status.textContent = '✓';
+          status.className = 'icon status-icon status-success';
+          addLog(`✓ 执行成功: ${content}`, 'success');
+
+          // 1秒后保持成功状态（不移除图标）
+          setTimeout(() => {
+            row.classList.remove('success');
+          }, 1000);
+        } else {
+          row.classList.add('failed');
+          status.textContent = '✗';
+          status.className = 'icon status-icon status-failed';
+          addLog(`✗ 执行失败: ${content}`, 'failed');
+
+          // 1秒后保持失败状态（不移除图标）
+          setTimeout(() => {
+            row.classList.remove('failed');
+          }, 1000);
+        }
+
+        currentRunning = null;
+      }, 2000);
+    }
+
+    function runCase() {
+      if (currentRunning !== null) {
+        addLog('已有命令正在运行，请等待完成', 'idle');
+        return;
+      }
+
+      const caseId = 'case-0';
+      const row = document.getElementById(caseId);
+      const status = document.getElementById('status-case-0');
+      const content = row.querySelector('.tree-content').textContent;
+
+      currentRunning = 'case';
+
+      // 开始运行用例
+      row.classList.add('running');
+      status.textContent = '🕐';
+      status.className = 'icon status-icon status-running';
+      addLog(`开始运行用例: ${content}`, 'running');
+
+      // 逐个运行命令
+      let cmdIndex = 0;
+      const commands = [0, 1, 2];
+
+      function runNext() {
+        if (cmdIndex >= commands.length) {
+          // 用例完成
+          row.classList.remove('running');
+          row.classList.add('success');
+          status.textContent = '✓';
+          status.className = 'icon status-icon status-success';
+          addLog(`✓ 用例执行完成: ${content}`, 'success');
+
+          setTimeout(() => {
+            row.classList.remove('success');
+          }, 1000);
+
+          currentRunning = null;
+          return;
+        }
+
+        const index = commands[cmdIndex];
+        const cmdId = `cmd-${index}`;
+        const statusId = `status-cmd-${index}`;
+        const cmdRow = document.getElementById(cmdId);
+        const cmdStatus = document.getElementById(statusId);
+        const cmdContent = cmdRow.querySelector('.tree-content').textContent;
+
+        // 运行当前命令
+        cmdRow.classList.add('running');
+        cmdStatus.textContent = '🕐';
+        cmdStatus.className = 'icon status-icon status-running';
+        addLog(`  → 执行命令: ${cmdContent}`, 'running');
+
+        setTimeout(() => {
+          cmdRow.classList.remove('running');
+          cmdRow.classList.add('success');
+          cmdStatus.textContent = '✓';
+          cmdStatus.className = 'icon status-icon status-success';
+          addLog(`  ✓ 命令成功: ${cmdContent}`, 'success');
+
+          setTimeout(() => {
+            cmdRow.classList.remove('success');
+          }, 500);
+
+          cmdIndex++;
+          setTimeout(runNext, 800);
+        }, 1500);
+      }
+
+      runNext();
+    }
+
+    function setSuccess() {
+      if (currentRunning !== null) {
+        const id = currentRunning === 'case' ? 'case-0' : `cmd-${currentRunning}`;
+        const statusId = currentRunning === 'case' ? 'status-case-0' : `status-cmd-${currentRunning}`;
+        const row = document.getElementById(id);
+        const status = document.getElementById(statusId);
+
+        row.classList.remove('running');
+        row.classList.add('success');
+        status.textContent = '✓';
+        status.className = 'icon status-icon status-success';
+        addLog('✓ 强制设置为成功', 'success');
+
+        setTimeout(() => {
+          row.classList.remove('success');
+        }, 1000);
+
+        currentRunning = null;
+      } else {
+        addLog('没有正在运行的命令', 'idle');
+      }
+    }
+
+    function setFailed() {
+      if (currentRunning !== null) {
+        const id = currentRunning === 'case' ? 'case-0' : `cmd-${currentRunning}`;
+        const statusId = currentRunning === 'case' ? 'status-case-0' : `status-cmd-${currentRunning}`;
+        const row = document.getElementById(id);
+        const status = document.getElementById(statusId);
+
+        row.classList.remove('running');
+        row.classList.add('failed');
+        status.textContent = '✗';
+        status.className = 'icon status-icon status-failed';
+        addLog('✗ 强制设置为失败', 'failed');
+
+        setTimeout(() => {
+          row.classList.remove('failed');
+        }, 1000);
+
+        currentRunning = null;
+      } else {
+        addLog('没有正在运行的命令', 'idle');
+      }
+    }
+
+    function resetAll() {
+      currentRunning = null;
+
+      // 清除所有状态
+      for (let i = 0; i < 4; i++) {
+        const cmdId = `cmd-${i}`;
+        const statusId = `status-cmd-${i}`;
+        const row = document.getElementById(cmdId);
+        const status = document.getElementById(statusId);
+
+        row.classList.remove('running', 'success', 'failed');
+        status.textContent = '';
+        status.className = 'icon status-icon';
+      }
+
+      for (let i = 0; i < 2; i++) {
+        const caseId = `case-${i}`;
+        const statusId = `status-case-${i}`;
+        const row = document.getElementById(caseId);
+        const status = document.getElementById(statusId);
+
+        row.classList.remove('running', 'success', 'failed');
+        status.textContent = '';
+        status.className = 'icon status-icon';
+      }
+
+      // 清空日志
+      const logPanel = document.getElementById('logPanel');
+      logPanel.innerHTML = '<div class="log-entry log-idle"><span class="log-time">[' + getTime() + ']</span><span>已重置所有状态</span></div>';
+
+      addLog('系统就绪，等待操作...', 'idle');
+    }
+  </script>
+</body>
+</html>

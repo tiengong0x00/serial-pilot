@@ -31,20 +31,11 @@ export function CommandEditorDialog({
 
   if (!command || !caseId) return null;
 
-  const getTypeLabel = (type: TestCommand['type']) => {
-    switch (type) {
-      case 'command':
-        return t('testCase.typeCommandPlain');
-      case 'urc-guard':
-        return t('testCase.typeUrcGuard');
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2 border-b">
-          <DialogTitle>{t('testCase.editCommandTitle', { type: getTypeLabel(command.type) })}</DialogTitle>
+          <DialogTitle>{t('testCase.editCommandTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto">

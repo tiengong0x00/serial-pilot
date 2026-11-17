@@ -67,40 +67,40 @@ describe('Hex format matching', () => {
     it('validates hex pattern in custom mode', () => {
       const response = '+CSQ: 25,0\r\nOK';
       // "OK" = 4F 4B
-      const result = validateResponse(response, 'custom', '4F 4B', 'contains', 'hex');
+      const result = validateResponse(response, true, '4F 4B', 'contains', 'hex');
       expect(result.valid).toBe(true);
     });
 
     it('fails validation when hex pattern not found', () => {
       const response = 'ERROR\r\n';
       // "OK" = 4F 4B
-      const result = validateResponse(response, 'custom', '4F 4B', 'contains', 'hex');
+      const result = validateResponse(response, true, '4F 4B', 'contains', 'hex');
       expect(result.valid).toBe(false);
     });
 
     it('validates exact hex match', () => {
       const response = '  OK  ';
-      const result = validateResponse(response, 'custom', '4F 4B', 'exact', 'hex');
+      const result = validateResponse(response, true, '4F 4B', 'exact', 'hex');
       expect(result.valid).toBe(true);
     });
 
-    it('standard validation ignores format parameter', () => {
-      // 标准验证不受 format 参数影响
+    it('validation without pattern returns false', () => {
+      // 启用校验但不提供 pattern 返回 false
       const response = 'OK\r\n';
-      const result = validateResponse(response, 'standard', undefined, 'contains', 'hex');
-      expect(result.valid).toBe(true);
+      const result = validateResponse(response, true, undefined, 'contains', 'hex');
+      expect(result.valid).toBe(false);
     });
 
     it('none validation ignores format parameter', () => {
       const response = 'anything';
-      const result = validateResponse(response, 'none', undefined, 'contains', 'hex');
+      const result = validateResponse(response, false, undefined, 'contains', 'hex');
       expect(result.valid).toBe(true);
     });
 
     it('handles invalid hex in validation', () => {
       const response = 'OK';
       // 非法 hex
-      const result = validateResponse(response, 'custom', 'ZZ', 'contains', 'hex');
+      const result = validateResponse(response, true, 'ZZ', 'contains', 'hex');
       expect(result.valid).toBe(false);
     });
   });

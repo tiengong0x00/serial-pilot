@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>双终端显示按钮效果预览</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: #0a0a0a;
+      color: #e5e5e5;
+    }
+    .icon-button {
+      transition: all 0.15s ease;
+    }
+    .icon-button.active {
+      color: hsl(262.1 83.3% 57.8%);
+    }
+    .icon-button:not(.active):hover {
+      color: hsl(262.1 83.3% 57.8%);
+    }
+    .terminal-preview {
+      transition: all 0.3s ease;
+    }
+  </style>
+</head>
+<body class="p-8">
+  <div class="max-w-5xl mx-auto space-y-8">
+    <!-- 标题 -->
+    <div>
+      <h1 class="text-2xl font-bold mb-2">双终端显示按钮效果预览</h1>
+      <p class="text-gray-400 text-sm">点击「双终端」按钮切换显示模式，查看实际效果</p>
+    </div>
+
+    <!-- 新方案：工具栏右侧增加双终端按钮（推荐） -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4 text-green-400">✅ 新方案：工具栏右侧增加「双终端」按钮</h2>
+
+      <div class="space-y-4">
+        <!-- 工具栏模拟 - 可交互 -->
+        <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700 flex-wrap bg-black/30 rounded">
+          <!-- 格式切换 -->
+          <div class="flex items-center rounded-md border border-gray-600 overflow-hidden">
+            <button class="px-2.5 py-1 text-xs bg-purple-600 text-white">文本</button>
+            <button class="px-2.5 py-1 text-xs hover:bg-gray-700">十六进制</button>
+          </div>
+
+          <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+            <input type="checkbox" checked class="accent-purple-600">
+            自动滚动
+          </label>
+
+          <div class="flex-1"></div>
+
+          <!-- 工具按钮组 -->
+          <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button active" title="时间戳（已开启）">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke-width="2"/>
+              <polyline points="12 6 12 12 16 14" stroke-width="2"/>
+            </svg>
+          </button>
+
+          <!-- 🆕 双终端按钮（新增） -->
+          <button id="dual-terminal-btn" class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button" title="双终端显示">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+              <line x1="12" y1="3" x2="12" y2="21" stroke-width="2"/>
+            </svg>
+          </button>
+
+          <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button" title="导出日志">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-width="2"/>
+              <polyline points="7 10 12 15 17 10" stroke-width="2"/>
+              <line x1="12" y1="15" x2="12" y2="3" stroke-width="2"/>
+            </svg>
+          </button>
+          <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button" title="清空">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <polyline points="3 6 5 6 21 6" stroke-width="2"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke-width="2"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- 终端显示区预览 -->
+        <div id="terminal-preview-1" class="terminal-preview">
+          <!-- 单终端 -->
+          <div id="single-terminal" class="border border-gray-700 rounded bg-black/50 h-48 p-3 overflow-auto text-xs font-mono space-y-1">
+            <div><span class="text-gray-500">[12:34:56.789]</span> <span class="text-blue-400">[P1]</span> <span class="text-gray-400">[RX]</span> AT+CGMR</div>
+            <div><span class="text-gray-500">[12:34:56.890]</span> <span class="text-blue-400">[P1]</span> <span class="text-gray-400">[TX]</span> OK</div>
+            <div><span class="text-gray-500">[12:34:57.123]</span> <span class="text-blue-400">[P1]</span> <span class="text-gray-400">[RX]</span> AT+CSQ</div>
+            <div><span class="text-gray-500">[12:34:57.234]</span> <span class="text-blue-400">[P1]</span> <span class="text-gray-400">[TX]</span> +CSQ: 25,99</div>
+          </div>
+
+          <!-- 双终端 -->
+          <div id="dual-terminal" class="grid grid-cols-2 gap-2 hidden">
+            <div class="border border-gray-700 rounded bg-black/50 h-48 flex flex-col">
+              <div class="px-2 py-1 text-xs font-medium border-b border-gray-700 bg-gray-800/50">
+                <span class="text-blue-400">P1</span>
+              </div>
+              <div class="flex-1 p-2 overflow-auto text-xs font-mono space-y-1">
+                <div><span class="text-gray-500">[12:34:56.789]</span> <span class="text-gray-400">[RX]</span> AT+CGMR</div>
+                <div><span class="text-gray-500">[12:34:56.890]</span> <span class="text-gray-400">[TX]</span> OK</div>
+                <div><span class="text-gray-500">[12:34:57.123]</span> <span class="text-gray-400">[RX]</span> AT+CSQ</div>
+              </div>
+            </div>
+            <div class="border border-gray-700 rounded bg-black/50 h-48 flex flex-col">
+              <div class="px-2 py-1 text-xs font-medium border-b border-gray-700 bg-gray-800/50">
+                <span class="text-green-400">P2</span>
+              </div>
+              <div class="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                P2 未连接
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-sm text-gray-400 space-y-2 bg-gray-800/50 p-3 rounded">
+          <p class="font-medium text-gray-300">✨ 按钮行为说明：</p>
+          <ul class="space-y-1 ml-4">
+            <li>🔘 <strong>默认状态</strong>：未选中（显示单终端）</li>
+            <li>🔵 <strong>点击激活</strong>：选中后显示双终端布局（左右分栏）</li>
+            <li>⚡ <strong>自动激活</strong>：双串口同时连接时自动选中</li>
+            <li>👆 <strong>手动控制</strong>：单串口时也可手动点击开启，P2 栏显示占位</li>
+            <li>💾 <strong>状态持久化</strong>：用户选择会记住，重启后恢复</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 场景演示 -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4">场景演示</h2>
+
+      <div class="space-y-6">
+        <!-- 场景 1: 单串口，手动开启双终端 -->
+        <div>
+          <h3 class="text-sm font-medium mb-3 text-blue-400">场景 1：单串口连接，手动开启双终端</h3>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 px-4 py-2 border border-gray-700 bg-black/30 rounded">
+              <span class="text-xs text-gray-500">工具栏：</span>
+              <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button" title="双终端显示（未激活）">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+                  <line x1="12" y1="3" x2="12" y2="21" stroke-width="2"/>
+                </svg>
+              </button>
+              <span class="text-xs text-gray-400">→ 点击激活 →</span>
+              <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button active" title="双终端显示（已激活）">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+                  <line x1="12" y1="3" x2="12" y2="21" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="border border-gray-700 rounded bg-black/50 h-24 p-2 text-xs font-mono">
+                <span class="text-blue-400">[P1]</span> 正常显示数据
+              </div>
+              <div class="border border-gray-700 rounded bg-black/50 h-24 flex items-center justify-center text-gray-500 text-sm">
+                P2 未连接
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">💡 即使只连接 P1，也可手动开启双终端布局，提前准备</p>
+          </div>
+        </div>
+
+        <!-- 场景 2: 双串口自动激活 -->
+        <div>
+          <h3 class="text-sm font-medium mb-3 text-green-400">场景 2：双串口连接，自动激活双终端</h3>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 px-4 py-2 border border-gray-700 bg-black/30 rounded">
+              <span class="text-xs text-gray-500">P2 连接时：</span>
+              <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button active" title="双终端显示（自动激活）">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+                  <line x1="12" y1="3" x2="12" y2="21" stroke-width="2"/>
+                </svg>
+              </button>
+              <span class="text-xs text-green-400">（自动激活）</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="border border-gray-700 rounded bg-black/50 h-24 p-2 text-xs font-mono">
+                <span class="text-blue-400">[P1]</span> AT+CGMR<br/>
+                <span class="text-blue-400">[P1]</span> OK
+              </div>
+              <div class="border border-gray-700 rounded bg-black/50 h-24 p-2 text-xs font-mono">
+                <span class="text-green-400">[P2]</span> AT+CGMR<br/>
+                <span class="text-green-400">[P2]</span> OK
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">💡 双串口连接时自动激活，无需手动操作</p>
+          </div>
+        </div>
+
+        <!-- 场景 3: 断开 P2 保持布局 -->
+        <div>
+          <h3 class="text-sm font-medium mb-3 text-yellow-400">场景 3：断开 P2，保持双终端布局</h3>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 px-4 py-2 border border-gray-700 bg-black/30 rounded">
+              <span class="text-xs text-gray-500">断开 P2 后：</span>
+              <button class="h-7 w-7 inline-flex items-center justify-center rounded-md icon-button active" title="双终端显示（保持激活）">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="2"/>
+                  <line x1="12" y1="3" x2="12" y2="21" stroke-width="2"/>
+                </svg>
+              </button>
+              <span class="text-xs text-yellow-400">（保持激活状态）</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="border border-gray-700 rounded bg-black/50 h-24 p-2 text-xs font-mono">
+                <span class="text-blue-400">[P1]</span> 继续显示
+              </div>
+              <div class="border border-gray-700 rounded bg-black/50 h-24 flex items-center justify-center text-gray-500 text-sm">
+                P2 未连接
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">💡 断开串口不影响布局设置，用户可手动点击关闭</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 与旧方案对比 -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4">与旧方案对比</h2>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-700">
+            <th class="text-left py-2 text-gray-400">对比项</th>
+            <th class="text-left py-2 text-yellow-400">旧方案（自动切换）</th>
+            <th class="text-left py-2 text-green-400">新方案（独立按钮）</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-300">
+          <tr class="border-b border-gray-800">
+            <td class="py-2">按钮类型</td>
+            <td>模式切换组（合并/分栏）</td>
+            <td class="text-green-400">独立图标按钮（时间戳同款）</td>
+          </tr>
+          <tr class="border-b border-gray-800">
+            <td class="py-2">按钮位置</td>
+            <td>工具栏左侧（格式切换旁）</td>
+            <td class="text-green-400">工具栏右侧（时间戳按钮旁）</td>
+          </tr>
+          <tr class="border-b border-gray-800">
+            <td class="py-2">默认状态</td>
+            <td>P2 未连接时自动合并</td>
+            <td class="text-green-400">未选中（单终端）</td>
+          </tr>
+          <tr class="border-b border-gray-800">
+            <td class="py-2">双串口连接</td>
+            <td>需手动切换到分栏</td>
+            <td class="text-green-400">自动激活按钮</td>
+          </tr>
+          <tr class="border-b border-gray-800">
+            <td class="py-2">断开 P2 行为</td>
+            <td class="text-yellow-400">强制切换到合并模式</td>
+            <td class="text-green-400">保持按钮状态不变</td>
+          </tr>
+          <tr class="border-b border-gray-800">
+            <td class="py-2">单串口双终端</td>
+            <td class="text-red-400">不支持</td>
+            <td class="text-green-400">支持手动开启</td>
+          </tr>
+          <tr>
+            <td class="py-2">用户体验</td>
+            <td class="text-yellow-400">自动切换可能打断操作</td>
+            <td class="text-green-400">完全用户控制</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 实现建议 -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4">实现细节</h2>
+      <div class="space-y-3 text-sm text-gray-300">
+        <div>
+          <h3 class="font-medium text-gray-200 mb-1">1. 按钮样式</h3>
+          <ul class="ml-4 space-y-1 text-gray-400">
+            <li>• 使用 <code class="text-purple-400">Columns2</code> 图标（左右分栏）</li>
+            <li>• 未激活：灰色，hover 时变紫色</li>
+            <li>• 已激活：紫色（与时间戳按钮一致）</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-medium text-gray-200 mb-1">2. 状态管理</h3>
+          <ul class="ml-4 space-y-1 text-gray-400">
+            <li>• 新增状态：<code class="text-purple-400">dualTerminalEnabled: boolean</code></li>
+            <li>• 持久化到 localStorage</li>
+            <li>• 双串口连接时自动设为 true</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-medium text-gray-200 mb-1">3. 渲染逻辑</h3>
+          <ul class="ml-4 space-y-1 text-gray-400">
+            <li>• <code class="text-purple-400">dualTerminalEnabled === true</code>：显示双终端布局</li>
+            <li>• <code class="text-purple-400">dualTerminalEnabled === false</code>：显示单终端（合并模式）</li>
+            <li>• P2 未连接时显示占位文案</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-medium text-gray-200 mb-1">4. 移除旧逻辑</h3>
+          <ul class="ml-4 space-y-1 text-gray-400">
+            <li>• 删除 <code class="text-purple-400">terminalMode</code> 状态（merged/split）</li>
+            <li>• 删除左侧的「合并/分栏」按钮组</li>
+            <li>• 删除 P2 断开时的自动切换逻辑</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 双终端按钮交互
+    const btn = document.getElementById('dual-terminal-btn');
+    const singleTerminal = document.getElementById('single-terminal');
+    const dualTerminal = document.getElementById('dual-terminal');
+
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      if (btn.classList.contains('active')) {
+        singleTerminal.classList.add('hidden');
+        dualTerminal.classList.remove('hidden');
+      } else {
+        singleTerminal.classList.remove('hidden');
+        dualTerminal.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

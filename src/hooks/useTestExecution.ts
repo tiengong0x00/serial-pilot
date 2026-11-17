@@ -700,7 +700,7 @@ export function useTestExecution() {
 
           // 校验响应（复用普通命令的响应逻辑）
           // 广播模式强制跳过校验，直接计成功
-          if (cmd.validation === 'none' || isBroadcastMode) {
+          if (!cmd.validation || isBroadcastMode) {
             successCount++;
           } else {
             const response = await waitForResponse(
@@ -794,7 +794,7 @@ export function useTestExecution() {
           };
 
           // 校验响应：广播模式强制跳过校验，直接发送
-          if (cmd.validation === 'none' || isBroadcastMode) {
+          if (!cmd.validation || isBroadcastMode) {
             // 广播模式下若需要变量提取：从 rxPort 等待一次响应再提取
             const needExtract = isBroadcastMode && cmd.extractConfig && getContext();
             if (needExtract) {
@@ -925,7 +925,7 @@ export function useTestExecution() {
           action: cmd.fileData ? 'send_file' : 'send',
           sendData: cmd.fileData ? `File: ${cmd.fileData.name}` : sentData,
           receivedData: lastResponse,
-          expectCondition: cmd.validation === 'none' ? 'none' : `${cmd.validationMode}:${cmd.validationPattern || 'OK'}`,
+          expectCondition: !cmd.validation ? 'none' : `${cmd.validationMode}:${cmd.validationPattern || 'OK'}`,
           result: finalSuccess ? 'PASS' : 'FAIL',
           errorMsg: finalSuccess ? undefined : lastFailureReasonRef.current,
           duration,
@@ -1394,29 +1394,32 @@ export function useTestExecution() {
           addLog('error', 'Execution failed');
         }
 
-        // 添加完成事件
-        addCriticalEvent({
-          id: generateEventId(),
-          timestamp: Date.now(),
-          type: 'complete',
-          summary: {
-            rootCaseName: rootCase.name,
-            duration,
-            totalRounds: statsRef.current.totalRounds,
-            successCount: statsRef.current.successRounds,
-            failureCount: statsRef.current.failureRounds,
-            subCaseCount: 0, // TODO: 需要在执行时统计
-            commandCount: 0, // TODO: 需要在执行时统计
-            guardHitCount: 0, // TODO: 需要在守护触发时统计
-            failureList: statsRef.current.failureList,
-          },
-        });
+        // 只有非中断时才添加完成事件和生成报告
+        if (result !== 'interrupted') {
+          // 添加完成事件
+          addCriticalEvent({
+            id: generateEventId(),
+            timestamp: Date.now(),
+            type: 'complete',
+            summary: {
+              rootCaseName: rootCase.name,
+              duration,
+              totalRounds: statsRef.current.totalRounds,
+              successCount: statsRef.current.successRounds,
+              failureCount: statsRef.current.failureRounds,
+              subCaseCount: 0, // TODO: 需要在执行时统计
+              commandCount: 0, // TODO: 需要在执行时统计
+              guardHitCount: 0, // TODO: 需要在守护触发时统计
+              failureList: statsRef.current.failureList,
+            },
+          });
+
+          // 关闭测试报告并显示通知
+          await finalizeTestReport();
+        }
       } catch (error) {
         addLog('error', `Execution error: ${error}`);
       } finally {
-        // 关闭测试报告并显示通知
-        await finalizeTestReport();
-
         // 注销根级守护
         for (const guard of rootGuards) {
           unregisterGuard(guard.id);

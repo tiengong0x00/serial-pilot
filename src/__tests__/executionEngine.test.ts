@@ -31,7 +31,7 @@ import { listen } from '@tauri-apps/api/event';
 function mkCommand(content: string): StandardCommand {
   const cmd = createCommand('command') as StandardCommand;
   cmd.content = content;
-  cmd.validation = 'none'; // 默认无需等待响应，测试可覆盖
+  cmd.validation = false; // 默认无需等待响应，测试可覆盖
   return cmd;
 }
 
@@ -87,48 +87,49 @@ describe('执行引擎工具函数', () => {
 
   describe('validateResponse', () => {
     it('none 校验应总是返回 true', () => {
-      const result = validateResponse('anything', 'none');
+      const result = validateResponse('anything', false);
       expect(result.valid).toBe(true);
       expect(result.error).toBeUndefined();
     });
 
-    it('standard 校验应检测 OK', () => {
-      expect(validateResponse('OK\r\n', 'standard').valid).toBe(true);
-      expect(validateResponse('AT+GMR\r\nOK\r\n', 'standard').valid).toBe(true);
+    it('启用校验需要提供pattern', () => {
+      expect(validateResponse('OK\r\n', true, 'OK').valid).toBe(true);
+      expect(validateResponse('AT+GMR\r\nOK\r\n', true, 'OK').valid).toBe(true);
+      expect(validateResponse('OK\r\n', true).valid).toBe(false); // 缺少pattern
     });
 
-    it('standard 校验应拒绝 ERROR', () => {
-      expect(validateResponse('ERROR\r\n', 'standard').valid).toBe(false);
-      expect(validateResponse('+CME ERROR: 3\r\n', 'standard').valid).toBe(false);
-      expect(validateResponse('+CMS ERROR: 500\r\n', 'standard').valid).toBe(false);
+    it('启用校验时匹配失败返回false', () => {
+      expect(validateResponse('ERROR\r\n', true, 'OK').valid).toBe(false);
+      expect(validateResponse('+CME ERROR: 3\r\n', true).valid).toBe(false);
+      expect(validateResponse('+CMS ERROR: 500\r\n', true).valid).toBe(false);
     });
 
     it('custom 校验 + contains 模式', () => {
-      expect(validateResponse('+CSQ: 25,0\r\nOK', 'custom', '+CSQ', 'contains').valid).toBe(true);
-      expect(validateResponse('ERROR\r\n', 'custom', '+CSQ', 'contains').valid).toBe(false);
+      expect(validateResponse('+CSQ: 25,0\r\nOK', true, '+CSQ', 'contains').valid).toBe(true);
+      expect(validateResponse('ERROR\r\n', true, '+CSQ', 'contains').valid).toBe(false);
     });
 
     it('custom 校验 + exact 模式（忽略首尾空白）', () => {
-      expect(validateResponse(' OK\r\n', 'custom', 'OK', 'exact').valid).toBe(true);
-      expect(validateResponse('OK', 'custom', ' OK ', 'exact').valid).toBe(true);
-      expect(validateResponse('OK\r\n', 'custom', 'ERROR', 'exact').valid).toBe(false);
+      expect(validateResponse(' OK\r\n', true, 'OK', 'exact').valid).toBe(true);
+      expect(validateResponse('OK', true, ' OK ', 'exact').valid).toBe(true);
+      expect(validateResponse('OK\r\n', true, 'ERROR', 'exact').valid).toBe(false);
     });
 
     it('custom 校验 + regex 模式', () => {
-      const result1 = validateResponse('+CSQ: 25,0', 'custom', '\\+CSQ: \\d+,\\d+', 'regex');
+      const result1 = validateResponse('+CSQ: 25,0', true, '\\+CSQ: \\d+,\\d+', 'regex');
       expect(result1.valid).toBe(true);
 
-      const result2 = validateResponse('ERROR', 'custom', '\\+CSQ: \\d+,\\d+', 'regex');
+      const result2 = validateResponse('ERROR', true, '\\+CSQ: \\d+,\\d+', 'regex');
       expect(result2.valid).toBe(false);
     });
 
     it('custom 校验 + 非法正则应返回 false', () => {
-      const result = validateResponse('text', 'custom', '[invalid(', 'regex');
+      const result = validateResponse('text', true, '[invalid(', 'regex');
       expect(result.valid).toBe(false);
     });
 
     it('custom 校验缺少 pattern 应返回错误', () => {
-      const result = validateResponse('text', 'custom');
+      const result = validateResponse('text', true);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('Missing');
     });

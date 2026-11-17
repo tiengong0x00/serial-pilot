@@ -278,7 +278,7 @@ describe('testCaseUtils', () => {
       expect(c.successThreshold).toBe(1);
       expect(c.stopWhenReached).toBe(true);
       expect(c.timeout).toBe(2000);
-      expect(c.validation).toBe('standard');
+      expect(c.validation).toBe(true);
       expect(c.onFailure).toBe('abort');
       expect(c.delay).toBe(0);
     });
@@ -308,7 +308,7 @@ describe('testCaseUtils', () => {
               stopWhenReached: false,
               delay: 0,
               timeout: 9000,
-              validation: 'none',
+              validation: false,
             },
           ],
         },
@@ -319,7 +319,7 @@ describe('testCaseUtils', () => {
       expect(c.stopWhenReached).toBe(false);
       expect(c.delay).toBe(0);
       expect(c.timeout).toBe(9000);
-      expect(c.validation).toBe('none');
+      expect(c.validation).toBe(false);
     });
 
     it('urc-guard 缺省时应补齐守护默认值', () => {
@@ -496,21 +496,22 @@ describe('testCaseUtils', () => {
 
   describe('validateResponse', () => {
     it('none 校验永远通过', () => {
-      expect(validateResponse('anything', 'none').valid).toBe(true);
+      expect(validateResponse('anything', false).valid).toBe(true);
     });
 
-    it('standard 校验遇 OK 通过、遇 ERROR 失败', () => {
-      expect(validateResponse('OK\r\n', 'standard').valid).toBe(true);
-      expect(validateResponse('ERROR\r\n', 'standard').valid).toBe(false);
+    it('启用校验时需要提供 pattern', () => {
+      expect(validateResponse('OK\r\n', true, 'OK').valid).toBe(true);
+      expect(validateResponse('ERROR\r\n', true, 'OK').valid).toBe(false);
+      expect(validateResponse('OK\r\n', true).valid).toBe(false); // 缺少 pattern
     });
 
-    it('custom 校验使用给定模式与匹配方式', () => {
-      expect(validateResponse('+CSQ: 25,99', 'custom', '+CSQ', 'contains').valid).toBe(true);
-      expect(validateResponse('nope', 'custom', '+CSQ', 'contains').valid).toBe(false);
+    it('自定义校验使用给定模式与匹配方式', () => {
+      expect(validateResponse('+CSQ: 25,99', true, '+CSQ', 'contains').valid).toBe(true);
+      expect(validateResponse('nope', true, '+CSQ', 'contains').valid).toBe(false);
     });
 
     it('custom 校验缺少模式时失败', () => {
-      const result = validateResponse('anything', 'custom');
+      const result = validateResponse('anything', true);
       expect(result.valid).toBe(false);
       expect(result.error).toBeTruthy();
     });
@@ -568,7 +569,7 @@ describe('testCaseUtils', () => {
       expect(converted.type).toBe('command');
       expect('pattern' in converted).toBe(false); // command 没有 pattern
       expect(converted.repeatCount).toBe(1); // command 的默认字段
-      expect(converted.validation).toBe('standard');
+      expect(converted.validation).toBe(true);
     });
   });
 });

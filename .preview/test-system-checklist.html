@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试用例运行系统评估检查清单</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: white;
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.9);
+      font-size: 1.1em;
+      margin-bottom: 30px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 3em;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 8px;
+    }
+
+    .stat-label {
+      color: #6b7280;
+      font-size: 0.9em;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .panel-header {
+      padding: 20px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-header h2 {
+      font-size: 1.3em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-progress {
+      font-size: 0.9em;
+      opacity: 0.9;
+    }
+
+    .panel-body {
+      padding: 20px 24px;
+    }
+
+    .checklist {
+      list-style: none;
+    }
+
+    .checklist-item {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      background: #f9fafb;
+      transition: all 0.2s;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      cursor: pointer;
+      border-left: 4px solid transparent;
+    }
+
+    .checklist-item:hover {
+      background: #f3f4f6;
+      transform: translateX(4px);
+    }
+
+    .checklist-item.checked {
+      background: #ecfdf5;
+      border-left-color: #10b981;
+    }
+
+    .checklist-item.unchecked {
+      background: #fef2f2;
+      border-left-color: #ef4444;
+    }
+
+    .checkbox {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #d1d5db;
+      border-radius: 6px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      cursor: pointer;
+      background: white;
+    }
+
+    .checklist-item.checked .checkbox {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+
+    .checklist-item.unchecked .checkbox {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: white;
+    }
+
+    .checkbox:hover {
+      transform: scale(1.1);
+    }
+
+    .item-content {
+      flex: 1;
+    }
+
+    .item-title {
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 4px;
+    }
+
+    .item-desc {
+      font-size: 0.85em;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+
+    .item-note {
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+      border-radius: 4px;
+      font-size: 0.85em;
+      color: #92400e;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .btn-primary {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #6b7280;
+      color: white;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .priority-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .priority-high {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .priority-medium {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .priority-low {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    .section-summary {
+      padding: 16px;
+      background: #f0f9ff;
+      border-radius: 8px;
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .summary-text {
+      font-size: 0.95em;
+      color: #1e40af;
+    }
+
+    .summary-percent {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #1e40af;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8em;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 测试用例运行系统评估检查清单</h1>
+    <p class="subtitle">v0.4.7 全面功能检查 | 点击复选框标记完成状态</p>
+
+    <!-- 统计卡片 -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="totalCount">0</div>
+        <div class="stat-label">检查项总数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="checkedCount" style="color: #10b981;">0</div>
+        <div class="stat-label">已通过</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="uncheckedCount" style="color: #ef4444;">0</div>
+        <div class="stat-label">未通过</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="progressPercent">0%</div>
+        <div class="stat-label">完成度</div>
+      </div>
+    </div>
+
+    <!-- 控制按钮 -->
+    <div class="controls">
+      <button class="btn btn-primary" onclick="checkAll()">✓ 全部标记为通过</button>
+      <button class="btn btn-secondary" onclick="uncheckAll()">○ 全部清除</button>
+      <button class="btn btn-danger" onclick="exportReport()">📄 导出评估报告</button>
+    </div>
+
+    <!-- 1. 运行逻辑 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🎯 1. 运行逻辑评估</h2>
+        <span class="panel-progress" id="progress-1">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="1">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">单命令运行<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">点击命令运行按钮，命令能正常执行，状态从 pending → running → success/failed</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">响应校验<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">按配置的校验模式（none/standard/custom）正确校验响应</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">重试机制<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">repeatCount > 1 时正确重复执行，successThreshold 达标时判定成功</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">用例递归执行<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">用例递归遍历所有子项，按 children 顺序依次执行</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">跳过禁用命令<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">selected=false 的命令/用例被正确跳过</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">循环执行<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">runCount > 1 时正确循环，runCount=0 时无限循环可被停止</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">失败策略（continue）<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">onFailure='continue' 时失败后继续执行后续命令</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">失败策略（abort）<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">onFailure='abort' 时失败后立即终止整个测试</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">URC 后台守护<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">urc-guard 类型命令后台监听，不阻塞后续执行</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">变量替换与提取<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">命令内容中的 ${varName} 正确替换，extractConfig 配置的变量能提取</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">双串口路由<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">命令指定 txPort/rxPort 时发送/接收路由正确，支持 P1 发 P2 收</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">ALL 广播发送<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">sendTarget=ALL 时同时向 P1 和 P2 发送</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-1">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 状态管理 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>📊 2. 状态管理评估</h2>
+        <span class="panel-progress" id="progress-2">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="2">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">命令状态转换<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">pending → running → success/failed/interrupted 状态转换正确</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">用例状态聚合<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">用例状态正确反映子项整体状态（任一 running/所有 success/任一 failed）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">状态图标显示<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">运行中旋转动画、成功绿色 ✓、失败红色 ✗、空闲无图标</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">状态重置功能<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">"清空状态"功能能将所有状态重置为 pending</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-2">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 停止机制 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>⏹️ 3. 停止机制评估</h2>
+        <span class="panel-progress" id="progress-3">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="3">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">单命令停止<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">运行中的单命令点击停止后能正常停止</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">用例停止<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">运行中的用例点击停止后能正常停止（中断递归执行）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">停止响应速度<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">点击停止后应在 1 秒内响应</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">资源释放<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">停止后正确释放串口、定时器等资源</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">中断日志记录<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">终端显示"用户中断"等明确信息</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-3">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 报告生成 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>📄 4. 报告生成评估</h2>
+        <span class="panel-progress" id="progress-4">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="4">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">终端日志输出<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">每条命令的发送内容、响应内容、执行结果都显示在终端</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">日志时间戳<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">每条日志都有准确的时间戳</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">日志颜色区分<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">成功/失败用不同颜色区分（绿色/红色）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">执行统计信息<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">显示总命令数、成功数、失败数、跳过数（如果有此功能）</div>
+              <div class="item-note">⚠️ 此功能可能尚未实现，标记为缺失即可</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">报告导出功能<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">能导出测试报告到文件（如果有此功能）</div>
+              <div class="item-note">⚠️ 此功能可能尚未实现，标记为缺失即可</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-4">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 错误处理 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>⚠️ 5. 错误处理评估</h2>
+        <span class="panel-progress" id="progress-5">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="5">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">串口断开处理<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">运行中串口断开时正确提示并停止</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">发送失败处理<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">串口发送失败时正确捕获错误并提示</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">超时机制<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">串口无响应时超时机制生效，判定为失败</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">配置错误提示<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">检测并提示无效的命令配置（如缺失端口）</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-5">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. UI 反馈 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🎨 6. UI 反馈评估</h2>
+        <span class="panel-progress" id="progress-6">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="6">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">运行动画<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">运行中的命令/用例有明显动画（旋转图标）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">结果高亮<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">成功/失败结果醒目高亮（绿色/红色背景闪烁）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">按钮响应<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">按钮点击有视觉反馈（hover 效果、按下动画）</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">Toast 通知<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">关键操作完成后有 toast 提示</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-6">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 性能表现 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>⚡ 7. 性能表现评估</h2>
+        <span class="panel-progress" id="progress-7">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="7">
+          <li class="checklist-item" data-priority="high">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">启动速度<span class="priority-badge priority-high">高优先级</span></div>
+              <div class="item-desc">点击运行到开始执行 < 100ms</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">大用例支持<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">100+ 命令的用例能流畅运行</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">状态更新速度<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">状态变化 < 100ms 反映到 UI</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">内存稳定<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">长时间运行内存不泄漏</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-7">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. 边界情况 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🔬 8. 边界情况评估</h2>
+        <span class="panel-progress" id="progress-8">0/0</span>
+      </div>
+      <div class="panel-body">
+        <ul class="checklist" data-section="8">
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">空用例处理<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">空用例（无子项）能正常处理或提示</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="medium">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">空命令处理<span class="priority-badge priority-medium">中优先级</span></div>
+              <div class="item-desc">空命令（content=""）能正常处理或提示</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">超长命令<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">超长命令内容（>1KB）能正常发送</div>
+            </div>
+          </li>
+          <li class="checklist-item" data-priority="low">
+            <div class="checkbox" onclick="toggleCheck(this)"></div>
+            <div class="item-content">
+              <div class="item-title">快速点击<span class="priority-badge priority-low">低优先级</span></div>
+              <div class="item-desc">快速连续点击运行按钮不会重复执行</div>
+            </div>
+          </li>
+        </ul>
+        <div class="section-summary">
+          <span class="summary-text">本节完成度</span>
+          <span class="summary-percent" id="percent-8">0%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 初始化统计
+    function updateStats() {
+      const allItems = document.querySelectorAll('.checklist-item');
+      const checkedItems = document.querySelectorAll('.checklist-item.checked');
+      const uncheckedItems = document.querySelectorAll('.checklist-item.unchecked');
+
+      const total = allItems.length;
+      const checked = checkedItems.length;
+      const unchecked = uncheckedItems.length;
+      const pending = total - checked - unchecked;
+      const progress = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+      document.getElementById('totalCount').textContent = total;
+      document.getElementById('checkedCount').textContent = checked;
+      document.getElementById('uncheckedCount').textContent = unchecked;
+      document.getElementById('progressPercent').textContent = progress + '%';
+
+      // 更新每个分组的进度
+      for (let i = 1; i <= 8; i++) {
+        const section = document.querySelector(`[data-section="${i}"]`);
+        if (section) {
+          const sectionItems = section.querySelectorAll('.checklist-item');
+          const sectionChecked = section.querySelectorAll('.checklist-item.checked');
+          const sectionTotal = sectionItems.length;
+          const sectionCheckedCount = sectionChecked.length;
+          const sectionProgress = sectionTotal > 0 ? Math.round((sectionCheckedCount / sectionTotal) * 100) : 0;
+
+          document.getElementById(`progress-${i}`).textContent = `${sectionCheckedCount}/${sectionTotal}`;
+          document.getElementById(`percent-${i}`).textContent = sectionProgress + '%';
+        }
+      }
+
+      // 保存到 localStorage
+      saveState();
+    }
+
+    function toggleCheck(checkbox) {
+      const item = checkbox.parentElement;
+
+      if (item.classList.contains('checked')) {
+        item.classList.remove('checked');
+        item.classList.add('unchecked');
+        checkbox.innerHTML = '✗';
+      } else if (item.classList.contains('unchecked')) {
+        item.classList.remove('unchecked');
+        checkbox.innerHTML = '';
+      } else {
+        item.classList.add('checked');
+        checkbox.innerHTML = '✓';
+      }
+
+      updateStats();
+    }
+
+    function checkAll() {
+      document.querySelectorAll('.checklist-item').forEach(item => {
+        item.classList.remove('unchecked');
+        item.classList.add('checked');
+        item.querySelector('.checkbox').innerHTML = '✓';
+      });
+      updateStats();
+    }
+
+    function uncheckAll() {
+      document.querySelectorAll('.checklist-item').forEach(item => {
+        item.classList.remove('checked', 'unchecked');
+        item.querySelector('.checkbox').innerHTML = '';
+      });
+      updateStats();
+    }
+
+    function exportReport() {
+      const checkedItems = [];
+      const uncheckedItems = [];
+      const pendingItems = [];
+
+      document.querySelectorAll('.checklist-item').forEach(item => {
+        const title = item.querySelector('.item-title').textContent;
+        const desc = item.querySelector('.item-desc').textContent;
+        const priority = item.dataset.priority;
+
+        const itemData = { title, desc, priority };
+
+        if (item.classList.contains('checked')) {
+          checkedItems.push(itemData);
+        } else if (item.classList.contains('unchecked')) {
+          uncheckedItems.push(itemData);
+        } else {
+          pendingItems.push(itemData);
+        }
+      });
+
+      const report = {
+        date: new Date().toISOString().split('T')[0],
+        version: 'v0.4.7',
+        summary: {
+          total: checkedItems.length + uncheckedItems.length + pendingItems.length,
+          checked: checkedItems.length,
+          unchecked: uncheckedItems.length,
+          pending: pendingItems.length,
+          progress: Math.round((checkedItems.length / (checkedItems.length + uncheckedItems.length + pendingItems.length)) * 100)
+        },
+        checkedItems,
+        uncheckedItems,
+        pendingItems
+      };
+
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `test-evaluation-report-${report.date}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      alert('评估报告已导出！');
+    }
+
+    function saveState() {
+      const state = {};
+      document.querySelectorAll('.checklist-item').forEach((item, index) => {
+        if (item.classList.contains('checked')) {
+          state[index] = 'checked';
+        } else if (item.classList.contains('unchecked')) {
+          state[index] = 'unchecked';
+        }
+      });
+      localStorage.setItem('checklistState', JSON.stringify(state));
+    }
+
+    function loadState() {
+      const state = JSON.parse(localStorage.getItem('checklistState') || '{}');
+      document.querySelectorAll('.checklist-item').forEach((item, index) => {
+        if (state[index] === 'checked') {
+          item.classList.add('checked');
+          item.querySelector('.checkbox').innerHTML = '✓';
+        } else if (state[index] === 'unchecked') {
+          item.classList.add('unchecked');
+          item.querySelector('.checkbox').innerHTML = '✗';
+        }
+      });
+      updateStats();
+    }
+
+    // 页面加载时恢复状态
+    window.addEventListener('load', () => {
+      loadState();
+    });
+  </script>
+</body>
+</html>

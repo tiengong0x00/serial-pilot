@@ -23,8 +23,9 @@ export type DataFormat = 'utf8' | 'hex';
 export type LineEnding = 'none' | 'lf' | 'cr' | 'crlf';
 
 /** 校验类型：none=发完即成功 / standard=标准AT(OK通过) / custom=自定义模式 */
-export type ValidationType = 'none' | 'standard' | 'custom';
-/** 自定义校验的匹配方式 */
+/** 响应校验类型：启用或不启用 */
+export type ValidationType = boolean;
+/** 校验的匹配方式 */
 export type MatchMode = 'contains' | 'exact' | 'regex' | 'startsWith' | 'endsWith';
 
 /**
@@ -98,10 +99,10 @@ export interface StandardCommand extends BaseCommand {
   stopWhenReached: boolean;             // 达到阈值后立即停止（否=发满repeatCount）
 
   // 响应校验
-  timeout: number;                      // 单次等待超时(ms)，validation='none'时不生效
-  validation: ValidationType;
-  validationPattern?: string;           // standard时不需要，custom时必需
-  validationMode?: MatchMode;           // custom时的匹配方式
+  timeout: number;                      // 单次等待超时(ms)，validation=false时不生效
+  validation: ValidationType;           // 是否启用校验
+  validationPattern?: string;           // 校验内容，validation=true时必需
+  validationMode?: MatchMode;           // 匹配方式
   validationFormat?: DataFormat;        // 匹配内容格式（默认 utf8）
 
   // 变量提取
@@ -110,6 +111,7 @@ export interface StandardCommand extends BaseCommand {
   // 失败处理
   onFailure: CommandFailureAction;
   gotoTargetId?: string;                // onFailure='goto' 时生效：跳转目标命令 id
+  gotoMode?: 'goto' | 'call';           // 跳转方式：直接跳转 / 调用返回（默认 goto）
 
   // 双串口路由（可选）：undefined=继承用例默认口(targetPort)
   // 支持场景：P1发P2收（交叉）、某命令改用P2操作（混合）

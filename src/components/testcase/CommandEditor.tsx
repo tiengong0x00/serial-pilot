@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FileUp, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { AtAutocompleteInput } from '@/components/serial/AtAutocompleteInput';
 import { HexInput } from '@/components/testcase/HexInput';
+import { FormatToggle, SegmentedControl } from '@/components/testcase/FormatToggle';
 import { SaveCommandDialog } from '@/components/serial/SaveCommandDialog';
 import { useCommandLibrary } from '@/stores/commandLibraryStore';
 import { useTestCaseStore } from '@/stores/testCaseStore';
@@ -40,30 +41,15 @@ interface CommandEditorProps {
 const inputCls = 'w-full px-3 py-2 border rounded-md bg-background text-sm';
 const labelCls = 'text-sm font-medium';
 const fieldCls = 'space-y-1.5';
+// 内联紧凑控件（用于同一行内的小型 select）
+const inlineSelectCls = 'px-2 py-1 border rounded text-xs bg-background';
 
 export function CommandEditor({ command, testcaseName, onChange }: CommandEditorProps) {
   const { t } = useTranslation();
 
   return (
     <div className="space-y-4 p-4 overflow-y-auto">
-      {/* 命令类型 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.commandType')}</label>
-        <select
-          value={command.type}
-          onChange={(e) => onChange({ type: e.target.value as typeof command.type })}
-          className={inputCls}
-        >
-          <option value="command">{t('testCase.commandTypePlain')}</option>
-          <option value="urc-guard">{t('testCase.commandTypeUrcGuard')}</option>
-          <option value="script">{t('testCase.commandTypeScript')}</option>
-        </select>
-        <p className="text-xs text-muted-foreground">
-          {t('testCase.commandTypeHint')}
-        </p>
-      </div>
-
-      {/* 公共字段 */}
+      {/* 公共字段：命令名称 */}
       <div className={fieldCls}>
         <label className={labelCls}>{t('testCase.commandName')}</label>
         <input
@@ -73,8 +59,6 @@ export function CommandEditor({ command, testcaseName, onChange }: CommandEditor
           placeholder={t('testCase.commandNamePlaceholder')}
         />
       </div>
-
-      {/* 命令描述已移到各子编辑器内部，统一放在内容/模式之后 */}
 
       {/* 根据类型渲染不同编辑器 */}
       {command.type === 'command' && <StandardCommandFields command={command} testcaseName={testcaseName} onChange={onChange} />}
@@ -129,23 +113,16 @@ function StandardCommandFields({
 
   return (
     <>
-      {/* 数据格式选择器：置顶，因为它决定下面输入框的类型 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.dataFormat')}</label>
-          <select
-            className={inputCls}
+      {/* 命令内容 - 多控件合并到标题行 */}
+      <div className={fieldCls}>
+        <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+          <label className={labelCls}>{t('testCase.commandContent')}</label>
+          <FormatToggle
             value={command.dataFormat}
-            onChange={(e) => onChange({ dataFormat: e.target.value as 'utf8' | 'hex' })}
-          >
-            <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
-            <option value="hex">{t('testCase.dataFormatHex')}</option>
-          </select>
-        </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.lineEnding')}</label>
+            onChange={(format) => onChange({ dataFormat: format })}
+          />
           <select
-            className={inputCls}
+            className={inlineSelectCls}
             value={command.lineEnding}
             onChange={(e) => onChange({ lineEnding: e.target.value as StandardCommand['lineEnding'] })}
           >
@@ -154,11 +131,20 @@ function StandardCommandFields({
             <option value="cr">{t('testCase.lineEndingCR')}</option>
             <option value="crlf">{t('testCase.lineEndingCRLF')}</option>
           </select>
+          {command.validation && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.timeoutShort')}:</span>
+              <input
+                type="number"
+                className="w-20 px-2 py-1 border rounded text-xs bg-background"
+                value={command.timeout}
+                onChange={(e) => onChange({ timeout: Number(e.target.value) })}
+                min="0"
+              />
+              <span className="text-xs text-muted-foreground">ms</span>
+            </div>
+          )}
         </div>
-      </div>
-
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.commandContent')}</label>
         {command.dataFormat === 'hex' ? (
           <HexInput
             value={command.content}
@@ -210,127 +196,128 @@ function StandardCommandFields({
         />
       </div>
 
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.delay')}</label>
-        <input
-          type="number"
-          className={inputCls}
-          value={command.delay}
-          onChange={(e) => onChange({ delay: Math.max(0, Number(e.target.value) || 0) })}
-          min="0"
-        />
-        <p className="text-xs text-muted-foreground mt-1">{t('testCase.delayHint')}</p>
-      </div>
-
-      {/* 重复策略 */}
+      {/* 策略配置 */}
       <div className="border-t pt-3 space-y-3">
-        <h4 className="text-sm font-semibold">{t('testCase.repeatStrategy')}</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.sendCount')}</label>
-            <input
-              type="number"
-              className={inputCls}
-              value={command.repeatCount}
-              onChange={(e) => onChange({ repeatCount: Math.max(1, Number(e.target.value)) })}
-              min="1"
-            />
-          </div>
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.successThreshold')}</label>
-            <input
-              type="number"
-              className={inputCls}
-              value={command.successThreshold}
-              onChange={(e) => onChange({ successThreshold: Number(e.target.value) })}
-              min="1"
-              max={command.repeatCount}
-            />
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{t('testCase.repeatStrategy')}</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.sendCountShort')}</span>
+              <input
+                type="number"
+                className="w-16 px-2 py-1 border rounded text-xs bg-background"
+                value={command.repeatCount}
+                onChange={(e) => onChange({ repeatCount: Math.max(1, Number(e.target.value)) })}
+                min="1"
+              />
+              <span className="text-xs text-muted-foreground">{t('testCase.timesUnit')}</span>
+            </div>
+            <label className="flex items-center gap-1 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={command.stopWhenReached}
+                onChange={(e) => onChange({ stopWhenReached: e.target.checked })}
+              />
+              <span className="text-muted-foreground">{t('testCase.reachShort')}</span>
+              <input
+                type="number"
+                className="w-16 px-2 py-1 border rounded text-xs bg-background"
+                value={command.successThreshold}
+                onChange={(e) => onChange({ successThreshold: Number(e.target.value) })}
+                min="1"
+                max={command.repeatCount}
+              />
+              <span className="text-muted-foreground">{t('testCase.successTimesShort')}</span>
+            </label>
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.onFailureShort')}</span>
+              <select
+                className={inlineSelectCls}
+                value={command.onFailure}
+                onChange={(e) => onChange({ onFailure: e.target.value as StandardCommand['onFailure'] })}
+              >
+                <option value="continue">{t('testCase.failureActionContinue')}</option>
+                <option value="end-round">{t('testCase.failureActionEndRound')}</option>
+                <option value="abort">{t('testCase.failureActionAbort')}</option>
+                <option value="goto">{t('testCase.failureActionGoto')}</option>
+              </select>
+            </div>
           </div>
         </div>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={command.stopWhenReached}
-            onChange={(e) => onChange({ stopWhenReached: e.target.checked })}
+        {/* 跳转配置（仅 goto 时显示，与 URC 跳转一致） */}
+        {command.onFailure === 'goto' && (
+          <GotoTargetSection
+            commandId={command.id}
+            gotoTargetId={command.gotoTargetId}
+            gotoMode={command.gotoMode}
+            onChange={onChange}
           />
-          {t('testCase.stopWhenReached', { count: command.repeatCount })}
-        </label>
+        )}
       </div>
 
-      {/* 响应校验 */}
+      {/* 响应校验 - 复选框 + 匹配方式 + 延时 */}
       <div className="border-t pt-3 space-y-3">
-        <h4 className="text-sm font-semibold">{t('testCase.responseValidation')}</h4>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.validationType')}</label>
-          <select
-            className={inputCls}
-            value={command.validation}
-            onChange={(e) => onChange({ validation: e.target.value as StandardCommand['validation'] })}
-          >
-            <option value="none">{t('testCase.validationNone')}</option>
-            <option value="standard">{t('testCase.validationStandard')}</option>
-            <option value="custom">{t('testCase.validationCustom')}</option>
-          </select>
-        </div>
-
-        {command.validation === 'custom' && (
-          <>
-            <div className={fieldCls}>
-              <label className={labelCls}>{t('testCase.matchMode')}</label>
-              <select
-                className={inputCls}
-                value={command.validationMode || 'contains'}
-                onChange={(e) => onChange({ validationMode: e.target.value as StandardCommand['validationMode'] })}
-              >
-                <option value="contains">{t('testCase.matchModeContains')}</option>
-                <option value="exact">{t('testCase.matchModeExact')}</option>
-                <option value="regex">{t('testCase.matchModeRegex')}</option>
-                <option value="startsWith">{t('testCase.matchModeStartsWith')}</option>
-                <option value="endsWith">{t('testCase.matchModeEndsWith')}</option>
-              </select>
-            </div>
-            <div className={fieldCls}>
-              <label className={labelCls}>{t('testCase.matchFormat')}</label>
-              <select
-                className={inputCls}
-                value={command.validationFormat || 'utf8'}
-                onChange={(e) => onChange({ validationFormat: e.target.value as 'utf8' | 'hex' })}
-              >
-                <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
-                <option value="hex">{t('testCase.dataFormatHex')}</option>
-              </select>
-            </div>
-            <div className={fieldCls}>
-              <label className={labelCls}>{t('testCase.matchContent')}</label>
-              {(command.validationFormat || 'utf8') === 'hex' ? (
-                <HexInput
-                  value={command.validationPattern || ''}
-                  onChange={(val) => onChange({ validationPattern: val })}
-                  placeholder={t('testCase.matchContentHexPlaceholder')}
-                />
-              ) : (
-                <input
-                  className={`${inputCls} font-mono`}
-                  value={command.validationPattern || ''}
-                  onChange={(e) => onChange({ validationPattern: e.target.value })}
-                  placeholder={t('testCase.matchContentPlaceholder')}
-                />
-              )}
-            </div>
-          </>
-        )}
-
-        {command.validation !== 'none' && (
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.waitTimeout')}</label>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+            <input
+              type="checkbox"
+              checked={command.validation}
+              onChange={(e) => onChange({
+                validation: e.target.checked,
+                validationPattern: e.target.checked && !command.validationPattern ? 'OK' : command.validationPattern,
+                validationMode: e.target.checked && !command.validationMode ? 'contains' : command.validationMode,
+              })}
+            />
+            {t('testCase.responseValidation')}
+          </label>
+          {command.validation && (
+            <select
+              className={inlineSelectCls}
+              value={command.validationMode || 'contains'}
+              onChange={(e) => onChange({ validationMode: e.target.value as StandardCommand['validationMode'] })}
+            >
+              <option value="contains">{t('testCase.matchModeContains')}</option>
+              <option value="exact">{t('testCase.matchModeExact')}</option>
+              <option value="regex">{t('testCase.matchModeRegex')}</option>
+              <option value="startsWith">{t('testCase.matchModeStartsWith')}</option>
+              <option value="endsWith">{t('testCase.matchModeEndsWith')}</option>
+            </select>
+          )}
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{t('testCase.delayShort')}:</span>
             <input
               type="number"
-              className={inputCls}
-              value={command.timeout}
-              onChange={(e) => onChange({ timeout: Number(e.target.value) })}
+              className="w-20 px-2 py-1 border rounded text-xs bg-background"
+              value={command.delay}
+              onChange={(e) => onChange({ delay: Math.max(0, Number(e.target.value) || 0) })}
               min="0"
             />
+            <span className="text-xs text-muted-foreground">ms</span>
+          </div>
+        </div>
+        {command.validation && (
+          <div className={fieldCls}>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={labelCls}>{t('testCase.matchContent')}</label>
+              <FormatToggle
+                value={command.validationFormat || 'utf8'}
+                onChange={(format) => onChange({ validationFormat: format })}
+              />
+            </div>
+            {(command.validationFormat || 'utf8') === 'hex' ? (
+              <HexInput
+                value={command.validationPattern || ''}
+                onChange={(val) => onChange({ validationPattern: val })}
+                placeholder={t('testCase.matchContentHexPlaceholder')}
+              />
+            ) : (
+              <input
+                className={`${inputCls} font-mono`}
+                value={command.validationPattern || ''}
+                onChange={(e) => onChange({ validationPattern: e.target.value })}
+                placeholder={t('testCase.matchContentPlaceholder')}
+              />
+            )}
           </div>
         )}
       </div>
@@ -340,31 +327,6 @@ function StandardCommandFields({
         config={command.extractConfig}
         onChange={(extractConfig) => onChange({ extractConfig })}
       />
-
-      {/* 失败处理 */}
-      <div className="border-t pt-3 space-y-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.failureAction')}</label>
-          <select
-            className={inputCls}
-            value={command.onFailure}
-            onChange={(e) => onChange({ onFailure: e.target.value as StandardCommand['onFailure'] })}
-          >
-            <option value="continue">{t('testCase.failureActionContinue')}</option>
-            <option value="end-round">{t('testCase.failureActionEndRound')}</option>
-            <option value="abort">{t('testCase.failureActionAbort')}</option>
-            <option value="goto">{t('testCase.failureActionGoto')}</option>
-          </select>
-        </div>
-        {/* 失败跳转目标（仅 onFailure='goto' 时显示） */}
-        {command.onFailure === 'goto' && (
-          <GotoTargetSelect
-            commandId={command.id}
-            gotoTargetId={command.gotoTargetId}
-            onChange={(gotoTargetId) => onChange({ gotoTargetId })}
-          />
-        )}
-      </div>
 
       {/* 高级配置（串口路由 + 硬件信号，置于最末尾） */}
       <PortRoutingSection
@@ -410,16 +372,25 @@ function UrcGuardCommandFields({
   return (
     <>
       <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.urcPattern')}</label>
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          <div>
+        {/* URC 匹配内容 - 格式切换紧贴标签，模式下拉靠右 */}
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <label className={labelCls}>{t('testCase.urcPattern')}</label>
+          <FormatToggle
+            value={command.patternFormat || 'utf8'}
+            onChange={(format) => onChange({ patternFormat: format })}
+          />
+          <div className="ml-auto flex items-center gap-2">
+            <label className="text-sm font-medium">{t('testCase.matchMode')}</label>
             <select
-              className={inputCls}
-              value={command.patternFormat || 'utf8'}
-              onChange={(e) => onChange({ patternFormat: e.target.value as 'utf8' | 'hex' })}
+              className={inlineSelectCls}
+              value={command.matchMode}
+              onChange={(e) => onChange({ matchMode: e.target.value as UrcGuardCommand['matchMode'] })}
             >
-              <option value="utf8">{t('testCase.dataFormatUtf8')}</option>
-              <option value="hex">{t('testCase.dataFormatHex')}</option>
+              <option value="contains">{t('testCase.matchModeContains')}</option>
+              <option value="exact">{t('testCase.matchModeExact')}</option>
+              <option value="regex">{t('testCase.matchModeRegex')}</option>
+              <option value="startsWith">{t('testCase.matchModeStartsWith')}</option>
+              <option value="endsWith">{t('testCase.matchModeEndsWith')}</option>
             </select>
           </div>
         </div>
@@ -439,7 +410,7 @@ function UrcGuardCommandFields({
         )}
       </div>
 
-      {/* 命令描述：置于匹配内容之后，与普通命令保持一致 */}
+      {/* 命令描述 */}
       <div className={fieldCls}>
         <label className={labelCls}>{t('testCase.commandDescription')}</label>
         <textarea
@@ -450,72 +421,60 @@ function UrcGuardCommandFields({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.matchMode')}</label>
-          <select
-            className={inputCls}
-            value={command.matchMode}
-            onChange={(e) => onChange({ matchMode: e.target.value as UrcGuardCommand['matchMode'] })}
-          >
-            <option value="contains">{t('testCase.matchModeContains')}</option>
-            <option value="exact">{t('testCase.matchModeExact')}</option>
-            <option value="regex">{t('testCase.matchModeRegex')}</option>
-            <option value="startsWith">{t('testCase.matchModeStartsWith')}</option>
-            <option value="endsWith">{t('testCase.matchModeEndsWith')}</option>
-          </select>
+      {/* 规则配置 */}
+      <div className="border-t pt-3 space-y-3">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{t('testCase.repeatStrategy')}</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.sendCountShort')}</span>
+              <SegmentedControl
+                value={command.rearm}
+                options={[
+                  { value: 'once', label: t('testCase.rearmModeOnce') },
+                  { value: 'continuous', label: t('testCase.rearmModeContinuous') },
+                ]}
+                onChange={(v) => onChange({ rearm: v as 'once' | 'continuous' })}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.scopeShort')}</span>
+              <SegmentedControl
+                value={command.scope}
+                options={[
+                  { value: 'root', label: t('testCase.scopeRoot') },
+                  { value: 'case', label: t('testCase.scopeCase') },
+                ]}
+                onChange={(v) => onChange({ scope: v as 'root' | 'case' })}
+              />
+            </div>
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.hitAction')}</span>
+              <select
+                className={inlineSelectCls}
+                value={command.action}
+                onChange={(e) => onChange({ action: e.target.value as UrcGuardCommand['action'] })}
+              >
+                <option value="restart-round">{t('testCase.hitActionRestartRound')}</option>
+                <option value="abort">{t('testCase.hitActionAbort')}</option>
+                <option value="fail-current">{t('testCase.hitActionFailCurrent')}</option>
+                <option value="jump-to">{t('testCase.hitActionJumpTo')}</option>
+                <option value="capture-only">{t('testCase.hitActionCaptureOnly')}</option>
+                <option value="log-only">{t('testCase.hitActionLogOnly')}</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.scope')}</label>
-          <select
-            className={inputCls}
-            value={command.scope}
-            onChange={(e) => onChange({ scope: e.target.value as 'root' | 'case' })}
-          >
-            <option value="root">{t('testCase.scopeRoot')}</option>
-            <option value="case">{t('testCase.scopeCase')}</option>
-          </select>
-        </div>
+        {/* 跳转配置（仅 action='jump-to' 时显示） */}
+        {command.action === 'jump-to' && (
+          <JumpTargetSection
+            guardId={command.id}
+            jumpTargetId={command.jumpTargetId}
+            jumpMode={command.jumpMode}
+            onChange={onChange}
+          />
+        )}
       </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.hitAction')}</label>
-          <select
-            className={inputCls}
-            value={command.action}
-            onChange={(e) => onChange({ action: e.target.value as UrcGuardCommand['action'] })}
-          >
-            <option value="restart-round">{t('testCase.hitActionRestartRound')}</option>
-            <option value="abort">{t('testCase.hitActionAbort')}</option>
-            <option value="fail-current">{t('testCase.hitActionFailCurrent')}</option>
-            <option value="jump-to">{t('testCase.hitActionJumpTo')}</option>
-            <option value="capture-only">{t('testCase.hitActionCaptureOnly')}</option>
-            <option value="log-only">{t('testCase.hitActionLogOnly')}</option>
-          </select>
-        </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.rearmMode')}</label>
-          <select
-            className={inputCls}
-            value={command.rearm}
-            onChange={(e) => onChange({ rearm: e.target.value as 'once' | 'continuous' })}
-          >
-            <option value="once">{t('testCase.rearmModeOnce')}</option>
-            <option value="continuous">{t('testCase.rearmModeContinuous')}</option>
-          </select>
-        </div>
-      </div>
-
-      {/* 跳转配置（仅 action='jump-to' 时显示） */}
-      {command.action === 'jump-to' && (
-        <JumpTargetSection
-          guardId={command.id}
-          jumpTargetId={command.jumpTargetId}
-          jumpMode={command.jumpMode}
-          onChange={onChange}
-        />
-      )}
 
       <ExtractConfigEditor
         config={command.extractConfig}
@@ -553,24 +512,24 @@ function JumpTargetSection({
     : [];
 
   return (
-    <div className="space-y-3 p-3 border rounded-md bg-blue-50/50">
-      <h5 className="text-sm font-semibold text-blue-700">{t('testCase.jumpConfig')}</h5>
-      <div className="grid grid-cols-2 gap-3">
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.jumpMode')}</label>
-          <select
-            className={inputCls}
+    <div className="space-y-3">
+      {/* 跳转方式靠左，跳转目标靠右 */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{t('testCase.jumpMode')}</span>
+          <SegmentedControl
             value={jumpMode ?? 'goto'}
-            onChange={(e) => onChange({ jumpMode: e.target.value as 'goto' | 'call' })}
-          >
-            <option value="goto">{t('testCase.jumpModeGoto')}</option>
-            <option value="call">{t('testCase.jumpModeCall')}</option>
-          </select>
+            options={[
+              { value: 'goto', label: t('testCase.jumpModeGoto') },
+              { value: 'call', label: t('testCase.jumpModeCall') },
+            ]}
+            onChange={(v) => onChange({ jumpMode: v as 'goto' | 'call' })}
+          />
         </div>
-        <div className={fieldCls}>
-          <label className={labelCls}>{t('testCase.jumpTarget')}</label>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{t('testCase.jumpTarget')}</span>
           <select
-            className={inputCls}
+            className={inlineSelectCls}
             value={jumpTargetId ?? ''}
             onChange={(e) => onChange({ jumpTargetId: e.target.value || undefined })}
           >
@@ -587,15 +546,17 @@ function JumpTargetSection({
   );
 }
 
-// ============ 失败跳转目标选择（命令 goto 专用）============
-function GotoTargetSelect({
+// ============ 失败跳转配置（命令 goto 专用，与 URC 跳转一致）============
+function GotoTargetSection({
   commandId,
   gotoTargetId,
+  gotoMode,
   onChange,
 }: {
   commandId: string;
   gotoTargetId?: string;
-  onChange: (id?: string) => void;
+  gotoMode?: 'goto' | 'call';
+  onChange: (patch: Partial<StandardCommand>) => void;
 }) {
   const { t } = useTranslation();
   const cases = useTestCaseStore((s) => s.cases);
@@ -609,20 +570,33 @@ function GotoTargetSelect({
     : [];
 
   return (
-    <div className={fieldCls}>
-      <label className={labelCls}>{t('testCase.gotoTarget')}</label>
-      <select
-        className={inputCls}
-        value={gotoTargetId ?? ''}
-        onChange={(e) => onChange(e.target.value || undefined)}
-      >
-        <option value="">{t('testCase.jumpTargetNone')}</option>
-        {siblings.map((cmd) => (
-          <option key={cmd.id} value={cmd.id}>
-            {(cmd as StandardCommand).content || cmd.name || cmd.id}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-4 flex-wrap">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{t('testCase.jumpMode')}</span>
+        <SegmentedControl
+          value={gotoMode ?? 'goto'}
+          options={[
+            { value: 'goto', label: t('testCase.jumpModeGoto') },
+            { value: 'call', label: t('testCase.jumpModeCall') },
+          ]}
+          onChange={(v) => onChange({ gotoMode: v as 'goto' | 'call' })}
+        />
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{t('testCase.jumpTarget')}</span>
+        <select
+          className={inlineSelectCls}
+          value={gotoTargetId ?? ''}
+          onChange={(e) => onChange({ gotoTargetId: e.target.value || undefined })}
+        >
+          <option value="">{t('testCase.jumpTargetNone')}</option>
+          {siblings.map((cmd) => (
+            <option key={cmd.id} value={cmd.id}>
+              {(cmd as StandardCommand).content || cmd.name || cmd.id}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -639,24 +613,24 @@ function PortSelect({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={fieldCls}>
-      <label className={labelCls}>{label}</label>
-      <select
-        className={inputCls}
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-medium w-8 shrink-0">{label}</span>
+      <SegmentedControl
         value={value ?? ''}
-        onChange={(e) => onChange((e.target.value || undefined) as PortLabel | undefined)}
-      >
-        <option value="">{t('testCase.portDefault')}</option>
-        <option value="P1">P1</option>
-        <option value="P2">P2</option>
-      </select>
+        options={[
+          { value: '', label: t('testCase.portDefault') },
+          { value: 'P1', label: 'P1' },
+          { value: 'P2', label: 'P2' },
+        ]}
+        onChange={(v) => onChange((v || undefined) as PortLabel | undefined)}
+      />
     </div>
   );
 }
 
 type SignalControl = 'inherit' | 'high' | 'low';
 
-/** 硬件信号三态选择器（DTR/RTS） */
+/** 硬件信号三态按钮组（DTR/RTS） */
 function SignalSelect({
   label,
   value,
@@ -668,17 +642,17 @@ function SignalSelect({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={fieldCls}>
-      <label className={labelCls}>{label}</label>
-      <select
-        className={inputCls}
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-medium w-8 shrink-0">{label}</span>
+      <SegmentedControl
         value={value ?? 'inherit'}
-        onChange={(e) => onChange(e.target.value as SignalControl)}
-      >
-        <option value="inherit">{t('testCase.signalInherit')}</option>
-        <option value="high">{t('testCase.signalHigh')}</option>
-        <option value="low">{t('testCase.signalLow')}</option>
-      </select>
+        options={[
+          { value: 'inherit', label: t('testCase.signalInherit') },
+          { value: 'high', label: t('testCase.signalHigh') },
+          { value: 'low', label: t('testCase.signalLow') },
+        ]}
+        onChange={(v) => onChange(v as SignalControl)}
+      />
     </div>
   );
 }
@@ -717,24 +691,12 @@ function PortRoutingSection({
         {t('testCase.advancedConfig')}
       </button>
       {open && (
-        <div className="mt-2 space-y-4">
-          {/* 子区：串口路由 */}
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-foreground/80">{t('testCase.portRouting')}</p>
-            <p className="text-xs text-muted-foreground">{t('testCase.portRoutingHint')}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <PortSelect label={t('testCase.txPortLabel')} value={txPort} onChange={onChangeTx} />
-              <PortSelect label={t('testCase.rxPortLabel')} value={rxPort} onChange={onChangeRx} />
-            </div>
-          </div>
-          {/* 子区：硬件信号 */}
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-foreground/80">{t('testCase.hardwareSignals')}</p>
-            <p className="text-xs text-muted-foreground">{t('testCase.signalHint')}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <SignalSelect label={t('testCase.dtrControl')} value={dtr} onChange={onChangeDtr} />
-              <SignalSelect label={t('testCase.rtsControl')} value={rts} onChange={onChangeRts} />
-            </div>
+        <div className="mt-2">
+          <div className="grid grid-cols-2 gap-3">
+            <PortSelect label={t('testCase.txPortLabel')} value={txPort} onChange={onChangeTx} />
+            <PortSelect label={t('testCase.rxPortLabel')} value={rxPort} onChange={onChangeRx} />
+            <SignalSelect label={t('testCase.dtrControl')} value={dtr} onChange={onChangeDtr} />
+            <SignalSelect label={t('testCase.rtsControl')} value={rts} onChange={onChangeRts} />
           </div>
         </div>
       )}
@@ -762,8 +724,7 @@ function ListenPortSection({
         {t('testCase.portRouting')}
       </button>
       {open && (
-        <div className="mt-2 space-y-2">
-          <p className="text-xs text-muted-foreground">{t('testCase.portRoutingHint')}</p>
+        <div className="mt-2">
           <PortSelect label={t('testCase.listenPortLabel')} value={listenPort} onChange={onChange} />
         </div>
       )}
@@ -809,9 +770,25 @@ function ScriptCommandFields({
         />
       </div>
 
-      {/* 执行命令 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.scriptCommand')}</label>
+      {/* 执行命令 + 超时 */}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <label className={labelCls}>{t('testCase.scriptCommand')}</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium shrink-0">{t('testCase.timeoutShort')}</label>
+            <input
+              type="number"
+              className="w-24 px-2 py-1 border rounded text-xs bg-background"
+              value={command.timeout}
+              onChange={(e) => onChange({ timeout: Math.max(1000, parseInt(e.target.value) || 30000) })}
+              min={1000}
+              max={300000}
+            />
+            <span className="text-xs text-muted-foreground">ms</span>
+          </div>
+        </div>
         <input
           className={inputCls}
           value={command.command}
@@ -823,47 +800,36 @@ function ScriptCommandFields({
         </p>
       </div>
 
-      {/* 超时 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.scriptTimeout')}</label>
-        <input
-          type="number"
-          className={inputCls}
-          value={command.timeout}
-          onChange={(e) => onChange({ timeout: Math.max(1000, parseInt(e.target.value) || 30000) })}
-          min={1000}
-          max={300000}
-        />
-        <p className="text-xs text-muted-foreground">
-          {t('testCase.scriptTimeoutHint')}
-        </p>
-      </div>
-
-      {/* 失败处理 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.scriptOnFailure')}</label>
-        <select
-          className={inputCls}
-          value={command.onFailure}
-          onChange={(e) => onChange({ onFailure: e.target.value as ScriptCommand['onFailure'] })}
-        >
-          <option value="abort">{t('testCase.failureActionAbort')}</option>
-          <option value="continue">{t('testCase.failureActionContinue')}</option>
-          <option value="end-round">{t('testCase.failureActionEndRound')}</option>
-        </select>
-      </div>
-
-      {/* 命令延时 */}
-      <div className={fieldCls}>
-        <label className={labelCls}>{t('testCase.delay')}</label>
-        <input
-          type="number"
-          className={inputCls}
-          value={command.delay}
-          onChange={(e) => onChange({ delay: Math.max(0, parseInt(e.target.value) || 0) })}
-          min={0}
-        />
-        <p className="text-xs text-muted-foreground mt-1">{t('testCase.delayHint')}</p>
+      {/* 规则配置 */}
+      <div className="border-t pt-3">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{t('testCase.repeatStrategy')}</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.onFailureShort')}</span>
+              <select
+                className={inlineSelectCls}
+                value={command.onFailure}
+                onChange={(e) => onChange({ onFailure: e.target.value as ScriptCommand['onFailure'] })}
+              >
+                <option value="abort">{t('testCase.failureActionAbort')}</option>
+                <option value="continue">{t('testCase.failureActionContinue')}</option>
+                <option value="end-round">{t('testCase.failureActionEndRound')}</option>
+              </select>
+            </div>
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.delayShort')}:</span>
+              <input
+                type="number"
+                className="w-24 px-2 py-1 border rounded text-xs bg-background"
+                value={command.delay}
+                onChange={(e) => onChange({ delay: Math.max(0, parseInt(e.target.value) || 0) })}
+                min={0}
+              />
+              <span className="text-xs text-muted-foreground">ms</span>
+            </div>
+          </div>
+        </div>
       </div>
     </>
   );
@@ -881,72 +847,59 @@ function ExtractConfigEditor({
   const enabled = config?.enabled || false;
 
   return (
-    <div className="border-t pt-3 space-y-3">
-      <h4 className="text-sm font-semibold text-green-600">{t('testCase.variableExtraction')}</h4>
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) =>
-            onChange({
-              enabled: e.target.checked,
-              parseType: config?.parseType || 'regex',
-              parsePattern: config?.parsePattern || '',
-              parameterMap: config?.parameterMap || {},
-            })
-          }
-        />
-        {t('testCase.enableExtraction')}
-      </label>
+    <div className="border-t pt-3 space-y-2">
+      {/* 第一行：checkbox + 标签 + 解析方式（启用时显示） */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="flex items-center gap-2 text-sm font-semibold text-green-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              onChange({
+                enabled: e.target.checked,
+                parseType: config?.parseType || 'regex',
+                parsePattern: config?.parsePattern || '',
+                parameterMap: config?.parameterMap || {},
+              })
+            }
+          />
+          {t('testCase.variableExtraction')}
+        </label>
+        {enabled && config && (
+          <SegmentedControl
+            value={config.parseType}
+            options={[
+              { value: 'regex', label: t('testCase.extractionMethodRegex') },
+              { value: 'split', label: t('testCase.extractionMethodSplit') },
+            ]}
+            onChange={(v) => onChange({ ...config, parseType: v as 'regex' | 'split' })}
+          />
+        )}
+      </div>
 
+      {/* 展开内容：解析模式 + 变量映射 */}
       {enabled && config && (
         <>
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.extractionMethod')}</label>
-            <select
-              className={inputCls}
-              value={config.parseType}
-              onChange={(e) => onChange({ ...config, parseType: e.target.value as 'regex' | 'split' })}
-            >
-              <option value="regex">{t('testCase.extractionMethodRegex')}</option>
-              <option value="split">{t('testCase.extractionMethodSplit')}</option>
-            </select>
-          </div>
-
-          <div className={fieldCls}>
-            <label className={labelCls}>{config.parseType === 'regex' ? t('testCase.regexPattern') : t('testCase.splitDelimiter')}</label>
-            <input
-              className={`${inputCls} font-mono`}
-              value={config.parsePattern}
-              onChange={(e) => onChange({ ...config, parsePattern: e.target.value })}
-              placeholder={config.parseType === 'regex' ? t('testCase.regexPatternPlaceholder') : t('testCase.splitDelimiterPlaceholder')}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              {config.parseType === 'regex'
-                ? t('testCase.regexHint')
-                : t('testCase.splitHint')}
-            </p>
-          </div>
-
-          <div className={fieldCls}>
-            <label className={labelCls}>{t('testCase.parameterMap')}</label>
-            <textarea
-              className={`${inputCls} font-mono min-h-[80px]`}
-              value={JSON.stringify(config.parameterMap, null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  onChange({ ...config, parameterMap: parsed });
-                } catch {
-                  // 忽略无效 JSON
-                }
-              }}
-              placeholder={'{\n  "rssi": "1",\n  "ber": "2"\n}'}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              {t('testCase.parameterMapHint')}
-            </p>
-          </div>
+          <input
+            className={`${inputCls} font-mono`}
+            value={config.parsePattern}
+            onChange={(e) => onChange({ ...config, parsePattern: e.target.value })}
+            placeholder={config.parseType === 'regex' ? t('testCase.regexPatternPlaceholder') : t('testCase.splitDelimiterPlaceholder')}
+          />
+          <div className="text-xs font-medium text-muted-foreground">{t('testCase.parameterMap')}</div>
+          <textarea
+            className={`${inputCls} font-mono min-h-[80px]`}
+            value={JSON.stringify(config.parameterMap, null, 2)}
+            onChange={(e) => {
+              try {
+                const parsed = JSON.parse(e.target.value);
+                onChange({ ...config, parameterMap: parsed });
+              } catch {
+                // 忽略无效 JSON
+              }
+            }}
+            placeholder={'{\n  "rssi": "1",\n  "ber": "2"\n}'}
+          />
         </>
       )}
     </div>

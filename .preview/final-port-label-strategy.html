@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>最终端口标签显示策略</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: #0a0a0a;
+      color: #e5e5e5;
+    }
+  </style>
+</head>
+<body class="p-8">
+  <div class="max-w-5xl mx-auto space-y-8">
+    <div>
+      <h1 class="text-2xl font-bold mb-2">最终端口标签显示策略</h1>
+      <p class="text-gray-400 text-sm">只有合并显示 + 双串口连接时才显示 [P1] / [P2] 标签</p>
+    </div>
+
+    <!-- 核心逻辑 -->
+    <div class="border border-green-600 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4 text-green-400">✅ 最终方案</h2>
+
+      <div class="mb-6 bg-gray-800/50 p-4 rounded">
+        <code class="text-base text-purple-400">const showPortLabel = !dualTerminalEnabled && p1_connected && p2_connected;</code>
+        <div class="mt-3 text-sm text-gray-300 space-y-1">
+          <p><strong>规则：</strong>仅当 <span class="text-yellow-400">单终端模式（合并显示）</span> 且 <span class="text-yellow-400">双串口同时连接</span> 时显示标签</p>
+          <p class="text-gray-400">原因：合并显示时两个串口消息混在一起，需要标签区分；分栏显示时左右栏已明确标注端口，无需重复</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <!-- 场景 1: 单串口 + 单终端 -->
+        <div class="border border-gray-700 rounded p-4 bg-black/30">
+          <h3 class="text-sm font-medium mb-2 text-gray-300">场景 1：单串口 + 单终端</h3>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs px-2 py-1 bg-blue-600 rounded">P1 已连接</span>
+            <span class="text-xs px-2 py-1 bg-gray-700 rounded">P2 未连接</span>
+            <span class="text-xs px-2 py-1 bg-gray-700 rounded">🔘 单终端</span>
+          </div>
+          <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+            <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+            <div><span class="text-gray-400">[TX]</span> OK</div>
+            <div><span class="text-gray-400">[RX]</span> AT+CSQ</div>
+          </div>
+          <p class="text-xs text-red-400 mt-2">❌ 不显示端口标签（只有一个串口）</p>
+        </div>
+
+        <!-- 场景 2: 单串口 + 双终端 -->
+        <div class="border border-gray-700 rounded p-4 bg-black/30">
+          <h3 class="text-sm font-medium mb-2 text-gray-300">场景 2：单串口 + 双终端</h3>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs px-2 py-1 bg-blue-600 rounded">P1 已连接</span>
+            <span class="text-xs px-2 py-1 bg-gray-700 rounded">P2 未连接</span>
+            <span class="text-xs px-2 py-1 bg-purple-600 rounded">🔵 双终端</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1">
+            <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div class="text-blue-400 border-b border-gray-800 pb-1 mb-1">P1</div>
+              <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-gray-400">[TX]</span> OK</div>
+            </div>
+            <div class="border border-gray-700 rounded bg-black/50 p-2 flex items-center justify-center text-gray-500 text-xs">
+              P2 未连接
+            </div>
+          </div>
+          <p class="text-xs text-red-400 mt-2">❌ 不显示端口标签（只有一个串口）</p>
+        </div>
+
+        <!-- 场景 3: 双串口 + 单终端（合并） -->
+        <div class="border border-green-600 rounded p-4 bg-green-900/10">
+          <h3 class="text-sm font-medium mb-2 text-green-300">场景 3：双串口 + 单终端（合并）⭐</h3>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs px-2 py-1 bg-blue-600 rounded">P1 已连接</span>
+            <span class="text-xs px-2 py-1 bg-green-600 rounded">P2 已连接</span>
+            <span class="text-xs px-2 py-1 bg-gray-700 rounded">🔘 单终端</span>
+          </div>
+          <div class="border border-green-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+            <div><span class="text-blue-400">[P1]</span> <span class="text-gray-400">[RX]</span> AT+CGMR</div>
+            <div><span class="text-green-400">[P2]</span> <span class="text-gray-400">[RX]</span> AT+CGMR</div>
+            <div><span class="text-blue-400">[P1]</span> <span class="text-gray-400">[TX]</span> OK</div>
+            <div><span class="text-green-400">[P2]</span> <span class="text-gray-400">[TX]</span> OK</div>
+          </div>
+          <p class="text-xs text-green-400 mt-2">✅ 显示 [P1]/[P2] 标签（需要区分来源）</p>
+        </div>
+
+        <!-- 场景 4: 双串口 + 双终端（分栏） -->
+        <div class="border border-gray-700 rounded p-4 bg-black/30">
+          <h3 class="text-sm font-medium mb-2 text-gray-300">场景 4：双串口 + 双终端（分栏）</h3>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs px-2 py-1 bg-blue-600 rounded">P1 已连接</span>
+            <span class="text-xs px-2 py-1 bg-green-600 rounded">P2 已连接</span>
+            <span class="text-xs px-2 py-1 bg-purple-600 rounded">🔵 双终端</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1">
+            <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div class="text-blue-400 border-b border-gray-800 pb-1 mb-1">P1</div>
+              <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-gray-400">[TX]</span> OK</div>
+            </div>
+            <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div class="text-green-400 border-b border-gray-800 pb-1 mb-1">P2</div>
+              <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-gray-400">[TX]</span> OK</div>
+            </div>
+          </div>
+          <p class="text-xs text-red-400 mt-2">❌ 不显示端口标签（左右栏已标注端口）</p>
+        </div>
+      </div>
+
+      <div class="mt-6 bg-green-900/20 border border-green-700 rounded p-4">
+        <p class="text-sm text-green-300">
+          <strong>设计思路：</strong>
+        </p>
+        <ul class="mt-2 space-y-1 text-sm text-gray-300 ml-4">
+          <li>• <strong>单串口场景</strong>：无论单终端还是双终端，消息来源都是唯一的，无需标注 [P1]</li>
+          <li>• <strong>双串口 + 合并显示</strong>：两个串口消息混在一起，必须用 [P1]/[P2] 区分</li>
+          <li>• <strong>双串口 + 分栏显示</strong>：左右栏已用端口标题明确区分，消息无需再重复标注</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 完整工作流演示 -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4">完整工作流演示</h2>
+
+      <div class="space-y-6">
+        <!-- 步骤 1 -->
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-blue-400">步骤 1：连接单个串口 P1</h3>
+          <div class="border border-gray-700 rounded p-3 bg-black/30">
+            <div class="text-xs text-gray-400 mb-2">工具栏：🔘 双终端按钮（未激活）</div>
+            <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-gray-400">[TX]</span> OK</div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">→ 单终端显示，无端口标签</p>
+          </div>
+        </div>
+
+        <!-- 步骤 2 -->
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-blue-400">步骤 2：手动开启双终端</h3>
+          <div class="border border-gray-700 rounded p-3 bg-black/30">
+            <div class="text-xs text-gray-400 mb-2">工具栏：🔵 双终端按钮（手动激活）</div>
+            <div class="grid grid-cols-2 gap-1">
+              <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+                <div class="text-blue-400 border-b border-gray-800 pb-1 mb-1">P1</div>
+                <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              </div>
+              <div class="border border-gray-700 rounded bg-black/50 p-2 flex items-center justify-center text-gray-500 text-xs">
+                P2 未连接
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">→ 双终端布局，但仍无端口标签（只有一个串口）</p>
+          </div>
+        </div>
+
+        <!-- 步骤 3 -->
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-green-400">步骤 3：连接第二个串口 P2</h3>
+          <div class="border border-gray-700 rounded p-3 bg-black/30">
+            <div class="text-xs text-gray-400 mb-2">工具栏：🔵 双终端按钮（自动保持激活）</div>
+            <div class="grid grid-cols-2 gap-1">
+              <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+                <div class="text-blue-400 border-b border-gray-800 pb-1 mb-1">P1</div>
+                <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              </div>
+              <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+                <div class="text-green-400 border-b border-gray-800 pb-1 mb-1">P2</div>
+                <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">→ 双终端布局，左右栏已标注端口，消息无需重复标注</p>
+          </div>
+        </div>
+
+        <!-- 步骤 4 -->
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-yellow-400">步骤 4：关闭双终端（切换到合并显示）</h3>
+          <div class="border border-green-600 rounded p-3 bg-green-900/10">
+            <div class="text-xs text-gray-400 mb-2">工具栏：🔘 双终端按钮（手动关闭）</div>
+            <div class="border border-green-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div><span class="text-blue-400">[P1]</span> <span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-green-400">[P2]</span> <span class="text-gray-400">[RX]</span> AT+CSQ</div>
+              <div><span class="text-blue-400">[P1]</span> <span class="text-gray-400">[TX]</span> OK</div>
+              <div><span class="text-green-400">[P2]</span> <span class="text-gray-400">[TX]</span> +CSQ: 25,99</div>
+            </div>
+            <p class="text-xs text-green-400 mt-2">→ 合并显示 + 双串口，<strong>自动显示端口标签</strong>区分消息来源</p>
+          </div>
+        </div>
+
+        <!-- 步骤 5 -->
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-gray-400">步骤 5：断开 P2</h3>
+          <div class="border border-gray-700 rounded p-3 bg-black/30">
+            <div class="text-xs text-gray-400 mb-2">工具栏：🔘 双终端按钮（保持关闭状态）</div>
+            <div class="border border-gray-700 rounded bg-black/50 p-2 text-xs font-mono space-y-1">
+              <div><span class="text-gray-400">[RX]</span> AT+CGMR</div>
+              <div><span class="text-gray-400">[TX]</span> OK</div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">→ 单终端 + 单串口，端口标签自动消失</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 代码实现 -->
+    <div class="border border-gray-700 rounded-lg p-6 bg-gray-900">
+      <h2 class="text-lg font-semibold mb-4">代码实现</h2>
+
+      <div class="space-y-4">
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-gray-300">1. 端口标签显示逻辑</h3>
+          <pre class="bg-black/50 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>// 仅在单终端（合并）模式且双串口连接时显示端口标签
+const showPortLabel = !dualTerminalEnabled
+  && connectionStatus.p1_connected
+  && connectionStatus.p2_connected;</code></pre>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-gray-300">2. 双终端自动激活逻辑</h3>
+          <pre class="bg-black/50 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>// P2 连接时，如果还未开启双终端，自动激活
+useEffect(() => {
+  if (connectionStatus.p2_connected && !dualTerminalEnabled) {
+    setDualTerminalEnabled(true);
+  }
+}, [connectionStatus.p2_connected]);</code></pre>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-medium mb-2 text-gray-300">3. 终端显示模式</h3>
+          <pre class="bg-black/50 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>// 双终端开启时显示左右分栏，否则合并显示
+{dualTerminalEnabled ? (
+  // 左右分栏：P1 左，P2 右
+  &lt;div className="flex"&gt;
+    &lt;P1Terminal /&gt;
+    &lt;P2Terminal /&gt; {/* P2 未连接时显示占位 */}
+  &lt;/div&gt;
+) : (
+  // 合并显示：所有消息按时间排列
+  &lt;MergedTerminal showPortLabel={showPortLabel} /&gt;
+)}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 总结 -->
+    <div class="border border-green-600 rounded-lg p-6 bg-green-900/20">
+      <h2 class="text-lg font-semibold mb-3 text-green-400">✅ 方案确认</h2>
+      <div class="space-y-3 text-sm text-gray-300">
+        <p><strong>端口标签显示规则：</strong></p>
+        <div class="bg-black/30 p-3 rounded">
+          <code class="text-purple-400">showPortLabel = !dualTerminalEnabled && p1_connected && p2_connected</code>
+        </div>
+        <p class="text-gray-400">即：仅当合并显示 + 双串口连接时才显示 [P1] / [P2] 标签</p>
+
+        <div class="mt-4 border-t border-gray-700 pt-3">
+          <p><strong>核心特性：</strong></p>
+          <ul class="ml-6 space-y-1 text-gray-400">
+            <li>✅ 工具栏右侧增加双终端图标按钮</li>
+            <li>✅ 默认单终端，双串口连接时自动激活</li>
+            <li>✅ 单串口可手动开启双终端（提前布局）</li>
+            <li>✅ 断开串口不影响按钮状态</li>
+            <li>✅ 只有合并显示+双串口时才显示端口标签</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

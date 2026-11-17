@@ -16,7 +16,7 @@ const makeCmd = (overrides: Partial<StandardCommand>): StandardCommand => ({
   successThreshold: 1,
   stopWhenReached: false,
   timeout: 1000,
-  validation: "none",
+  validation: false,
   onFailure: "continue",
   ...overrides,
 });

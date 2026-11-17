@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>发送区方向键优化方案对比</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+    .container { max-width: 1300px; margin: 0 auto; }
+    h1 { text-align: center; color: white; font-size: 2.2em; margin-bottom: 10px; text-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    .subtitle { text-align: center; color: rgba(255,255,255,0.9); font-size: 1em; margin-bottom: 30px; }
+    .panel { background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); overflow: hidden; margin-bottom: 24px; }
+    .panel-header { padding: 18px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .panel-header h2 { font-size: 1.2em; display: flex; align-items: center; gap: 8px; }
+    .tag { padding: 4px 12px; border-radius: 20px; font-size: 0.75em; font-weight: 600; }
+    .tag-current { background: #fef3c7; color: #92400e; }
+    .tag-your { background: #dbeafe; color: #1e40af; }
+    .tag-recommended { background: #d1fae5; color: #065f46; }
+    .tag-mixed { background: #fce7f3; color: #9f1239; }
+    .panel-body { padding: 24px; }
+
+    /* 终端发送区模拟 */
+    .terminal-area {
+      background: #1e1e2e; border-radius: 8px; padding: 16px; color: #cdd6f4; font-family: 'SF Mono', Monaco, monospace; font-size: 13px;
+    }
+    .terminal-output {
+      min-height: 80px; max-height: 120px; overflow-y: auto; padding: 8px 12px; background: #181825; border-radius: 6px; margin-bottom: 12px; line-height: 1.6;
+    }
+    .term-line { margin-bottom: 4px; }
+    .term-tx { color: #a6e3a1; }
+    .term-rx { color: #89dceb; }
+    .term-ts { color: #6c7086; }
+
+    /* 输入框区 */
+    .input-row { display: flex; align-items: center; gap: 8px; }
+    .input-box {
+      flex: 1; background: #181825; border: 1px solid #45475a; border-radius: 6px; padding: 10px 14px; color: #cdd6f4; font-family: inherit; font-size: 13px; outline: none;
+    }
+    .input-box:focus { border-color: #89b4fa; }
+    .input-box.with-btn { padding-right: 40px; position: relative; }
+    .icon-btn {
+      width: 32px; height: 32px; background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.15s;
+    }
+    .icon-btn:hover { background: #45475a; border-color: #89b4fa; }
+    .icon-btn.embedded { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border: none; background: transparent; }
+    .icon-btn.embedded:hover { background: #45475a; border-radius: 4px; }
+    .send-btn { padding: 10px 18px; background: #a6e3a1; color: #1e1e2e; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    .send-btn:hover { background: #94d889; }
+
+    /* 历史列表面板 */
+    .history-panel {
+      position: relative; margin-top: 8px; background: #1e1e2e; border: 1px solid #45475a; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .search-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #313244; background: #181825; }
+    .search-input { flex: 1; background: transparent; border: none; color: #cdd6f4; font-family: inherit; font-size: 13px; outline: none; }
+    .search-input::placeholder { color: #6c7086; }
+    .history-list { max-height: 220px; overflow-y: auto; padding: 4px 0; }
+    .history-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; cursor: pointer; transition: background 0.1s; }
+    .history-item:hover { background: #313244; }
+    .history-item.selected { background: #313244; border-left: 3px solid #89b4fa; padding-left: 9px; }
+    .history-item .cmd { font-family: 'SF Mono', Monaco, monospace; font-size: 13px; color: #cdd6f4; }
+    .history-item .time { font-size: 11px; color: #6c7086; white-space: nowrap; margin-left: 12px; }
+    .history-footer { padding: 8px 12px; border-top: 1px solid #313244; background: #181825; font-size: 11px; color: #6c7086; display: flex; gap: 16px; }
+    .kbd { display: inline-block; padding: 1px 6px; background: #313244; border: 1px solid #45475a; border-radius: 3px; font-size: 10px; color: #cdd6f4; }
+
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .pros, .cons { padding: 14px; border-radius: 8px; font-size: 0.88em; line-height: 1.7; }
+    .pros { background: #f0fdf4; border-left: 4px solid #10b981; }
+    .cons { background: #fef2f2; border-left: 4px solid #ef4444; }
+    .pros h4, .cons h4 { margin-bottom: 8px; font-size: 0.95em; }
+    .pros ul, .cons ul { padding-left: 18px; }
+    .pros li { color: #065f46; }
+    .cons li { color: #991b1b; }
+
+    .key-hint { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0; font-size: 0.88em; color: #4b5563; }
+    .key-hint .kbd { background: #e5e7eb; border-color: #d1d5db; color: #374151; }
+    .key-hint code { background: #f3f4f6; padding: 1px 6px; border-radius: 3px; font-size: 0.95em; }
+
+    .recommend-box { padding: 20px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 12px; margin-top: 10px; border-left: 6px solid #10b981; }
+    .recommend-box h3 { color: #064e3b; margin-bottom: 10px; }
+    .recommend-box p { color: #065f46; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⌨️ 发送区方向键优化方案</h1>
+    <p class="subtitle">历史命令导航交互设计对比</p>
+
+    <!-- 现状 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>📍 现状（已实现）</h2>
+        <span class="tag tag-current">CURRENT</span>
+      </div>
+      <div class="panel-body">
+        <div class="terminal-area">
+          <div class="terminal-output">
+            <div class="term-line"><span class="term-ts">[10:23:15]</span> <span class="term-tx">[TX]</span> AT+CSQ</div>
+            <div class="term-line"><span class="term-ts">[10:23:16]</span> <span class="term-rx">[RX]</span> +CSQ: 25,0</div>
+          </div>
+          <div class="input-row">
+            <div style="flex:1; position:relative;">
+              <input class="input-box" value="AT+CREG?" placeholder="输入命令，按 Enter 发送..." />
+            </div>
+            <button class="send-btn">发送</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#6c7086;">
+            <span class="kbd">↑</span> 调上一条 &nbsp; <span class="kbd">↓</span> 调下一条 &nbsp; (仅光标在首/末行时生效，多行编辑放行)
+          </div>
+        </div>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li>符合终端用户肌肉记忆</li>
+              <li>多行编辑不冲突</li>
+              <li>草稿保存/恢复</li>
+              <li>历史持久化（200 条）</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>⚠️ 不足</h4>
+            <ul>
+              <li>无历史列表，无法快速跳转到很久前的命令</li>
+              <li>无法搜索/过滤历史</li>
+              <li>连按 ↑ 翻很久之前的命令很慢</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案A：双击触发（你的思路） -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🔵 方案 A：双击触发（你的思路）</h2>
+        <span class="tag tag-your">YOUR IDEA</span>
+      </div>
+      <div class="panel-body">
+        <div class="terminal-area">
+          <div class="terminal-output">
+            <div class="term-line"><span class="term-ts">[10:23:15]</span> <span class="term-tx">[TX]</span> AT+CSQ</div>
+          </div>
+          <div class="input-row">
+            <div style="flex:1; position:relative;">
+              <input class="input-box" value="AT+CSQ" placeholder="第一次按↑后显示上一条..." />
+            </div>
+            <button class="send-btn">发送</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#6c7086; animation: pulse 2s infinite;">
+            ↑ 第一次：调上一条 → ↑ 300ms 内再按：弹出列表 ↓
+          </div>
+        </div>
+
+        <div class="history-panel" style="margin-top:12px;">
+          <div class="search-row">
+            <span style="color:#6c7086;">🔍</span>
+            <input class="search-input" placeholder="过滤历史命令..." />
+          </div>
+          <div class="history-list">
+            <div class="history-item selected"><span class="cmd">AT+CSQ</span><span class="time">刚刚</span></div>
+            <div class="history-item"><span class="cmd">AT+CREG?</span><span class="time">2 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGSN</span><span class="time">5 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGDCONT?</span><span class="time">10 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+COPS?</span><span class="time">15 分钟前</span></div>
+          </div>
+          <div class="history-footer">
+            <span><span class="kbd">↑↓</span> 导航</span>
+            <span><span class="kbd">Enter</span> 选择</span>
+            <span><span class="kbd">Esc</span> 关闭</span>
+          </div>
+        </div>
+
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li>保留现有 ↑ 单次导航</li>
+              <li>双击弹出列表，符合你的设想</li>
+              <li>列表带搜索过滤</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>⚠️ 问题</h4>
+            <ul>
+              <li><strong>体验割裂</strong>：第一次 ↑ 立即调上一条，第二次才弹列表</li>
+              <li><strong>误判风险</strong>：用户想连调两条历史，却被误判为触发列表</li>
+              <li><strong>不可发现</strong>：用户不知道双击有列表功能</li>
+              <li>需定义"快速"时间窗口（300ms），增加复杂度</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案B：Ctrl+方向键 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🟢 方案 B：Ctrl+↑ 弹出列表（推荐）</h2>
+        <span class="tag tag-recommended">⭐ RECOMMENDED</span>
+      </div>
+      <div class="panel-body">
+        <div class="terminal-area">
+          <div class="terminal-output">
+            <div class="term-line"><span class="term-ts">[10:23:15]</span> <span class="term-tx">[TX]</span> AT+CSQ</div>
+          </div>
+          <div class="input-row">
+            <div style="flex:1; position:relative;">
+              <input class="input-box" value="" placeholder="按 Ctrl+↑ 弹出历史列表..." />
+            </div>
+            <button class="send-btn">发送</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#6c7086;">
+            <span class="kbd">↑</span> 调上一条（保持现有） &nbsp; <span class="kbd">Ctrl</span>+<span class="kbd">↑</span> 弹出历史列表
+          </div>
+        </div>
+
+        <div class="history-panel" style="margin-top:12px;">
+          <div class="search-row">
+            <span style="color:#6c7086;">🔍</span>
+            <input class="search-input" placeholder="过滤历史命令..." />
+          </div>
+          <div class="history-list">
+            <div class="history-item selected"><span class="cmd">AT+CSQ</span><span class="time">刚刚</span></div>
+            <div class="history-item"><span class="cmd">AT+CREG?</span><span class="time">2 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGSN</span><span class="time">5 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGDCONT?</span><span class="time">10 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+COPS?</span><span class="time">15 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CIMI</span><span class="time">20 分钟前</span></div>
+          </div>
+          <div class="history-footer">
+            <span><span class="kbd">↑↓</span> 导航</span>
+            <span><span class="kbd">Enter</span> 选择</span>
+            <span><span class="kbd">Esc</span> 关闭</span>
+            <span style="margin-left:auto;">输入关键词可过滤</span>
+          </div>
+        </div>
+
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li><strong>零歧义</strong>：Ctrl 修饰键明确区分两种操作</li>
+              <li>不干扰现有 ↑ 单次导航</li>
+              <li>列表带搜索过滤，可快速跳转</li>
+              <li>实现简单，复用 AtAutocompletePanel 模式</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>⚠️ 不足</h4>
+            <ul>
+              <li>快捷键需学习（但 Ctrl+↑ 较直觉）</li>
+              <li>鼠标用户无法触发（需配合方案 C）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案C：历史图标按钮 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🟡 方案 C：输入框旁历史图标按钮</h2>
+        <span class="tag tag-your">MOUSE-FRIENDLY</span>
+      </div>
+      <div class="panel-body">
+        <div class="terminal-area">
+          <div class="terminal-output">
+            <div class="term-line"><span class="term-ts">[10:23:15]</span> <span class="term-tx">[TX]</span> AT+CSQ</div>
+          </div>
+          <div class="input-row">
+            <div style="flex:1; position:relative;">
+              <input class="input-box with-btn" value="" placeholder="点击右侧时钟图标查看历史..." />
+              <button class="icon-btn embedded" title="历史命令">🕐</button>
+            </div>
+            <button class="send-btn">发送</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#6c7086;">
+            点击 <span style="color:#f9e2af;">🕐</span> 图标弹出历史列表
+          </div>
+        </div>
+
+        <div class="history-panel" style="margin-top:12px;">
+          <div class="search-row">
+            <span style="color:#6c7086;">🔍</span>
+            <input class="search-input" placeholder="过滤历史命令..." />
+          </div>
+          <div class="history-list">
+            <div class="history-item"><span class="cmd">AT+CSQ</span><span class="time">刚刚</span></div>
+            <div class="history-item selected"><span class="cmd">AT+CREG?</span><span class="time">2 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGSN</span><span class="time">5 分钟前</span></div>
+          </div>
+          <div class="history-footer">
+            <span><span class="kbd">↑↓</span> 导航</span>
+            <span><span class="kbd">Enter</span> 选择</span>
+            <span><span class="kbd">Esc</span> 关闭</span>
+          </div>
+        </div>
+
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li><strong>可发现性最好</strong>：图标明确提示有历史功能</li>
+              <li>鼠标用户友好</li>
+              <li>不占用键盘快捷键空间</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>⚠️ 不足</h4>
+            <ul>
+              <li>新增 UI 元素，占输入框空间</li>
+              <li>键盘用户仍需方案 B 配合</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案D：混合 -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🟣 方案 D：混合方案（B + C，最终推荐）</h2>
+        <span class="tag tag-mixed">🏆 BEST</span>
+      </div>
+      <div class="panel-body">
+        <div class="terminal-area">
+          <div class="terminal-output">
+            <div class="term-line"><span class="term-ts">[10:23:15]</span> <span class="term-tx">[TX]</span> AT+CSQ</div>
+            <div class="term-line"><span class="term-ts">[10:23:16]</span> <span class="term-rx">[RX]</span> +CSQ: 25,0</div>
+          </div>
+          <div class="input-row">
+            <div style="flex:1; position:relative;">
+              <input class="input-box with-btn" value="" placeholder="输入命令，↑调历史，Ctrl+↑弹列表，或点🕐" />
+              <button class="icon-btn embedded" title="历史命令 (Ctrl+↑)">🕐</button>
+            </div>
+            <button class="send-btn">发送</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#6c7086; display:flex; gap:14px; flex-wrap:wrap;">
+            <span><span class="kbd">↑</span> 调上一条</span>
+            <span><span class="kbd">↓</span> 调下一条</span>
+            <span><span class="kbd">Ctrl</span>+<span class="kbd">↑</span> 弹历史列表</span>
+            <span style="color:#f9e2af;">🕐 点击也弹列表</span>
+          </div>
+        </div>
+
+        <div class="history-panel" style="margin-top:12px;">
+          <div class="search-row">
+            <span style="color:#6c7086;">🔍</span>
+            <input class="search-input" placeholder="过滤历史命令..." value="AT+C" />
+          </div>
+          <div class="history-list">
+            <div class="history-item selected"><span class="cmd">AT+CSQ</span><span class="time">刚刚</span></div>
+            <div class="history-item"><span class="cmd">AT+CREG?</span><span class="time">2 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGSN</span><span class="time">5 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+CGDCONT?</span><span class="time">10 分钟前</span></div>
+            <div class="history-item"><span class="cmd">AT+COPS?</span><span class="time">15 分钟前</span></div>
+          </div>
+          <div class="history-footer">
+            <span><span class="kbd">↑↓</span> 导航</span>
+            <span><span class="kbd">Enter</span> 选择</span>
+            <span><span class="kbd">Esc</span> 关闭</span>
+            <span style="margin-left:auto; color:#a6e3a1;">已输入 "AT+C" 过滤</span>
+          </div>
+        </div>
+
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li>键盘 + 鼠标用户都覆盖</li>
+              <li>可发现性好（图标提示）</li>
+              <li>列表带搜索过滤</li>
+              <li>不破坏现有 ↑ 导航</li>
+              <li>复用 AtAutocompletePanel 组件，改动小</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>⚠️ 代价</h4>
+            <ul>
+              <li>需新增图标按钮（极小 UI 改动）</li>
+              <li>需新增历史列表组件状态管理</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="recommend-box">
+          <h3>💡 最终建议</h3>
+          <p><strong>推荐方案 D（混合）</strong>，理由：</p>
+          <p>1. 保留现有 ↑/↓ 单次导航，零学习成本</p>
+          <p>2. <code>Ctrl+↑</code> 是键盘用户触发列表的最直觉方式，零歧义（优于双击检测）</p>
+          <p>3. 输入框旁 <code>🕐</code> 图标按钮提供可发现性，鼠标用户也能用</p>
+          <p>4. 列表顶部搜索框可快速过滤大量历史，解决"翻很久之前命令很慢"的痛点</p>
+          <p>5. 复用现有 <code>AtAutocompletePanel</code> 组件模式，实现成本低</p>
+          <br>
+          <p style="color:#065f46;"><strong>关于你的"双击"思路</strong>：双击检测会带来体验割裂和误判，<code>Ctrl+↑</code> 能达到相同目的且更明确。如果你坚持双击，可作为方案 D 之外的额外触发方式，但不建议作为唯一入口。</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
