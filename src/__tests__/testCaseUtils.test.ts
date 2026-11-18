@@ -322,6 +322,49 @@ describe('testCaseUtils', () => {
       expect(c.validation).toBe(false);
     });
 
+    it('v0.4.x 旧版本 validation 应正确迁移', () => {
+      // 'standard' -> true + pattern:'OK'
+      const standardJson = JSON.stringify({
+        version: '2.0',
+        rootCase: {
+          name: 'Old',
+          targetPort: 'P1',
+          children: [{ type: 'command', content: 'AT', validation: 'standard' }],
+        },
+      });
+      const [root1] = parseImportFile(standardJson);
+      const cmd1 = root1.children[0] as StandardCommand;
+      expect(cmd1.validation).toBe(true);
+      expect(cmd1.validationPattern).toBe('OK');
+
+      // 'custom' -> true + 保留原 pattern
+      const customJson = JSON.stringify({
+        version: '2.0',
+        rootCase: {
+          name: 'Old',
+          targetPort: 'P1',
+          children: [{ type: 'command', content: 'AT', validation: 'custom', validationPattern: '+CSQ' }],
+        },
+      });
+      const [root2] = parseImportFile(customJson);
+      const cmd2 = root2.children[0] as StandardCommand;
+      expect(cmd2.validation).toBe(true);
+      expect(cmd2.validationPattern).toBe('+CSQ');
+
+      // 'none' -> false
+      const noneJson = JSON.stringify({
+        version: '2.0',
+        rootCase: {
+          name: 'Old',
+          targetPort: 'P1',
+          children: [{ type: 'command', content: 'AT', validation: 'none' }],
+        },
+      });
+      const [root3] = parseImportFile(noneJson);
+      const cmd3 = root3.children[0] as StandardCommand;
+      expect(cmd3.validation).toBe(false);
+    });
+
     it('urc-guard 缺省时应补齐守护默认值', () => {
       const json = JSON.stringify({
         version: '2.0',

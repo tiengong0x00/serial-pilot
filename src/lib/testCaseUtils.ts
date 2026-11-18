@@ -239,8 +239,8 @@ export function findCommand(
  * 将遗留的 urc-wait 命令归一化为 command。
  * urc-wait 已废弃：异步命令用长超时的普通命令 + 自定义校验等待响应。
  * 字段映射：
- * - onTimeout='fail'     → validation='custom'（等不到即失败）
- * - onTimeout='continue' → validation='none'（响应可有可无，总是成功）
+ * - onTimeout='fail'     → validation=true（等不到即失败）
+ * - onTimeout='continue' → validation=false（响应可有可无，总是成功）
  */
 function normalizeLegacyUrcWait(cmd: any): any {
   if (!cmd || cmd.type !== 'urc-wait') return cmd;
@@ -260,7 +260,7 @@ function normalizeLegacyUrcWait(cmd: any): any {
     successThreshold: 1,
     stopWhenReached: true,
     timeout: cmd.timeout ?? 10000,
-    validation: shouldValidate ? 'custom' : 'none',
+    validation: shouldValidate ? true : false,
     validationPattern: shouldValidate ? pattern ?? '' : '',
     validationMode: shouldValidate ? matchMode ?? 'contains' : 'contains',
     onFailure: shouldValidate ? cmd.onFailure ?? 'continue' : 'continue',
@@ -315,6 +315,19 @@ export function withCommandDefaults(cmd: any): TestCommand {
   }
 
   // 标准命令（默认）
+  // 兼容 v0.4.x: validation 从 'standard'|'custom'|'none' 迁移到 boolean
+  let validation = cmd.validation ?? true;
+  let validationPattern = cmd.validationPattern ?? '';
+
+  if (typeof cmd.validation === 'string') {
+    // 旧版本: 'none' -> false, 'standard'|'custom' -> true
+    validation = cmd.validation !== 'none';
+    // 'standard' 默认匹配 OK
+    if (cmd.validation === 'standard' && !cmd.validationPattern) {
+      validationPattern = 'OK';
+    }
+  }
+
   return {
     ...cmd,
     ...base,
@@ -323,8 +336,8 @@ export function withCommandDefaults(cmd: any): TestCommand {
     successThreshold: cmd.successThreshold ?? 1,
     stopWhenReached: cmd.stopWhenReached ?? true,
     timeout: cmd.timeout ?? 2000,
-    validation: cmd.validation ?? true,
-    validationPattern: cmd.validationPattern ?? '',
+    validation,
+    validationPattern,
     validationMode: cmd.validationMode ?? 'contains',
     onFailure: cmd.onFailure ?? 'abort',
     gotoTargetId: cmd.gotoTargetId ?? undefined,
