@@ -17,13 +17,9 @@ pub struct AttachmentRef {
     pub size: u64,
 }
 
-/// 获取附件存储目录（exe 同级 attachments/）
+/// 获取附件存储目录（exe 同级 data/attachments/）
 pub fn get_attachments_dir() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("attachments")
+    crate::data_layout::attachments_dir()
 }
 
 /// 获取测试用例目录（优先配置路径，未配置时用 exe 同级 testcases/）
@@ -62,40 +58,19 @@ fn compute_file_hash(path: &PathBuf) -> Result<String, SerialError> {
     Ok(compute_hash(&data))
 }
 
-/// 解决文件名冲突：如果文件已存在，尝试添加 (1) ~ (99) 后缀
-fn resolve_filename_conflict(dir: &PathBuf, original_name: &str) -> Result<String, SerialError> {
-    let path = dir.join(original_name);
-    if !path.exists() {
-        return Ok(original_name.to_string());
-    }
-
-    // 分离文件名和扩展名
-    let stem = std::path::Path::new(original_name)
+/// 同名但内容不同时的文件名：`<名>_<内容哈希前8位>.<扩展名>`，如 `A_3f9c2a1b.txt`。
+/// 名字由内容决定，同一内容无论上传多少次都得到同一个文件名。
+fn hashed_name(original_name: &str, hash: &str) -> String {
+    let path = std::path::Path::new(original_name);
+    let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or(original_name);
-    let ext = std::path::Path::new(original_name)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    // 尝试 (1) ~ (99)
-    for i in 1..100 {
-        let new_name = if ext.is_empty() {
-            format!("{} ({})", stem, i)
-        } else {
-            format!("{} ({}).{}", stem, i, ext)
-        };
-        let new_path = dir.join(&new_name);
-        if !new_path.exists() {
-            return Ok(new_name);
-        }
+    let short = &hash[..8.min(hash.len())];
+    match path.extension().and_then(|s| s.to_str()) {
+        Some(ext) => format!("{}_{}.{}", stem, short, ext),
+        None => format!("{}_{}", stem, short),
     }
-
-    Err(SerialError::Internal(format!(
-        "Failed to resolve filename conflict for '{}': too many duplicates",
-        original_name
-    )))
 }
 
 /// 保存附件到磁盘，返回引用
@@ -153,36 +128,36 @@ pub fn save_testcase_attachment(
         })?;
     }
 
-    let path = dir.join(original_name);
+    let new_hash = compute_hash(data);
 
-    // 同名文件已存在：对比哈希，相同则直接复用
-    if path.exists() {
-        let new_hash = compute_hash(data);
-        let existing_hash = compute_file_hash(&path)?;
-
-        if new_hash == existing_hash {
-            // 内容相同，直接返回已存在文件的引用（去重成功）
-            let size = fs::metadata(&path)
-                .map_err(|e| SerialError::Internal(format!("Failed to get file size: {}", e)))?
-                .len();
-            let id = format!("{}/{}", testcase_name, original_name);
-            return Ok(AttachmentRef {
-                id,
-                name: original_name.to_string(),
-                size,
-            });
+    // 1. 原名可用（不存在，或内容相同可复用）→ 用原名
+    // 2. 原名被不同内容占用 → 用 `<名>_<哈希8位>.<扩展名>`，该名已存在且内容相同则复用
+    let mut final_name = original_name.to_string();
+    let original_path = dir.join(original_name);
+    if original_path.exists() && compute_file_hash(&original_path)? != new_hash {
+        final_name = hashed_name(original_name, &new_hash);
+        let hashed_path = dir.join(&final_name);
+        // 极少见：同名哈希文件已存在但内容不同（如被手动替换），改用完整哈希避免覆盖
+        if hashed_path.exists() && compute_file_hash(&hashed_path)? != new_hash {
+            let stem = std::path::Path::new(&final_name);
+            let ext = stem.extension().and_then(|s| s.to_str());
+            let base = std::path::Path::new(original_name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(original_name);
+            final_name = match ext {
+                Some(ext) => format!("{}_{}.{}", base, new_hash, ext),
+                None => format!("{}_{}", base, new_hash),
+            };
         }
-
-        // 内容不同，需要添加后缀以区分
     }
 
-    // 文件不存在或内容不同：处理文件名冲突并保存
-    let final_name = resolve_filename_conflict(&dir, original_name)?;
     let final_path = dir.join(&final_name);
-
-    fs::write(&final_path, data).map_err(|e| {
-        SerialError::Internal(format!("Failed to save attachment {}: {}", final_name, e))
-    })?;
+    if !final_path.exists() {
+        fs::write(&final_path, data).map_err(|e| {
+            SerialError::Internal(format!("Failed to save attachment {}: {}", final_name, e))
+        })?;
+    }
 
     // id 为相对路径：用例名/文件名（统一用正斜杠）
     let id = format!("{}/{}", testcase_name, final_name);
@@ -318,5 +293,17 @@ fn extract_ids(value: &serde_json::Value, ids: &mut std::collections::HashSet<St
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hashed_name;
+
+    #[test]
+    fn hashed_name_keeps_extension_and_uses_8_chars() {
+        assert_eq!(hashed_name("A.txt", "3f9c2a1b77aa"), "A_3f9c2a1b.txt");
+        assert_eq!(hashed_name("fw.v1.bin", "0123456789"), "fw.v1_01234567.bin");
+        assert_eq!(hashed_name("README", "abcdef0123"), "README_abcdef01");
     }
 }

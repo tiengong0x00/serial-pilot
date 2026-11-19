@@ -90,6 +90,11 @@ export async function getLaunchDir(): Promise<string> {
   return await invoke<string>("get_launch_dir");
 }
 
+/** 获取默认日志目录（exe 所在目录下的 data/logs） */
+export async function getDefaultLogsDir(): Promise<string> {
+  return await invoke<string>("get_default_logs_dir");
+}
+
 /** 保存日志到指定目录下的文件 */
 export async function saveLogToPath(dir: string, filename: string, content: string): Promise<string> {
   // 拼接完整路径（后端会规范化分隔符）

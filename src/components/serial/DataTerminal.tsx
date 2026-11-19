@@ -12,7 +12,7 @@ import { useNotify } from "@/hooks/useNotify";
 import { useShortcutAction } from "@/hooks/useShortcuts";
 import { useAtAutocomplete } from "@/hooks/useAtAutocomplete";
 import { cn } from "@/lib/utils";
-import { formatMessagesToText, generateLogFilename, saveLogToPath, getLaunchDir } from "@/lib/logExport";
+import { formatMessagesToText, generateLogFilename, saveLogToPath, getDefaultLogsDir } from "@/lib/logExport";
 import { TerminalContextMenu, type TerminalMenuItem } from "./TerminalContextMenu";
 import { AtAutocompletePanel } from "./AtAutocompletePanel";
 import { SaveCommandDialog } from "./SaveCommandDialog";
@@ -680,13 +680,12 @@ const DataTerminal = () => {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { lastExportDir, setLastExportDir } = useSettingsStore.getState();
 
-      // 确定默认目录：上次选择的目录 或 启动目录/logs
+      // 确定默认目录：上次选择的目录 或 data/logs
       let defaultDir: string;
       if (lastExportDir) {
         defaultDir = lastExportDir;
       } else {
-        const launchDir = await getLaunchDir();
-        defaultDir = `${launchDir}/logs`;
+        defaultDir = await getDefaultLogsDir();
       }
 
       // 生成默认文件名（双终端模式也不带 P1 后缀）
@@ -759,13 +758,12 @@ const DataTerminal = () => {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { lastExportDir, setLastExportDir } = useSettingsStore.getState();
 
-      // 确定默认目录：上次选择的目录 或 启动目录/logs
+      // 确定默认目录：上次选择的目录 或 data/logs
       let defaultDir: string;
       if (lastExportDir) {
         defaultDir = lastExportDir;
       } else {
-        const launchDir = await getLaunchDir();
-        defaultDir = `${launchDir}/logs`;
+        defaultDir = await getDefaultLogsDir();
       }
 
       // 生成默认文件名（带端口后缀）

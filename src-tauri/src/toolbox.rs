@@ -13,11 +13,16 @@ pub async fn open_toolbox_window(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    tauri::WebviewWindowBuilder::new(
+    let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         "toolbox",
         tauri::WebviewUrl::App("toolbox.html".into()),
-    )
+    );
+    // 与主窗口共用同一 WebView 数据目录，保证 localStorage（全局变量等）一致
+    if let Some(dir) = crate::webview_data::get() {
+        builder = builder.data_directory(dir);
+    }
+    builder
     .title("工具箱 - Serial Pilot")
     .inner_size(850.0, 720.0)
     .min_inner_size(700.0, 600.0)

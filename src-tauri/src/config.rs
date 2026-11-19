@@ -45,7 +45,7 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn new() -> Self {
-        let config_path = get_exe_dir().join("config.json");
+        let config_path = crate::data_layout::config_file();
         let config = Self::load_from_file(&config_path).unwrap_or_default();
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -70,6 +70,10 @@ impl ConfigStore {
         f(&mut config);
         let json = serde_json::to_string_pretty(&*config)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
+        if let Some(parent) = self.config_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        }
         fs::write(&self.config_path, json)
             .map_err(|e| format!("Failed to write config: {}", e))?;
         Ok(())

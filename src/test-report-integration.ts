@@ -108,8 +108,8 @@ export async function finalizeTestReport(): Promise<void> {
  */
 async function autoSaveReport(): Promise<void> {
   try {
-    // 获取 attachments 目录路径
-    const attachmentsDir = await invoke<string>('get_attachments_dir');
+    // 获取报告目录路径（data/reports，与 CSV 报告同目录）
+    const reportsDir = await invoke<string>('get_reports_dir');
 
     const summary = reportManager.getSummary();
     const result = summary.failed === 0 ? 'PASS' : 'FAIL';
@@ -126,13 +126,13 @@ async function autoSaveReport(): Promise<void> {
     }
 
     const filename = `${caseName}_report_${result}_${timestamp}.xlsx`;
-    const excelPath = `${attachmentsDir}\\${filename}`;
+    const excelPath = `${reportsDir}\\${filename}`;
 
     // 转换并保存
     await reportManager.convertToExcel(excelPath);
 
     // 清理旧报告，只保留最近 10 个
-    await cleanupOldReports(attachmentsDir);
+    await cleanupOldReports(reportsDir);
   } catch (error) {
     console.error('[TestReport] 自动保存报告失败:', error);
   }

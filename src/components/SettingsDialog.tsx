@@ -1199,7 +1199,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                     className="h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                     value={terminalLogPath}
                     onChange={(e) => setTerminalLogPath(e.target.value)}
-                    placeholder="logs/"
+                    placeholder="data/logs/"
                   />
                   <p className="text-xs text-muted-foreground">{t("settings.terminalLogPathHint")}</p>
                 </div>

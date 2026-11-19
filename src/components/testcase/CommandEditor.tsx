@@ -91,7 +91,7 @@ function StandardCommandFields({
   onChange: (patch: Partial<TestCommand>) => void;
 }) {
   const { t } = useTranslation();
-  const { saveTestcaseAttachment, deleteAttachment } = useSerialCommands();
+  const { saveTestcaseAttachment } = useSerialCommands();
   const [fileError, setFileError] = useState('');
   // Ctrl+S 保存命令到命令库
   const [saveDialogCommand, setSaveDialogCommand] = useState<string | null>(null);
@@ -171,9 +171,8 @@ function StandardCommandFields({
               type="button"
               className="text-muted-foreground hover:text-destructive transition-colors"
               onClick={() => {
-                if (command.fileData?.id) {
-                  void deleteAttachment(command.fileData.id);
-                }
+                // 只解除引用，不删磁盘文件：同名同内容的附件会被多条命令复用，
+                // 立即删除会误删其他命令的附件。无引用的文件由启动时 GC 统一清理。
                 onChange({ fileData: undefined });
               }}
               title={t('testCase.fileRemove')}

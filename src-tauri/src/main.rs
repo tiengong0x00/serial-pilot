@@ -4,6 +4,7 @@
 mod attachments;
 mod cli;
 mod config;
+mod data_layout;
 mod dist_type;
 mod error;
 mod network;
@@ -14,6 +15,7 @@ mod serial;
 mod script;
 mod state;
 mod toolbox;
+mod webview_data;
 
 use error::SerialError;
 use serial::port_info::get_available_ports;
@@ -418,13 +420,21 @@ fn delete_command_library(filename: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 获取日志保存目录（可执行文件路径下的 logs/）
+/// 获取日志保存目录（可执行文件路径下的 data/logs/）
 fn get_logs_dir() -> std::path::PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("logs")
+    data_layout::logs_dir()
+}
+
+/// 默认日志目录（供前端"另存为"对话框作为初始目录）
+#[tauri::command]
+fn get_default_logs_dir() -> Result<String, String> {
+    Ok(get_logs_dir().to_string_lossy().to_string())
+}
+
+/// 测试报告目录（CSV 与 Excel 统一存放，目录不存在时创建）
+#[tauri::command]
+fn get_reports_dir() -> Result<String, String> {
+    report::ensure_reports_dir().map(|p| p.to_string_lossy().to_string())
 }
 
 /// 保存日志到文件
@@ -841,6 +851,9 @@ fn main() {
     // 解析命令行参数
     let cli = cli::Cli::parse();
 
+    // 旧目录布局迁移到 data/（必须早于配置加载和任何路径访问）
+    data_layout::migrate_legacy_layout();
+
     // 在 Windows 上，如果是 GUI 模式（无 CLI 参数），隐藏控制台窗口
     #[cfg(target_os = "windows")]
     if cli.command.is_none() {
@@ -905,12 +918,26 @@ fn run_gui_mode() {
                 eprintln!("[DistType] Failed to persist marker: {}", e);
             }
 
-            // 主窗口默认配置为不可见（visible:false），避免 CLI 模式下闪现窗口。
-            // GUI 模式确认后主动显示；show 失败不致命，仅记录。
-            if let Some(main_window) = app.get_webview_window("main") {
-                if let Err(e) = main_window.show() {
-                    eprintln!("[Window] Failed to show main window: {}", e);
-                }
+            // 主窗口在 tauri.conf.json 中 create:false，这里按配置手动创建，
+            // 以便绿色版把 WebView 数据目录（localStorage）放到 exe 旁边。
+            webview_data::init(app.path().app_local_data_dir().ok());
+            let main_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("main window config not found")?;
+            let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?;
+            if let Some(dir) = webview_data::get() {
+                builder = builder.data_directory(dir);
+            }
+            let main_window = builder.build()?;
+
+            // 主窗口配置为不可见（visible:false），创建完成后主动显示；show 失败不致命，仅记录。
+            if let Err(e) = main_window.show() {
+                eprintln!("[Window] Failed to show main window: {}", e);
             }
 
             Ok(())
@@ -963,6 +990,8 @@ fn run_gui_mode() {
             close_report,
             convert_csv_to_excel,
             get_attachments_dir,
+            get_reports_dir,
+            get_default_logs_dir,
             cleanup_old_excel_reports
         ])
         .on_window_event(|window, event| {
@@ -1043,12 +1072,17 @@ fn run_cli_mode(cli: cli::Cli) {
                 let _ = main_window.close();
             }
 
-            // 创建 CLI 专用窗口
-            let window = tauri::WebviewWindowBuilder::new(
+            // 创建 CLI 专用窗口（绿色版使用 exe 旁的 WebView 数据目录，与 GUI 一致）
+            webview_data::init(app.path().app_local_data_dir().ok());
+            let mut cli_builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "cli-window",
                 tauri::WebviewUrl::App("index.html?cli=true".into())
-            )
+            );
+            if let Some(dir) = webview_data::get() {
+                cli_builder = cli_builder.data_directory(dir);
+            }
+            let window = cli_builder
             .title("Serial Pilot CLI")
             .inner_size(1200.0, 800.0)
             .visible(cli.show_window)

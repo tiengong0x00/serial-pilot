@@ -130,10 +130,7 @@ impl ReportWriter {
 
 /// 确保 reports 目录存在
 pub fn ensure_reports_dir() -> Result<PathBuf, String> {
-    use crate::attachments;
-
-    let attachments_dir = attachments::get_attachments_dir();
-    let reports_dir = attachments_dir.join("reports");
+    let reports_dir = crate::data_layout::reports_dir();
 
     std::fs::create_dir_all(&reports_dir)
         .map_err(|e| format!("创建 reports 目录失败: {}", e))?;
