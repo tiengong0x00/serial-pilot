@@ -578,6 +578,13 @@ const DataTerminal = () => {
     }
   }, [connectionStatus.p1_connected, connectionStatus.p2_connected, dualTerminalEnabled]);
 
+  // 当任一端口断开时，重置用户手动控制标志，使下次连接两个串口时能自动激活双终端
+  useEffect(() => {
+    if (!connectionStatus.p1_connected || !connectionStatus.p2_connected) {
+      userControlledDualTerminal.current = false;
+    }
+  }, [connectionStatus.p1_connected, connectionStatus.p2_connected]);
+
   // 智能切换发送目标：任一端口断开时，自动切到仍连接的端口
   useEffect(() => {
     // P2 断开且当前目标是 P2 或 ALL → 切到 P1

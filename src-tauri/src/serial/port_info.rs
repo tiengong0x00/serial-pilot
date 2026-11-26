@@ -1,6 +1,26 @@
 use crate::error::SerialError;
 use crate::state::PortInfo;
 
+/// 检查端口在注册表中是否仍然存在（有效设备）
+#[cfg(windows)]
+fn is_port_in_registry(port_name: &str) -> bool {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+    // 检查 SERIALCOMM 中是否有这个端口
+    if let Ok(device_map) = hklm.open_subkey(r"HARDWARE\DEVICEMAP\SERIALCOMM") {
+        if let Ok(port_value) = device_map.get_value::<String, _>(port_name) {
+            if !port_value.is_empty() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// 获取系统可用串口列表
 pub fn get_available_ports() -> Result<Vec<PortInfo>, SerialError> {
     let ports = serialport::available_ports()
@@ -10,6 +30,14 @@ pub fn get_available_ports() -> Result<Vec<PortInfo>, SerialError> {
 
     for port in ports {
         let port_name = port.port_name.clone();
+
+        // 验证端口在注册表中是否仍然存在
+        // 这样可以过滤掉"幽灵设备"（已卸载但系统还在枚举的旧设备）
+        // 同时不会过滤掉被其他软件打开的真实设备
+        #[cfg(windows)]
+        if !is_port_in_registry(&port_name) {
+            continue; // 跳过不在注册表中的幽灵设备
+        }
 
         #[cfg(windows)]
         let friendly_name = get_friendly_name_windows(&port_name);
