@@ -131,19 +131,17 @@ function StandardCommandFields({
             <option value="cr">{t('testCase.lineEndingCR')}</option>
             <option value="crlf">{t('testCase.lineEndingCRLF')}</option>
           </select>
-          {command.validation && (
-            <div className="ml-auto flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">{t('testCase.timeoutShort')}:</span>
-              <input
-                type="number"
-                className="w-20 px-2 py-1 border rounded text-xs bg-background"
-                value={command.timeout}
-                onChange={(e) => onChange({ timeout: Number(e.target.value) })}
-                min="0"
-              />
-              <span className="text-xs text-muted-foreground">ms</span>
-            </div>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{t('testCase.delayShort')}:</span>
+            <input
+              type="number"
+              className="w-20 px-2 py-1 border rounded text-xs bg-background"
+              value={command.delay}
+              onChange={(e) => onChange({ delay: Math.max(0, Number(e.target.value) || 0) })}
+              min="0"
+            />
+            <span className="text-xs text-muted-foreground">ms</span>
+          </div>
         </div>
         {command.dataFormat === 'hex' ? (
           <HexInput
@@ -254,7 +252,7 @@ function StandardCommandFields({
         )}
       </div>
 
-      {/* 响应校验 - 复选框 + 匹配方式 + 延时 */}
+      {/* 响应校验 - 复选框 + 匹配方式 + 超时 */}
       <div className="border-t pt-3 space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
@@ -282,17 +280,19 @@ function StandardCommandFields({
               <option value="endsWith">{t('testCase.matchModeEndsWith')}</option>
             </select>
           )}
-          <div className="ml-auto flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">{t('testCase.delayShort')}:</span>
-            <input
-              type="number"
-              className="w-20 px-2 py-1 border rounded text-xs bg-background"
-              value={command.delay}
-              onChange={(e) => onChange({ delay: Math.max(0, Number(e.target.value) || 0) })}
-              min="0"
-            />
-            <span className="text-xs text-muted-foreground">ms</span>
-          </div>
+          {command.validation && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t('testCase.timeoutShort')}:</span>
+              <input
+                type="number"
+                className="w-20 px-2 py-1 border rounded text-xs bg-background"
+                value={command.timeout}
+                onChange={(e) => onChange({ timeout: Number(e.target.value) })}
+                min="0"
+              />
+              <span className="text-xs text-muted-foreground">ms</span>
+            </div>
+          )}
         </div>
         {command.validation && (
           <div className={fieldCls}>
